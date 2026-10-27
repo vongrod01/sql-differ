@@ -142,7 +142,8 @@ const OPTIONS = [
   ['compareColumnOrder', 'เทียบลำดับคอลัมน์ด้วย'],
 ];
 
-async function specForm(root, initial) {
+// opts.onChange(draft) is called whenever the user changes anything; a draft may be incomplete.
+async function specForm(root, initial, opts = {}) {
   const spec = initial || { kind: 'compare', source: { serverId: 'local' }, target: { serverId: 'local' }, options: {} };
   const list = await getServers();
   const side = (name, title) => `
@@ -179,7 +180,7 @@ async function specForm(root, initial) {
   const q = (role) => root.querySelector(`[data-role="${role}"]`);
   const kind = () => root.querySelector('input[name=kind]:checked').value;
   const state = { source: null, target: null };
-  let picked = new Set(spec.kind === 'batch' && !spec.allDatabases ? spec.databases || [] : []);
+  let picked = new Set(spec.allDatabases ? [] : spec.databases || []);
 
   const applyKind = () => {
     const batch = kind() === 'batch';
@@ -237,10 +238,32 @@ async function specForm(root, initial) {
   q('all').addEventListener('click', () => { q('db-grid').querySelectorAll('input').forEach((i) => { i.checked = true; picked.add(i.value); }); });
   q('none').addEventListener('click', () => { picked = new Set(); q('db-grid').querySelectorAll('input').forEach((i) => { i.checked = false; }); });
 
+  const getDraft = () => {
+    const options = {};
+    root.querySelectorAll('[data-option]').forEach((c) => { options[c.dataset.option] = c.checked; });
+    return {
+      kind: kind(),
+      source: { serverId: q('source-server').value, database: q('source-db').value },
+      target: { serverId: q('target-server').value, database: q('target-db').value },
+      allDatabases: root.querySelector('input[name=dbmode]:checked').value === 'all',
+      databases: [...picked],
+      categories: [...root.querySelectorAll('[data-category]:checked')].map((c) => c.dataset.category),
+      options,
+    };
+  };
+  // Root listeners run after the element listeners above, so the draft sees their updates
+  // (for example the target database picked to match the source).
+  const emit = () => { if (opts.onChange) opts.onChange(getDraft()); };
+  root.addEventListener('change', emit);
+  root.addEventListener('click', (e) => {
+    if (e.target.closest('[data-cat-preset], [data-role=all], [data-role=none]')) emit();
+  });
+
   applyKind();
   await Promise.all([fillDb('source', spec.source.database), fillDb('target', spec.target.database)]);
 
   return {
+    getDraft,
     getSpec() {
       const options = {};
       root.querySelectorAll('[data-option]').forEach((c) => { options[c.dataset.option] = c.checked; });
@@ -269,15 +292,47 @@ async function specForm(root, initial) {
 // Pages
 // ---------------------------------------------------------------------------------------------
 
+// The compare form remembers its choices (also across reloads) until the user presses Reset.
+// localStorage can be unavailable (private window, blocked storage): then it lasts for this page load.
+const DRAFT_KEY = 'database-diff.compare-draft';
+let draftInMemory = null;
+
+function loadDraft() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(DRAFT_KEY));
+    if (saved && saved.source && saved.target) return saved;
+  } catch { /* fall back to memory */ }
+  return draftInMemory;
+}
+
+function saveDraft(draft) {
+  draftInMemory = draft;
+  try { localStorage.setItem(DRAFT_KEY, JSON.stringify(draft)); } catch { /* memory only */ }
+}
+
+function clearDraft() {
+  draftInMemory = null;
+  try { localStorage.removeItem(DRAFT_KEY); } catch { /* memory only */ }
+}
+
 async function pageCompare() {
   $app.innerHTML = `
     <div class="page-head"><div><h1>เปรียบเทียบ schema</h1>
       <div class="muted">อ่านอย่างเดียว ไม่แก้ไขฐานข้อมูลใดๆ</div></div></div>
     <div id="form"></div>
-    <div class="row" style="margin-top:16px"><button class="primary" id="start">เริ่มเปรียบเทียบ</button><span id="msg"></span></div>`;
+    <div class="row" style="margin-top:16px">
+      <button class="primary" id="start">เริ่มเปรียบเทียบ</button>
+      <button id="reset">รีเซต</button>
+      <span class="hint" style="margin:0">ระบบจำตัวเลือกไว้ให้จนกว่าจะกดรีเซต</span>
+      <span id="msg"></span>
+    </div>`;
+  document.getElementById('reset').addEventListener('click', () => {
+    clearDraft();
+    pageCompare();
+  });
   let form;
   try {
-    form = await specForm(document.getElementById('form'));
+    form = await specForm(document.getElementById('form'), loadDraft() || undefined, { onChange: saveDraft });
   } catch (err) {
     return showError(document.getElementById('form'), err);
   }
