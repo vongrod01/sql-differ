@@ -208,7 +208,9 @@ async function specForm(root, initial) {
       const result = await getDatabases(serverId);
       if (q(`${name}-server`).value !== serverId) return;
       state[name] = result;
-      select.innerHTML = result.databases.map((d) => `<option value="${esc(d.name)}"${d.name === preferred ? ' selected' : ''}>${esc(d.name)}${d.canViewDefinition ? '' : ' (ไม่มีสิทธิ์ VIEW DEFINITION)'}</option>`).join('');
+      // No database is picked for the user; only an edited job (preferred) comes back selected.
+      select.innerHTML = '<option value="">-- เลือก database --</option>' +
+        result.databases.map((d) => `<option value="${esc(d.name)}"${d.name === preferred ? ' selected' : ''}>${esc(d.name)}${d.canViewDefinition ? '' : ' (ไม่มีสิทธิ์ VIEW DEFINITION)'}</option>`).join('');
       const noView = result.databases.filter((d) => !d.canViewDefinition).length;
       info.innerHTML = `${esc(result.edition)} ${esc(result.version)} &middot; login ${esc(result.login)}` +
         (noView ? `<div class="warn-text">login นี้ไม่มีสิทธิ์ VIEW DEFINITION ใน ${noView} ฐาน ผลเทียบของฐานเหล่านั้นจะไม่ครบ</div>` : '');
