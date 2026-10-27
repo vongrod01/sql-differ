@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Schema diff</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f5f6f8;
+    --panel: #ffffff;
+    --text: #1c2230;
+    --muted: #5d6878;
+    --border: #dfe3e9;
+    --head: #eef1f5;
+    --src: #b42318;
+    --src-bg: #fdeceb;
+    --tgt: #1a7f37;
+    --tgt-bg: #e6f4ea;
+    --chg: #8a5d00;
+    --chg-bg: #fff4d6;
+    --unk: #4b5563;
+    --unk-bg: #eceff3;
+    --warn-bg: #fff4d6;
+    --warn-border: #e7c76a;
+    --accent: #2f5bd3;
+    --code-bg: #f8f9fb;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151a;
+      --panel: #1a1e25;
+      --text: #e3e7ed;
+      --muted: #98a3b3;
+      --border: #2c333e;
+      --head: #20252d;
+      --src: #ff9b94;
+      --src-bg: #3b1d1b;
+      --tgt: #74d491;
+      --tgt-bg: #17311f;
+      --chg: #e8c060;
+      --chg-bg: #362c15;
+      --unk: #b4bfcd;
+      --unk-bg: #262c35;
+      --warn-bg: #362c15;
+      --warn-border: #6b5520;
+      --accent: #8eaaff;
+      --code-bg: #151920;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.55 "Segoe UI", "Leelawadee UI", Tahoma, system-ui, sans-serif;
+  }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 28px 16px 64px; }
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  .meta { display: flex; flex-wrap: wrap; gap: 4px 24px; color: var(--muted); }
+  .meta b { color: var(--text); font-weight: 600; word-break: break-all; }
+  .muted { color: var(--muted); font-weight: 400; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin: 20px 0; }
+  .card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px 16px; cursor: pointer; text-align: left; font: inherit; color: inherit;
+  }
+  .card:hover { border-color: var(--accent); }
+  .card.active { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .card .n { display: block; font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .card.src .n { color: var(--src); }
+  .card.tgt .n { color: var(--tgt); }
+  .card.chg .n { color: var(--chg); }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .scroll-x { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; }
+  .summary th, .summary td {
+    padding: 7px 12px; text-align: right; border-bottom: 1px solid var(--border);
+    font-variant-numeric: tabular-nums; white-space: nowrap;
+  }
+  .summary th { background: var(--head); font-weight: 600; }
+  .summary th:first-child, .summary td:first-child { text-align: left; }
+  .summary tbody tr { cursor: pointer; }
+  .summary tbody tr:hover { background: var(--head); }
+  .summary tbody tr:last-child td { border-bottom: 0; }
+  .summary tr.zero td { color: var(--muted); }
+  .summary td.src { color: var(--src); font-weight: 600; }
+  .summary td.tgt { color: var(--tgt); font-weight: 600; }
+  .summary td.chg { color: var(--chg); font-weight: 600; }
+  .summary td.unk { color: var(--unk); font-weight: 600; }
+  .toolbar {
+    position: sticky; top: 0; z-index: 2; background: var(--bg);
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 14px 0; margin-top: 12px;
+  }
+  .toolbar input, .toolbar select {
+    font: inherit; color: var(--text); background: var(--panel);
+    border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px;
+  }
+  .toolbar input { flex: 1 1 260px; min-width: 0; }
+  .toolbar select { max-width: 100%; }
+  .toolbar .count { color: var(--muted); }
+  section.cat { margin-top: 18px; }
+  section.cat h2 { font-size: 16px; margin: 0 0 8px; }
+  .results td { padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .results tr:last-child td { border-bottom: 0; }
+  .results td.st { width: 1%; white-space: nowrap; }
+  .results td.obj { font-family: Consolas, "Cascadia Mono", "Leelawadee UI", monospace; word-break: break-all; width: 38%; }
+  .results td.detail div { word-break: break-word; }
+  .tag { display: inline-block; padding: 1px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .tag.src { color: var(--src); background: var(--src-bg); }
+  .tag.tgt { color: var(--tgt); background: var(--tgt-bg); }
+  .tag.chg { color: var(--chg); background: var(--chg-bg); }
+  .tag.unk { color: var(--unk); background: var(--unk-bg); }
+  .card.unk .n { color: var(--unk); }
+  .warn {
+    margin-top: 16px; padding: 10px 14px; border-radius: 10px;
+    background: var(--warn-bg); border: 1px solid var(--warn-border); word-break: break-word;
+  }
+  .warn b { display: block; margin-bottom: 2px; }
+  button.toggle {
+    margin-top: 6px; font: inherit; font-size: 13px; color: var(--accent); background: none;
+    border: 1px solid var(--border); border-radius: 6px; padding: 2px 10px; cursor: pointer;
+  }
+  button.toggle:hover { border-color: var(--accent); }
+  tr.defrow > td { padding: 0; background: var(--code-bg); }
+  .code-wrap { overflow: auto; max-height: 70vh; }
+  .legend { padding: 6px 12px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--border); }
+  table.code { font: 14px/1.5 Consolas, "Cascadia Mono", "Leelawadee UI", monospace; }
+  table.code td { padding: 0 10px; border: 0; white-space: pre; }
+  table.code td.ln { color: var(--muted); text-align: right; user-select: none; width: 1%; }
+  table.code td.sig { width: 1%; padding: 0 4px; color: var(--muted); user-select: none; }
+  table.code tr.del td { background: var(--src-bg); }
+  table.code tr.add td { background: var(--tgt-bg); }
+  table.code tr.del td.sig { color: var(--src); }
+  table.code tr.add td.sig { color: var(--tgt); }
+  table.code tr.gap td { background: var(--head); color: var(--muted); font-style: italic; padding: 2px 10px; }
+  .empty { padding: 32px 16px; text-align: center; color: var(--muted); }
+  @media (max-width: 640px) {
+    .results tr:not(.defrow) td { display: block; width: auto; border-bottom: 0; padding: 4px 12px; }
+    .results tr:not(.defrow) td.st { padding-top: 10px; }
+    .results tr:not(.defrow) td.detail { padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Schema diff</h1>
+  <div class="meta">
+    <span>Source: <b id="m-source"></b></span>
+    <span>Target: <b id="m-target"></b></span>
+    <span>Generated: <span id="m-generated"></span></span>
+  </div>
+  <div class="meta" id="m-options"></div>
+  <div id="warnings"></div>
+  <div class="cards" id="cards"></div>
+  <div class="panel scroll-x"><table class="summary" id="summary"></table></div>
+  <div class="toolbar">
+    <input id="q" type="search" placeholder="Filter by object name or detail" aria-label="Filter">
+    <select id="f-status" aria-label="Status"></select>
+    <select id="f-cat" aria-label="Category"></select>
+    <span class="count" id="count"></span>
+  </div>
+  <div id="results"></div>
+</div>
+<script>
+const META = __META_JSON__;
+const DATA = __DATA_JSON__;
+(function () {
+  'use strict';
+  const STATUS = {
+    OnlyInSource: { label: 'Only in source', cls: 'src' },
+    OnlyInTarget: { label: 'Only in target', cls: 'tgt' },
+    Different: { label: 'Different', cls: 'chg' },
+    Unverified: { label: 'Cannot compare', cls: 'unk' }
+  };
+  const rows = DATA.map((r, i) => ({ id: i, cat: r[0], obj: r[1], status: r[2], detail: r[3] || '', a: r[4], b: r[5] }));
+  const state = { q: '', status: 'all', cat: 'all' };
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+  $('m-source').textContent = META.source;
+  $('m-target').textContent = META.target;
+  $('m-generated').textContent = META.generated;
+  $('m-options').textContent = META.options;
+  $('warnings').innerHTML = META.warnings.map(w => `<div class="warn"><b>Incomplete comparison</b>${esc(w)}</div>`).join('');
+
+  const total = s => rows.filter(r => r.status === s).length;
+
+  function renderCards() {
+    const cards = [
+      ['all', 'All items', rows.length, ''],
+      ['OnlyInSource', 'Only in source', total('OnlyInSource'), 'src'],
+      ['OnlyInTarget', 'Only in target', total('OnlyInTarget'), 'tgt'],
+      ['Different', 'Different', total('Different'), 'chg'],
+      ['Unverified', 'Cannot compare', total('Unverified'), 'unk']
+    ];
+    $('cards').innerHTML = cards.map(c =>
+      `<button class="card ${c[3]}${state.status === c[0] ? ' active' : ''}" data-status="${c[0]}">` +
+      `<span class="n">${c[2]}</span>${c[1]}</button>`).join('');
+  }
+
+  function renderSummary() {
+    let html = '<thead><tr><th>Category</th><th>Objects in source</th><th>Objects in target</th>' +
+      '<th>Only in source</th><th>Only in target</th><th>Different</th><th>Cannot compare</th></tr></thead><tbody>';
+    META.summary.forEach(s => {
+      const zero = s[3] + s[4] + s[5] + s[6] === 0;
+      html += `<tr data-cat="${esc(s[0])}"${zero ? ' class="zero"' : ''}><td>${esc(s[0])}</td><td>${s[1]}</td><td>${s[2]}</td>` +
+        `<td${s[3] ? ' class="src"' : ''}>${s[3]}</td><td${s[4] ? ' class="tgt"' : ''}>${s[4]}</td>` +
+        `<td${s[5] ? ' class="chg"' : ''}>${s[5]}</td><td${s[6] ? ' class="unk"' : ''}>${s[6]}</td></tr>`;
+    });
+    $('summary').innerHTML = html + '</tbody>';
+  }
+
+  function renderFilters() {
+    $('f-status').innerHTML = '<option value="all">All statuses</option>' +
+      Object.keys(STATUS).map(k => `<option value="${k}">${STATUS[k].label}</option>`).join('');
+    const cats = META.summary.filter(s => s[3] + s[4] + s[5] + s[6] > 0);
+    $('f-cat').innerHTML = '<option value="all">All categories</option>' +
+      cats.map(s => `<option value="${esc(s[0])}">${esc(s[0])} (${s[3] + s[4] + s[5] + s[6]})</option>`).join('');
+  }
+
+  function matches(r) {
+    if (state.status !== 'all' && r.status !== state.status) return false;
+    if (state.cat !== 'all' && r.cat !== state.cat) return false;
+    if (state.q && r.obj.toLowerCase().indexOf(state.q) < 0 && r.detail.toLowerCase().indexOf(state.q) < 0) return false;
+    return true;
+  }
+
+  function renderResults() {
+    const list = rows.filter(matches);
+    $('count').textContent = `${list.length} of ${rows.length} shown`;
+    if (!rows.length) {
+      $('results').innerHTML = '<div class="panel empty">No differences found. The two schemas match.</div>';
+      return;
+    }
+    if (!list.length) {
+      $('results').innerHTML = '<div class="panel empty">Nothing matches the current filter.</div>';
+      return;
+    }
+    let html = '';
+    META.categories.forEach(cat => {
+      const items = list.filter(r => r.cat === cat);
+      if (!items.length) return;
+      html += `<section class="cat"><h2>${esc(cat)} <span class="muted">${items.length}</span></h2>` +
+        '<div class="panel"><table class="results"><tbody>';
+      items.forEach(r => {
+        const st = STATUS[r.status];
+        const hasDef = r.a !== null || r.b !== null;
+        const what = r.status === 'Different' ? 'diff' : 'definition';
+        const detail = r.detail ? r.detail.split('\n').map(l => `<div>${esc(l)}</div>`).join('') : '';
+        const btn = hasDef ? `<button class="toggle" data-id="${r.id}">Show ${what}</button>` : '';
+        html += `<tr><td class="st"><span class="tag ${st.cls}">${st.label}</span></td>` +
+          `<td class="obj">${esc(r.obj)}</td><td class="detail">${detail}${btn}</td></tr>`;
+        if (hasDef) html += `<tr class="defrow" id="def-${r.id}" hidden><td colspan="3"></td></tr>`;
+      });
+      html += '</tbody></table></div></section>';
+    });
+    $('results').innerHTML = html;
+  }
+
+  function lineKey(s) {
+    // Same rule as the engine: CREATE OR ALTER is stored as "CREATE   PROCEDURE", so that run
+    // of keywords does not count as a change.
+    let k = s.replace(/^(\s*)CREATE\s+(?:OR\s+ALTER\s+)?/i, '$1CREATE ');
+    if (META.ignoreWhitespace) k = k.replace(/\s+/g, ' ').trim();
+    if (META.ignoreCase) k = k.toLowerCase();
+    return k;
+  }
+
+  // Line diff: trims the common head and tail, then runs an LCS on the changed middle.
+  function diffLines(a, b) {
+    const ka = a.map(lineKey), kb = b.map(lineKey);
+    let start = 0;
+    while (start < a.length && start < b.length && ka[start] === kb[start]) start++;
+    let endA = a.length, endB = b.length;
+    while (endA > start && endB > start && ka[endA - 1] === kb[endB - 1]) { endA--; endB--; }
+    const ops = [];
+    for (let i = 0; i < start; i++) ops.push([' ', a[i]]);
+    const n = endA - start, m = endB - start;
+    if (n * m > 4000000) {
+      for (let i = start; i < endA; i++) ops.push(['-', a[i]]);
+      for (let j = start; j < endB; j++) ops.push(['+', b[j]]);
+    } else {
+      const w = m + 1;
+      const L = new Uint32Array((n + 1) * w);
+      for (let i = n - 1; i >= 0; i--) {
+        for (let j = m - 1; j >= 0; j--) {
+          L[i * w + j] = ka[start + i] === kb[start + j]
+            ? L[(i + 1) * w + j + 1] + 1
+            : Math.max(L[(i + 1) * w + j], L[i * w + j + 1]);
+        }
+      }
+      let i = 0, j = 0;
+      while (i < n && j < m) {
+        if (ka[start + i] === kb[start + j]) { ops.push([' ', a[start + i]]); i++; j++; }
+        else if (L[(i + 1) * w + j] >= L[i * w + j + 1]) { ops.push(['-', a[start + i]]); i++; }
+        else { ops.push(['+', b[start + j]]); j++; }
+      }
+      while (i < n) { ops.push(['-', a[start + i]]); i++; }
+      while (j < m) { ops.push(['+', b[start + j]]); j++; }
+    }
+    for (let i = endA; i < a.length; i++) ops.push([' ', a[i]]);
+    return ops;
+  }
+
+  function renderDiff(a, b) {
+    const ops = diffLines(a.split('\n'), b.split('\n'));
+    const CONTEXT = 3;
+    const show = new Uint8Array(ops.length);
+    ops.forEach((op, i) => {
+      if (op[0] === ' ') return;
+      for (let k = Math.max(0, i - CONTEXT); k <= Math.min(ops.length - 1, i + CONTEXT); k++) show[k] = 1;
+    });
+    let html = '', la = 0, lb = 0, hidden = 0;
+    const gap = count => `<tr class="gap"><td colspan="4">${count} unchanged line${count === 1 ? '' : 's'}</td></tr>`;
+    ops.forEach((op, i) => {
+      const t = op[0];
+      if (t !== '+') la++;
+      if (t !== '-') lb++;
+      if (!show[i]) { hidden++; return; }
+      if (hidden) { html += gap(hidden); hidden = 0; }
+      const cls = t === '-' ? 'del' : t === '+' ? 'add' : 'ctx';
+      html += `<tr class="${cls}"><td class="ln">${t !== '+' ? la : ''}</td><td class="ln">${t !== '-' ? lb : ''}</td>` +
+        `<td class="sig">${t === ' ' ? '' : t}</td><td>${esc(op[1])}</td></tr>`;
+    });
+    if (hidden) html += gap(hidden);
+    return '<div class="legend">- source line &nbsp; + target line &nbsp; (line numbers: source | target)</div>' +
+      `<div class="code-wrap"><table class="code">${html}</table></div>`;
+  }
+
+  function renderPlain(text) {
+    const lines = text.split('\n').map((l, i) => `<tr><td class="ln">${i + 1}</td><td>${esc(l)}</td></tr>`).join('');
+    return `<div class="code-wrap"><table class="code">${lines}</table></div>`;
+  }
+
+  $('cards').addEventListener('click', e => {
+    const card = e.target.closest('.card');
+    if (!card) return;
+    state.status = card.dataset.status;
+    $('f-status').value = state.status;
+    renderCards();
+    renderResults();
+  });
+
+  $('summary').addEventListener('click', e => {
+    const tr = e.target.closest('tr[data-cat]');
+    if (!tr || tr.classList.contains('zero')) return;
+    state.cat = tr.dataset.cat;
+    $('f-cat').value = state.cat;
+    renderResults();
+    $('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+
+  let timer = 0;
+  $('q').addEventListener('input', e => {
+    clearTimeout(timer);
+    timer = setTimeout(() => { state.q = e.target.value.trim().toLowerCase(); renderResults(); }, 150);
+  });
+  $('f-status').addEventListener('change', e => { state.status = e.target.value; renderCards(); renderResults(); });
+  $('f-cat').addEventListener('change', e => { state.cat = e.target.value; renderResults(); });
+
+  $('results').addEventListener('click', e => {
+    const btn = e.target.closest('button.toggle');
+    if (!btn) return;
+    const r = rows[Number(btn.dataset.id)];
+    const tr = $('def-' + r.id);
+    if (!tr.dataset.ready) {
+      tr.firstElementChild.innerHTML = r.a !== null && r.b !== null
+        ? renderDiff(r.a, r.b)
+        : renderPlain(r.a !== null ? r.a : r.b);
+      tr.dataset.ready = '1';
+    }
+    tr.hidden = !tr.hidden;
+    btn.textContent = (tr.hidden ? 'Show ' : 'Hide ') + (r.status === 'Different' ? 'diff' : 'definition');
+  });
+
+  renderCards();
+  renderSummary();
+  renderFilters();
+  renderResults();
+})();
+</script>
+</body>
+</html>

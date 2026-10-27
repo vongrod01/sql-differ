@@ -1,0 +1,4 @@
+# Runtime data: run history, reports, snapshots, server profiles (DPAPI-encrypted passwords)
+data/
+reports/
+node_modules/

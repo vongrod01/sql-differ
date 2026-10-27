@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Schema diff index</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f5f6f8; --panel: #ffffff; --text: #1c2230; --muted: #5d6878; --border: #dfe3e9; --head: #eef1f5;
+    --src: #b42318; --tgt: #1a7f37; --chg: #8a5d00; --err: #b42318; --ok: #1a7f37; --accent: #2f5bd3;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151a; --panel: #1a1e25; --text: #e3e7ed; --muted: #98a3b3; --border: #2c333e; --head: #20252d;
+      --src: #ff9b94; --tgt: #74d491; --chg: #e8c060; --err: #ff9b94; --ok: #74d491; --accent: #8eaaff;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.55 "Segoe UI", "Leelawadee UI", Tahoma, system-ui, sans-serif; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 28px 16px 64px; }
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  h2 { font-size: 16px; margin: 24px 0 8px; }
+  .meta { display: flex; flex-wrap: wrap; gap: 4px 24px; color: var(--muted); margin-bottom: 4px; }
+  .meta b { color: var(--text); font-weight: 600; word-break: break-all; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-top: 16px; }
+  .scroll-x { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { padding: 8px 12px; border-bottom: 1px solid var(--border); text-align: right; font-variant-numeric: tabular-nums; }
+  th { background: var(--head); font-weight: 600; white-space: nowrap; }
+  th:first-child, td:first-child, th:last-child, td:last-child { text-align: left; }
+  tbody tr:last-child td { border-bottom: 0; }
+  a { color: var(--accent); }
+  td.zero { color: var(--muted); }
+  td.src { color: var(--src); font-weight: 600; }
+  td.tgt { color: var(--tgt); font-weight: 600; }
+  td.chg { color: var(--chg); font-weight: 600; }
+  td.unk { color: var(--muted); font-weight: 600; }
+  .warn-text { display: block; color: var(--err); font-size: 13px; }
+  .warn { margin-top: 16px; padding: 10px 14px; border-radius: 10px; background: var(--panel); border: 1px solid var(--err); word-break: break-word; }
+  .warn b { display: block; margin-bottom: 2px; color: var(--err); }
+  .ok { color: var(--ok); }
+  .err { color: var(--err); word-break: break-word; }
+  .names { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; word-break: break-word; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Schema diff: databases</h1>
+  <div class="meta"><span>Source: <b>__SOURCE__</b></span><span>Target: <b>__TARGET__</b></span><span>Generated: __GENERATED__</span></div>
+  <div class="meta">__OPTIONS__</div>
+  __BANNER__
+  <div class="panel scroll-x">
+    <table>
+      <thead><tr><th>Database</th><th>Only in source</th><th>Only in target</th><th>Different</th><th>Cannot compare</th><th>Result</th></tr></thead>
+      <tbody>
+__ROWS__
+      </tbody>
+    </table>
+  </div>
+__EXTRA__
+</div>
+</body>
+</html>
