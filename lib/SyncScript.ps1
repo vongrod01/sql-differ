@@ -1,8 +1,12 @@
-# Builds a T-SQL script that changes the TARGET database so its schema matches the SOURCE.
-# The script is for review only: this tool never runs it, and statements that drop objects or
-# columns are written commented out. Dot-sourced by Compare-Database.ps1.
+# Builds a T-SQL script that changes the TARGET database so its schema matches the SOURCE, and a
+# rollback script that undoes it. The scripts are for review only: this tool never runs them, and
+# statements that drop objects or columns are written commented out (a rollback runs the drops
+# that lose no data). Dot-sourced by Compare-Database.ps1.
 
 function Get-QuotedName([string]$Name) { '[' + $Name.Replace(']', ']]') + ']' }
+
+# Text for a "--" comment line: line breaks would end the comment, so they become spaces.
+function Get-CommentText([string]$Text) { return ($Text -replace '[\r\n]+', ' ') }
 
 function Get-QuotedPair([string]$Schema, [string]$Name) { (Get-QuotedName $Schema) + '.' + (Get-QuotedName $Name) }
 
@@ -48,7 +52,7 @@ function Get-ConstraintPrefix($Item) {
 }
 
 function Get-IndexKeyList($Item) {
-    $keys = foreach ($k in @(Get-SqlPart $Item 'Keys')) {
+    $keys = foreach ($k in @(Get-SqlPart $Item 'KeyParts')) {
         if ($null -eq $k) { continue }
         $text = Get-QuotedName ([string]$k['Name'])
         if ($k['Desc']) { $text += ' DESC' }
@@ -64,8 +68,8 @@ function Get-CreateIndexSql($Item) {
     $table = Get-TableName $Item
     $name = [string](Get-SqlPart $Item 'Name')
     $type = [string]$p['Type']
-    if ($type -notin @('CLUSTERED', 'NONCLUSTERED')) { return "-- Not scripted: $type index $name on $table (create it manually)" }
-    if ($p['Filter'] -eq $HiddenValue) { return "-- Not scripted: the filter of index $name on $table is not readable" }
+    if ($type -notin @('CLUSTERED', 'NONCLUSTERED')) { return '-- ' + (Get-CommentText "Not scripted: $type index $name on $table (create it manually)") }
+    if ($p['Filter'] -eq $HiddenValue) { return '-- ' + (Get-CommentText "Not scripted: the filter of index $name on $table is not readable") }
     $columns = Get-IndexKeyList $Item
     if (Test-ConstraintIndex $Item) {
         if ($p['Kind'] -eq 'PRIMARY KEY') { $keyword = 'PRIMARY KEY' } else { $keyword = 'UNIQUE' }
@@ -79,11 +83,12 @@ function Get-CreateIndexSql($Item) {
     return $sql + ';'
 }
 
-function Get-DropIndexSql($Item) {
+function Get-DropIndexSql($Item, [switch]$IfExists) {
     $table = Get-TableName $Item
     $name = Get-QuotedName (Get-SqlPart $Item 'Name')
-    if (Test-ConstraintIndex $Item) { return 'ALTER TABLE {0} DROP CONSTRAINT {1};' -f $table, $name }
-    return 'DROP INDEX {0} ON {1};' -f $name, $table
+    if ($IfExists) { $exists = 'IF EXISTS ' } else { $exists = '' }
+    if (Test-ConstraintIndex $Item) { return 'ALTER TABLE {0} DROP CONSTRAINT {1}{2};' -f $table, $exists, $name }
+    return 'DROP INDEX {0}{1} ON {2};' -f $exists, $name, $table
 }
 
 function Get-DisableConstraintSql($Item) {
@@ -105,13 +110,14 @@ function Get-AddForeignKeySql($Item) {
 
 function Get-AddCheckSql($Item) {
     $expression = [string]$Item.Props['Expression']
-    if ($expression -eq $HiddenValue) { return @("-- Not scripted: check constraint $(Get-SqlPart $Item 'Name') on $(Get-TableName $Item) is not readable") }
+    if ($expression -eq $HiddenValue) { return @('-- ' + (Get-CommentText "Not scripted: check constraint $(Get-SqlPart $Item 'Name') on $(Get-TableName $Item) is not readable")) }
     $sql = 'ALTER TABLE {0} WITH CHECK ADD {1}CHECK {2};' -f (Get-TableName $Item), (Get-ConstraintPrefix $Item), $expression
     return @($sql) + @(Get-DisableConstraintSql $Item)
 }
 
-function Get-DropConstraintSql($Item) {
-    return 'ALTER TABLE {0} DROP CONSTRAINT {1};' -f (Get-TableName $Item), (Get-QuotedName (Get-SqlPart $Item 'Name'))
+function Get-DropConstraintSql($Item, [switch]$IfExists) {
+    if ($IfExists) { $exists = 'IF EXISTS ' } else { $exists = '' }
+    return 'ALTER TABLE {0} DROP CONSTRAINT {1}{2};' -f (Get-TableName $Item), $exists, (Get-QuotedName (Get-SqlPart $Item 'Name'))
 }
 
 # Skips leading whitespace and comments, then turns the first CREATE into CREATE OR ALTER
@@ -120,17 +126,18 @@ function ConvertTo-CreateOrAlter([string]$Definition) {
     $m = [regex]::Match($Definition, '\A(?:\s|--[^\n]*(?:\n|\z)|/\*[\s\S]*?\*/)*CREATE\b', 'IgnoreCase')
     if (-not $m.Success) { return $null }
     $rest = $Definition.Substring($m.Length)
-    if ($rest -match '\A\s+OR\s+ALTER\b') { return $Definition }
+    if ($rest -match '\A(?:\s|/\*[\s\S]*?\*/)+OR(?:\s|/\*[\s\S]*?\*/)+ALTER\b') { return $Definition }
     return $Definition.Substring(0, $m.Length) + ' OR ALTER' + $rest
 }
 
 $DropKeywords = @{ 'P' = 'PROCEDURE'; 'PC' = 'PROCEDURE'; 'V' = 'VIEW'; 'FN' = 'FUNCTION'; 'IF' = 'FUNCTION'; 'TF' = 'FUNCTION'; 'FS' = 'FUNCTION'; 'FT' = 'FUNCTION'; 'TR' = 'TRIGGER' }
 
 function Get-DropDefaultSql([string]$Table, [string]$Column) {
+    # EXEC (...) takes only literals and variables, not QUOTENAME(), so the statement goes into a variable.
     return @(
-        'DECLARE @default sysname;'
+        'DECLARE @default sysname, @drop nvarchar(max);'
         ('SELECT @default = dc.name FROM sys.default_constraints dc JOIN sys.columns c ON c.object_id = dc.parent_object_id AND c.column_id = dc.parent_column_id WHERE dc.parent_object_id = OBJECT_ID({0}) AND c.name = {1};' -f (Get-SqlLiteral $Table), (Get-SqlLiteral $Column))
-        ('IF @default IS NOT NULL EXEC (N''ALTER TABLE {0} DROP CONSTRAINT '' + QUOTENAME(@default));' -f $Table.Replace("'", "''"))
+        ('IF @default IS NOT NULL BEGIN SET @drop = N''ALTER TABLE {0} DROP CONSTRAINT '' + QUOTENAME(@default); EXEC (@drop); END' -f $Table.Replace("'", "''"))
     )
 }
 
@@ -143,11 +150,16 @@ function Write-SyncScript {
         [string]$SourceLabel,
         [string]$TargetLabel,
         [string]$TargetDatabase,
-        [string[]]$Warnings = @()
+        [string[]]$Warnings = @(),
+        # Set by Write-RollbackScript: the snapshots and diffs come reversed, the labels do not.
+        [switch]$Rollback
     )
 
     $out = New-Object System.Collections.Generic.List[string]
     $add = { param($lines) foreach ($line in @($lines)) { $out.Add([string]$line) } }
+    # Every comment that carries names or values from the databases goes through here: a line break
+    # inside a name would otherwise end the comment and turn the rest into live SQL.
+    $note = { param($text) $out.Add('-- ' + (Get-CommentText $text)) }
     $section = { param($title) $out.Add(''); $out.Add('-- ' + ('=' * 90)); $out.Add("-- $title"); $out.Add('-- ' + ('=' * 90)) }
     $go = { $out.Add('GO') }
 
@@ -164,29 +176,99 @@ function Write-SyncScript {
     if ($TargetSnap['Database'].ContainsKey('(database)')) { $targetCollation = [string]$TargetSnap['Database']['(database)'].Props['Collation'] }
 
     # ---- header ----
-    & $add @(
-        '/*'
-        "  Sync script generated by database-diff on $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
-        "  Source (the model):        $SourceLabel"
-        "  Target (will be changed):  $TargetLabel"
-        ''
-        '  Running this on the TARGET database changes its schema to match the SOURCE, as far as the'
-        '  comparison could see. REVIEW IT BEFORE RUNNING and back up the target first.'
-        '  - Nothing in this file has been executed by database-diff.'
-        '  - Statements that drop tables, columns or other objects are commented out at the end.'
-        '  - ALTER COLUMN statements are active: check them for data loss (narrower types, NOT NULL).'
-        '  - Objects are ordered by kind, not by dependency; rerun a failed part after the rest.'
-        '  - Uses CREATE OR ALTER, which needs SQL Server 2016 SP1 or later on the target.'
-    )
-    foreach ($w in $Warnings) { & $add @('', "  WARNING: $w") }
-    & $add @('*/', ('USE {0};' -f (Get-QuotedName $TargetDatabase))); & $go
+    # Line comments rather than /* */: a label holding "*/" cannot end a line comment.
+    if ($Rollback) {
+        & $note "Rollback script generated by database-diff on $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+        & $note "Source (the sync script's model):  $SourceLabel"
+        & $note "Target (will be changed back):     $TargetLabel"
+        & $add @(
+            '--'
+            '-- Running this on the TARGET database after the sync script of the same comparison puts its'
+            '-- schema back as it was read during the comparison. REVIEW IT BEFORE RUNNING.'
+            '-- - Nothing in this file has been executed by database-diff.'
+            '-- - It assumes the target changed only through the sync script since the comparison.'
+            '-- - Procedures, views, functions, triggers, synonyms, indexes and constraints the sync script'
+            '--   created are dropped first, with IF EXISTS so a sync script that stopped part way is fine.'
+            '-- - Tables, columns, sequences, types and schemas it created are commented out at the end:'
+            '--   dropping them loses the data written since.'
+            '-- - Changed objects get their earlier definition back. ALTER COLUMN statements are active:'
+            '--   check them for data loss (narrower types, NOT NULL).'
+            '-- - Objects only in the target are not here: the sync script leaves them (its drops are'
+            '--   commented out). Schemas it created only when missing are left in place.'
+            '-- - Only a backup brings back dropped data.'
+            '-- - Objects are ordered by kind, not by dependency; rerun a failed part after the rest.'
+            '-- - Uses CREATE OR ALTER and DROP IF EXISTS: SQL Server 2016 SP1 or later on the target.'
+        )
+    }
+    else {
+        & $note "Sync script generated by database-diff on $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+        & $note "Source (the model):        $SourceLabel"
+        & $note "Target (will be changed):  $TargetLabel"
+        & $add @(
+            '--'
+            '-- Running this on the TARGET database changes its schema to match the SOURCE, as far as the'
+            '-- comparison could see. REVIEW IT BEFORE RUNNING and back up the target first.'
+            '-- - Nothing in this file has been executed by database-diff.'
+            '-- - Statements that drop tables, columns or other objects are commented out at the end.'
+            '-- - ALTER COLUMN statements are active: check them for data loss (narrower types, NOT NULL).'
+            '-- - Objects are ordered by kind, not by dependency; rerun a failed part after the rest.'
+            '-- - Uses CREATE OR ALTER, which needs SQL Server 2016 SP1 or later on the target.'
+        )
+    }
+    foreach ($w in $Warnings) { & $add '--'; & $note "WARNING: $w" }
+    & $add ('USE {0};' -f (Get-QuotedName $TargetDatabase)); & $go
     & $add @('SET ANSI_NULLS ON;', 'SET QUOTED_IDENTIFIER ON;'); & $go
 
     $missingParts = { param($item) $null -eq $item -or $null -eq $item.Sql }
     $oldSnapshotNote = '-- Not scripted: this snapshot was saved by an older version without name details; rerun the comparison.'
 
+    # ---- only in target: drops ----
+    # A sync script lists every drop commented out at the end. In a rollback, "only in target" means
+    # created by the sync script: the drops that lose no data run first, the rest stay commented out.
+    $codeDrops = New-Object System.Collections.Generic.List[string]
+    $dataDrops = New-Object System.Collections.Generic.List[string]
+    if ($Rollback) { $exists = 'IF EXISTS ' } else { $exists = '' }
+    foreach ($category in @('Foreign key', 'Check constraint', 'Index')) {
+        foreach ($d in (& $pick $category 'OnlyInTarget')) {
+            $t = & $tgt $d
+            if (& $missingParts $t) { continue }
+            if ($Rollback -and (Get-SqlPart $t 'IsSystemNamed')) {
+                # The sync script created it without a name, so SQL Server gave it a new one.
+                $codeDrops.Add('-- ' + (Get-CommentText "Not scripted: the sync script created $category $($d.Object) with a new system-generated name; find it on the target and drop it manually."))
+            }
+            elseif ($category -eq 'Index') { $codeDrops.Add((Get-DropIndexSql $t -IfExists:$Rollback)) }
+            else { $codeDrops.Add((Get-DropConstraintSql $t -IfExists:$Rollback)) }
+        }
+    }
+    foreach ($category in @('Trigger', 'Stored procedure', 'View', 'Function')) {
+        foreach ($d in (& $pick $category 'OnlyInTarget')) {
+            $t = & $tgt $d
+            if (& $missingParts $t) { continue }
+            $codeDrops.Add(('DROP {0} {1}{2};' -f $DropKeywords[[string](Get-SqlPart $t 'ObjectType')], $exists, (Get-QuotedPair (Get-SqlPart $t 'Schema') (Get-SqlPart $t 'Name'))))
+        }
+    }
+    foreach ($d in (& $pick 'Synonym' 'OnlyInTarget')) { $t = & $tgt $d; if (-not (& $missingParts $t)) { $codeDrops.Add(('DROP SYNONYM {0}{1};' -f $exists, (Get-QuotedPair (Get-SqlPart $t 'Schema') (Get-SqlPart $t 'Name')))) } }
+    foreach ($d in (& $pick 'Column' 'OnlyInTarget')) {
+        $t = & $tgt $d
+        if (& $missingParts $t) { continue }
+        if ($t.Props['Default']) { $dataDrops.Add('-- (drop the default constraint of the next column first)') }
+        $dataDrops.Add(('ALTER TABLE {0} DROP COLUMN {1};' -f (Get-TableName $t), (Get-QuotedName (Get-SqlPart $t 'Name'))))
+    }
+    foreach ($d in (& $pick 'Table' 'OnlyInTarget')) { $t = & $tgt $d; if (-not (& $missingParts $t)) { $dataDrops.Add(('DROP TABLE {0};' -f (Get-QuotedPair (Get-SqlPart $t 'Schema') (Get-SqlPart $t 'Name')))) } }
+    foreach ($d in (& $pick 'Sequence' 'OnlyInTarget')) { $t = & $tgt $d; if (-not (& $missingParts $t)) { $dataDrops.Add(('DROP SEQUENCE {0};' -f (Get-QuotedPair (Get-SqlPart $t 'Schema') (Get-SqlPart $t 'Name')))) } }
+    foreach ($d in (& $pick 'User-defined type' 'OnlyInTarget')) { $t = & $tgt $d; if (-not (& $missingParts $t)) { $dataDrops.Add(('DROP TYPE {0};' -f (Get-QuotedPair (Get-SqlPart $t 'Schema') (Get-SqlPart $t 'Name')))) } }
+    foreach ($d in (& $pick 'Schema' 'OnlyInTarget')) { $dataDrops.Add(('DROP SCHEMA {0};' -f (Get-QuotedName $d.TargetKey))) }
+
+    if ($Rollback -and $codeDrops.Count) {
+        & $section 'Created by the sync script: dropped'
+        foreach ($line in $codeDrops) {
+            & $add $line
+            if (-not $line.StartsWith('--')) { & $go }
+        }
+    }
+
     # ---- schemas ----
-    $items = & $pick 'Schema' 'OnlyInSource'
+    $items = @(& $pick 'Schema' 'OnlyInSource')
     if ($items.Count) {
         & $section 'Schemas'
         foreach ($d in $items) { & $add ('CREATE SCHEMA {0};' -f (Get-QuotedName $d.SourceKey)); & $go }
@@ -208,8 +290,8 @@ function Write-SyncScript {
     }
 
     # ---- user-defined types ----
-    $new = & $pick 'User-defined type' 'OnlyInSource'
-    $changed = & $pick 'User-defined type' 'Different'
+    $new = @(& $pick 'User-defined type' 'OnlyInSource')
+    $changed = @(& $pick 'User-defined type' 'Different')
     if ($new.Count -or $changed.Count) {
         & $section 'User-defined types'
         foreach ($d in $new) {
@@ -224,13 +306,14 @@ function Write-SyncScript {
             & $go
         }
         foreach ($d in $changed) {
-            & $add @("-- Type $($d.Object) differs: $($d.Detail -replace "`n", '; ')", '-- A type cannot be altered: drop the objects that use it, DROP TYPE, CREATE TYPE, then recreate them.')
+            & $note "Type $($d.Object) differs: $($d.Detail)"
+            & $add '-- A type cannot be altered: drop the objects that use it, DROP TYPE, CREATE TYPE, then recreate them.'
         }
     }
 
     # ---- sequences ----
-    $new = & $pick 'Sequence' 'OnlyInSource'
-    $changed = & $pick 'Sequence' 'Different'
+    $new = @(& $pick 'Sequence' 'OnlyInSource')
+    $changed = @(& $pick 'Sequence' 'Different')
     if ($new.Count -or $changed.Count) {
         & $section 'Sequences'
         foreach ($d in ($new + $changed)) {
@@ -250,23 +333,27 @@ function Write-SyncScript {
     }
 
     # ---- new tables (with primary key) ----
-    $newTables = & $pick 'Table' 'OnlyInSource'
+    $newTables = @(& $pick 'Table' 'OnlyInSource')
     $newTableKeys = @{}
     if ($newTables.Count) {
         & $section 'New tables'
+        $skipped = @(@('Index', 'Check constraint', 'Foreign key') | Where-Object { $SelectedCategories -notcontains $_ })
+        if ($skipped.Count) {
+            & $add ('-- Categories not compared, so not created with these tables (the primary key is): {0}.' -f ($skipped -join ', '))
+        }
         foreach ($d in $newTables) {
             $s = & $src $d
             $newTableKeys[$d.SourceKey] = $true
             if (& $missingParts $s) { & $add $oldSnapshotNote; continue }
             $table = Get-QuotedPair (Get-SqlPart $s 'Schema') (Get-SqlPart $s 'Name')
-            $columns = @($SourceSnap['Column'].Values | Where-Object { $_.Parent -eq $d.SourceKey } | Sort-Object { [int]$_.Props['Ordinal'] })
+            $columns = @($SourceSnap['Column'].get_Values() | Where-Object { $_.Parent -eq $d.SourceKey } | Sort-Object { [int]$_.Props['Ordinal'] })
             $lines = New-Object System.Collections.Generic.List[string]
             foreach ($c in $columns) {
                 $definition = Get-ColumnDefinition $c $targetCollation
                 if ($definition) { $lines.Add("    $definition") }
-                else { $lines.Add("    -- computed column $(Get-SqlPart $c 'Name') is not readable") }
+                else { $lines.Add('    -- ' + (Get-CommentText "computed column $(Get-SqlPart $c 'Name') is not readable")) }
             }
-            $pk = @($SourceSnap['Index'].Values | Where-Object { $_.Parent -eq $d.SourceKey -and $_.Props['Kind'] -eq 'PRIMARY KEY' }) | Select-Object -First 1
+            $pk = @($SourceSnap['Index'].get_Values() | Where-Object { $_.Parent -eq $d.SourceKey -and $_.Props['Kind'] -eq 'PRIMARY KEY' }) | Select-Object -First 1
             if ($pk) { $lines.Add(('    {0}PRIMARY KEY {1} ({2})' -f (Get-ConstraintPrefix $pk), $pk.Props['Type'], (Get-IndexKeyList $pk))) }
             # Commas go after every real column line except the last one.
             $realLines = @($lines | Where-Object { $_ -notmatch '^\s*--' })
@@ -277,15 +364,15 @@ function Write-SyncScript {
     }
 
     # ---- columns ----
-    $new = & $pick 'Column' 'OnlyInSource'
-    $changed = & $pick 'Column' 'Different'
+    $new = @(& $pick 'Column' 'OnlyInSource')
+    $changed = @(& $pick 'Column' 'Different')
     if ($new.Count -or $changed.Count) {
         & $section 'Columns'
         foreach ($d in $new) {
             $s = & $src $d
             if (& $missingParts $s) { & $add $oldSnapshotNote; continue }
             $definition = Get-ColumnDefinition $s $targetCollation
-            if (-not $definition) { & $add "-- Not scripted: computed column $($d.Object) is not readable"; continue }
+            if (-not $definition) { & $note "Not scripted: computed column $($d.Object) is not readable"; continue }
             if ($s.Props['Nullable'] -eq 'NOT NULL' -and -not $s.Props['Default'] -and -not $s.Props['Identity'] -and -not $s.Props['Computed']) {
                 & $add '-- WARNING: NOT NULL without a default fails when the table already has rows.'
             }
@@ -304,13 +391,17 @@ function Write-SyncScript {
                 if ($a -eq $HiddenValue -or $b -eq $HiddenValue) { continue }
                 if (-not (Test-SameText (Get-ComparableText $a) (Get-ComparableText $b))) { $diff[$prop] = $true }
             }
-            & $add "-- $($d.Object): $($d.Detail -replace "`n", '; ')"
+            & $note "$($d.Object): $($d.Detail)"
             if ($diff['Identity'] -or $diff['Computed']) {
                 & $add '-- IDENTITY or computed definition differs: SQL Server cannot ALTER this; rebuild the column or table manually.'
             }
             elseif ($diff['Type'] -or $diff['Nullable'] -or $diff['Collation']) {
                 $parts = @((Get-QuotedName $column), (Format-ColumnType $s.Props['Type']))
-                if (-not $IgnoreCollation -and $s.Props['Collation']) { $parts += 'COLLATE ' + $s.Props['Collation'] }
+                # ALTER COLUMN without COLLATE resets the column to the database default, so with
+                # -IgnoreCollation the target keeps the collation it already has. A rollback always
+                # puts back the target's own collation, which is the source side here.
+                if ($IgnoreCollation -and -not $Rollback) { $collation = [string]$t.Props['Collation'] } else { $collation = [string]$s.Props['Collation'] }
+                if ($s.Props['Collation'] -and $collation) { $parts += 'COLLATE ' + $collation }
                 $parts += $s.Props['Nullable']
                 & $add '-- Fails if an index, constraint or schema-bound object uses this column; check for data loss.'
                 & $add ('ALTER TABLE {0} ALTER COLUMN {1};' -f $table, ($parts -join ' '))
@@ -318,6 +409,9 @@ function Write-SyncScript {
             if ($diff['Default']) {
                 & $add (Get-DropDefaultSql $table $column)
                 if ($s.Props['Default']) { & $add ('ALTER TABLE {0} ADD DEFAULT {1} FOR {2};' -f $table, $s.Props['Default'], (Get-QuotedName $column)) }
+            }
+            if ($diff['Ordinal']) {
+                & $add '-- Column order differs: SQL Server cannot move a column without rebuilding the table, so this is not scripted.'
             }
             & $go
         }
@@ -333,9 +427,9 @@ function Write-SyncScript {
         $category = $cs.Category
         if ($SelectedCategories -notcontains $category) { continue }
         # Objects of new tables are not in the diff list (only the table is), so take them from the source.
-        $ofNewTables = @($SourceSnap[$category].Values | Where-Object { $newTableKeys.ContainsKey($_.Parent) -and -not ($category -eq 'Index' -and $_.Props['Kind'] -eq 'PRIMARY KEY') })
-        $new = & $pick $category 'OnlyInSource'
-        $changed = & $pick $category 'Different'
+        $ofNewTables = @($SourceSnap[$category].get_Values() | Where-Object { $newTableKeys.ContainsKey($_.Parent) -and -not ($category -eq 'Index' -and $_.Props['Kind'] -eq 'PRIMARY KEY') })
+        $new = @(& $pick $category 'OnlyInSource')
+        $changed = @(& $pick $category 'Different')
         if (-not ($ofNewTables.Count -or $new.Count -or $changed.Count)) { continue }
         & $section $cs.Title
 
@@ -359,7 +453,7 @@ function Write-SyncScript {
             $s = & $src $d
             $t = & $tgt $d
             if ((& $missingParts $s) -or (& $missingParts $t)) { & $add $oldSnapshotNote; continue }
-            & $add "-- $($d.Object): $($d.Detail -replace "`n", '; ')"
+            & $note "$($d.Object): $($d.Detail)"
             if ($d.SourceKey -ne $d.TargetKey -and $d.Detail -like 'Name:*') {
                 # Same definition, other name: rename instead of rebuilding.
                 if ($category -eq 'Index' -and -not (Test-ConstraintIndex $s)) {
@@ -373,8 +467,12 @@ function Write-SyncScript {
             }
             elseif ($category -eq 'Index' -and $s.Props['Kind'] -eq 'PRIMARY KEY') {
                 & $add '-- Primary key differs. Foreign keys that reference it must be dropped first, so this is left commented out:'
-                & $add ('-- ' + (& $drop $t))
-                foreach ($line in @(& $create $s)) { & $add ('-- ' + $line) }
+                & $note (& $drop $t)
+                foreach ($line in @(& $create $s)) { & $note $line }
+            }
+            elseif ($Rollback -and (Get-SqlPart $t 'IsSystemNamed')) {
+                & $add '-- The sync script created this with a new system-generated name, so it is left commented out: drop it manually, then run:'
+                foreach ($line in @(& $create $s)) { & $note $line }
             }
             else {
                 & $add (& $drop $t)
@@ -386,24 +484,37 @@ function Write-SyncScript {
 
     # ---- programmable objects ----
     foreach ($category in @('Function', 'View', 'Stored procedure', 'Trigger')) {
-        $new = & $pick $category 'OnlyInSource'
-        $changed = & $pick $category 'Different'
+        $new = @(& $pick $category 'OnlyInSource')
+        $changed = @(& $pick $category 'Different')
         if (-not ($new.Count -or $changed.Count)) { continue }
         & $section "$category`s"
         foreach ($d in ($new + $changed)) {
             $s = & $src $d
-            if ($d.Status -eq 'OnlyInSource') { $what = 'only in source' } else { $what = $d.Detail -replace "`n", '; ' }
-            & $add "-- $($d.Object): $what"
-            if ($s.Definition -eq $HiddenDefinition) { & $add '-- Not scripted: the source definition is not readable.'; continue }
+            if ($d.Status -eq 'OnlyInSource') { $what = 'only in source' } else { $what = $d.Detail }
+            & $note "$($d.Object): $what"
             $definitionChanged = $d.Status -eq 'OnlyInSource' -or $d.Detail -match '(^|\n)Definition differs'
-            if ($definitionChanged) {
-                $script = ConvertTo-CreateOrAlter $s.Definition
-                if (-not $script) { & $add '-- Not scripted: the definition does not start with CREATE; copy it from the report.'; continue }
-                # SQL Server stores the whole batch as the module definition, so the comments above
-                # must end in their own batch or they become part of the procedure text.
-                & $go
-                & $add $script
-                & $go
+            $typeChanged = $d.Status -eq 'Different' -and $d.Detail -match '(^|\n)Type:'
+            if ($typeChanged) {
+                # ALTER cannot turn, say, a scalar function into a table-valued one.
+                $t = & $tgt $d
+                & $add '-- The object type changed, which ALTER cannot do. Drop it on the target, then run the source definition from the report:'
+                if (-not (& $missingParts $t)) {
+                    & $note ('DROP {0} {1};' -f $DropKeywords[[string](Get-SqlPart $t 'ObjectType')], (Get-QuotedPair (Get-SqlPart $t 'Schema') (Get-SqlPart $t 'Name')))
+                }
+            }
+            elseif ($definitionChanged) {
+                if ($s.Definition -eq $HiddenDefinition) { & $add '-- Not scripted: the source definition is not readable.' }
+                else {
+                    $script = ConvertTo-CreateOrAlter $s.Definition
+                    if (-not $script) { & $add '-- Not scripted: the definition does not start with CREATE; copy it from the report.' }
+                    else {
+                        # SQL Server stores the whole batch as the module definition, so the comments
+                        # above must end in their own batch or they become part of the procedure text.
+                        & $go
+                        & $add $script
+                        & $go
+                    }
+                }
             }
             if ($category -eq 'Trigger' -and -not (& $missingParts $s)) {
                 $name = Get-QuotedPair (Get-SqlPart $s 'Schema') (Get-SqlPart $s 'Name')
@@ -415,8 +526,8 @@ function Write-SyncScript {
     }
 
     # ---- synonyms ----
-    $new = & $pick 'Synonym' 'OnlyInSource'
-    $changed = & $pick 'Synonym' 'Different'
+    $new = @(& $pick 'Synonym' 'OnlyInSource')
+    $changed = @(& $pick 'Synonym' 'Different')
     if ($new.Count -or $changed.Count) {
         & $section 'Synonyms (base objects often name environment-specific databases: check them)'
         foreach ($d in ($new + $changed)) {
@@ -429,51 +540,69 @@ function Write-SyncScript {
     }
 
     # ---- database settings: comments only ----
-    $items = & $pick 'Database' 'Different'
+    $items = @(& $pick 'Database' 'Different')
     if ($items.Count) {
         & $section 'Database settings (not changed by this script)'
-        foreach ($d in $items) { foreach ($line in ($d.Detail -split "`n")) { & $add "-- $line" } }
+        foreach ($d in $items) { foreach ($line in ($d.Detail -split "`n")) { & $note $line } }
     }
 
     # ---- not compared ----
     $items = @($Diffs | Where-Object { $_.Status -eq 'Unverified' })
     if ($items.Count) {
         & $section "Not compared ($($items.Count) items): a value is not readable on one side, so nothing is scripted for these"
-        foreach ($d in $items) { & $add ('-- {0} {1}: {2}' -f $d.Category, $d.Object, ($d.Detail -replace "`n", '; ')) }
+        foreach ($d in $items) { & $note ('{0} {1}: {2}' -f $d.Category, $d.Object, $d.Detail) }
     }
 
     # ---- only in target: commented-out drops ----
-    $drops = New-Object System.Collections.Generic.List[string]
-    foreach ($d in (& $pick 'Foreign key' 'OnlyInTarget')) { $t = & $tgt $d; if (-not (& $missingParts $t)) { $drops.Add((Get-DropConstraintSql $t)) } }
-    foreach ($d in (& $pick 'Check constraint' 'OnlyInTarget')) { $t = & $tgt $d; if (-not (& $missingParts $t)) { $drops.Add((Get-DropConstraintSql $t)) } }
-    foreach ($d in (& $pick 'Index' 'OnlyInTarget')) { $t = & $tgt $d; if (-not (& $missingParts $t)) { $drops.Add((Get-DropIndexSql $t)) } }
-    foreach ($category in @('Trigger', 'Stored procedure', 'View', 'Function')) {
-        foreach ($d in (& $pick $category 'OnlyInTarget')) {
-            $t = & $tgt $d
-            if (& $missingParts $t) { continue }
-            $drops.Add(('DROP {0} {1};' -f $DropKeywords[[string](Get-SqlPart $t 'ObjectType')], (Get-QuotedPair (Get-SqlPart $t 'Schema') (Get-SqlPart $t 'Name'))))
-        }
+    if ($Rollback) {
+        $drops = @($dataDrops)
+        $title = 'Created by the sync script: NOT dropped. Uncomment a line only after checking nothing still needs it (data is lost)'
     }
-    foreach ($d in (& $pick 'Synonym' 'OnlyInTarget')) { $t = & $tgt $d; if (-not (& $missingParts $t)) { $drops.Add(('DROP SYNONYM {0};' -f (Get-QuotedPair (Get-SqlPart $t 'Schema') (Get-SqlPart $t 'Name')))) } }
-    foreach ($d in (& $pick 'Column' 'OnlyInTarget')) {
-        $t = & $tgt $d
-        if (& $missingParts $t) { continue }
-        if ($t.Props['Default']) { $drops.Add('-- (drop the default constraint of the next column first)') }
-        $drops.Add(('ALTER TABLE {0} DROP COLUMN {1};' -f (Get-TableName $t), (Get-QuotedName (Get-SqlPart $t 'Name'))))
+    else {
+        $drops = @($codeDrops) + @($dataDrops)
+        $title = 'Only in target: NOT dropped. Uncomment a line only after checking nothing still needs it (data is lost)'
     }
-    foreach ($d in (& $pick 'Table' 'OnlyInTarget')) { $t = & $tgt $d; if (-not (& $missingParts $t)) { $drops.Add(('DROP TABLE {0};' -f (Get-QuotedPair (Get-SqlPart $t 'Schema') (Get-SqlPart $t 'Name')))) } }
-    foreach ($d in (& $pick 'Sequence' 'OnlyInTarget')) { $t = & $tgt $d; if (-not (& $missingParts $t)) { $drops.Add(('DROP SEQUENCE {0};' -f (Get-QuotedPair (Get-SqlPart $t 'Schema') (Get-SqlPart $t 'Name')))) } }
-    foreach ($d in (& $pick 'User-defined type' 'OnlyInTarget')) { $t = & $tgt $d; if (-not (& $missingParts $t)) { $drops.Add(('DROP TYPE {0};' -f (Get-QuotedPair (Get-SqlPart $t 'Schema') (Get-SqlPart $t 'Name')))) } }
-    foreach ($d in (& $pick 'Schema' 'OnlyInTarget')) { $drops.Add(('DROP SCHEMA {0};' -f (Get-QuotedName $d.TargetKey))) }
     if ($drops.Count) {
-        & $section 'Only in target: NOT dropped. Uncomment a line only after checking nothing still needs it (data is lost)'
-        foreach ($line in $drops) { if ($line.StartsWith('--')) { & $add $line } else { & $add ('-- ' + $line) } }
+        & $section $title
+        foreach ($line in $drops) { if ($line.StartsWith('--')) { & $add $line } else { & $note $line } }
     }
 
     if ($out.Count -gt 0 -and -not ($Diffs | Where-Object { $_.Status -ne 'Unverified' })) {
-        & $section 'No differences to apply'
+        if ($Rollback) { & $section 'Nothing to roll back' } else { & $section 'No differences to apply' }
     }
 
     # SSMS reads UTF-8 without a BOM as the ANSI code page, which breaks Thai text in definitions.
     [System.IO.File]::WriteAllText($Path, ($out -join "`r`n") + "`r`n", (New-Object System.Text.UTF8Encoding($true)))
+}
+
+# The rollback script undoes the sync script of the same comparison: it is the sync script of the
+# reversed comparison (the target before the sync is the model), without the objects only in the
+# target, which the sync script does not drop. Details keep the wording of the comparison.
+function Write-RollbackScript {
+    param(
+        [string]$Path,
+        $SourceSnap,
+        $TargetSnap,
+        $Diffs,
+        [string]$SourceLabel,
+        [string]$TargetLabel,
+        [string]$TargetDatabase,
+        [string[]]$Warnings = @()
+    )
+
+    $reversedStatus = @{ 'OnlyInSource' = 'OnlyInTarget'; 'Different' = 'Different'; 'Unverified' = 'Unverified' }
+    $reversed = foreach ($d in $Diffs) {
+        if ($d.Status -eq 'OnlyInTarget') { continue }
+        [pscustomobject]@{
+            Category         = $d.Category
+            Object           = $d.Object
+            Status           = $reversedStatus[$d.Status]
+            Detail           = $d.Detail
+            SourceDefinition = $d.TargetDefinition
+            TargetDefinition = $d.SourceDefinition
+            SourceKey        = $d.TargetKey
+            TargetKey        = $d.SourceKey
+        }
+    }
+    Write-SyncScript $Path $TargetSnap $SourceSnap @($reversed) $SourceLabel $TargetLabel $TargetDatabase $Warnings -Rollback
 }

@@ -215,6 +215,11 @@ function Resolve-Categories([string[]]$Names) {
 # script keeps primary keys in CREATE TABLE); only these are compared and reported. Set in main.
 $SelectedCategories = $CategoryOrder
 
+# How reports read a difference. 'sync': the source is the model and the target gets changed, so
+# diffs read target -> source. 'timeline': an older snapshot against a later state (drift), so
+# diffs read source (from) -> target (to). Set in main.
+$Perspective = 'sync'
+
 # Items of these categories belong to a table. They are compared only when the table exists in
 # both databases; a missing table is already reported once under 'Table'.
 $TableChildCategories = @('Column', 'Index', 'Foreign key', 'Check constraint')
@@ -325,7 +330,8 @@ LEFT JOIN sys.identity_columns ic ON ic.object_id = c.object_id AND ic.column_id
 LEFT JOIN sys.computed_columns cc ON cc.object_id = c.object_id AND cc.column_id = c.column_id
 LEFT JOIN sys.default_constraints dc ON dc.object_id = c.default_object_id
 WHERE t.is_ms_shipped = 0
-'@ -f $ColumnTypeSql
+  AND {1}
+'@ -f $ColumnTypeSql, ($NotToolObject -f 't')
 
 $Sql.Indexes = @'
 SELECT s.name AS SchemaName, t.name AS TableName, i.name AS IndexName, i.type_desc AS IndexType,
@@ -344,8 +350,9 @@ LEFT JOIN sys.key_constraints kc ON kc.parent_object_id = i.object_id AND kc.uni
 LEFT JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id
 LEFT JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
 WHERE t.is_ms_shipped = 0 AND i.type > 0 AND i.is_hypothetical = 0
+  AND {0}
 ORDER BY s.name, t.name, i.index_id, ic.key_ordinal, ic.index_column_id
-'@
+'@ -f ($NotToolObject -f 't')
 
 $Sql.ForeignKeys = @'
 SELECT s.name AS SchemaName, t.name AS TableName, fk.name AS ForeignKeyName, fk.is_system_named AS IsSystemNamed,
@@ -362,8 +369,9 @@ JOIN sys.foreign_key_columns fkc ON fkc.constraint_object_id = fk.object_id
 JOIN sys.columns pc ON pc.object_id = fkc.parent_object_id AND pc.column_id = fkc.parent_column_id
 JOIN sys.columns rc ON rc.object_id = fkc.referenced_object_id AND rc.column_id = fkc.referenced_column_id
 WHERE t.is_ms_shipped = 0
+  AND {0}
 ORDER BY s.name, t.name, fk.name, fkc.constraint_column_id
-'@
+'@ -f ($NotToolObject -f 't')
 
 $Sql.CheckConstraints = @'
 SELECT s.name AS SchemaName, t.name AS TableName, cc.name AS ConstraintName, cc.is_system_named AS IsSystemNamed,
@@ -373,7 +381,8 @@ FROM sys.check_constraints cc
 JOIN sys.tables t ON t.object_id = cc.parent_object_id
 JOIN sys.schemas s ON s.schema_id = t.schema_id
 WHERE t.is_ms_shipped = 0
-'@
+  AND {0}
+'@ -f ($NotToolObject -f 't')
 
 $Sql.Modules = @'
 SELECT s.name AS SchemaName, o.name AS ObjectName, RTRIM(o.type) AS ObjectType, o.type_desc AS TypeDesc,
@@ -444,11 +453,15 @@ SELECT CAST(SERVERPROPERTY('ProductVersion') AS nvarchar(128)) AS Version,
        HAS_PERMS_BY_NAME(NULL, NULL, 'VIEW ANY DEFINITION') AS ViewAnyDefinition
 '@
 
+# Every user database, including those the login cannot open: they must show up as "no access",
+# not disappear (and not look like they exist on one server only).
 $Sql.DatabaseList = @'
 SELECT d.name AS DatabaseName,
-       HAS_PERMS_BY_NAME(d.name, 'DATABASE', 'VIEW DEFINITION') AS CanViewDefinition
+       CASE WHEN d.state_desc = 'ONLINE' AND HAS_DBACCESS(d.name) = 1 THEN 1 ELSE 0 END AS HasAccess,
+       ISNULL(HAS_PERMS_BY_NAME(d.name, 'DATABASE', 'VIEW DEFINITION'), 0) AS CanViewDefinition,
+       d.state_desc AS State
 FROM sys.databases d
-WHERE d.database_id > 4 AND d.state_desc = 'ONLINE' AND HAS_DBACCESS(d.name) = 1
+WHERE d.database_id > 4
 ORDER BY d.name
 '@
 
@@ -609,10 +622,23 @@ function New-SchemaItem {
     @{ Name = $Name; Props = $Props; Parent = $Parent; Definition = $Definition; ObjectName = $ObjectName; Sql = $Sql }
 }
 
+# Keys for named indexes and constraints. A real name that looks like one of the generated keys
+# (PK, UQ(...), FK(...), CK:...) gets a "=" prefix so it cannot overwrite that key.
+function Get-NameKey([string]$Name) {
+    if ($Name -eq 'PK' -or $Name -match '^(UQ\(|FK\(|CK:|=)') { return '=' + $Name }
+    return $Name
+}
+
+# Normalized text for comparison and the report; $null (no definition) stays $null.
+function Get-ShownDefinition($Text) {
+    if ($null -eq $Text) { return $null }
+    return Get-DisplayDefinition ([string]$Text)
+}
+
 function Get-DisplayDefinition([string]$Text) {
     # Line endings and trailing spaces are noise between environments; the report shows this form.
     $normalized = $Text -replace "`r`n?", "`n"
-    $normalized = $normalized -replace '[ \t]+(?=\n)', ''
+    $normalized = $normalized -replace '[ \t\xA0]+(?=\n)', ''
     return $normalized.Trim()
 }
 
@@ -694,7 +720,7 @@ function Get-SchemaSnapshot {
             $display = '{0} (unique: {1})' -f $ix.Table, $columns
         }
         else {
-            $key = '{0}|{1}' -f $ix.Table, $name
+            $key = '{0}|{1}' -f $ix.Table, (Get-NameKey $name)
             $display = '{0}.{1}' -f $ix.Table, $name
         }
 
@@ -713,7 +739,7 @@ function Get-SchemaSnapshot {
             Table         = [string]$r.TableName
             Name          = $name
             IsSystemNamed = [bool]$r.IsSystemNamed
-            Keys          = $ix.KeyParts.ToArray()
+            KeyParts      = $ix.KeyParts.ToArray()
             Includes      = $ix.IncludeColumns.ToArray()
         }
         $snap['Index'][$key] = New-SchemaItem $display $props $ix.Table -ObjectName $name -Sql $sqlParts
@@ -745,7 +771,7 @@ function Get-SchemaSnapshot {
             $display = '{0} (foreign key: {1} -> {2})' -f $fk.Table, $from, $references
         }
         else {
-            $key = '{0}|{1}' -f $fk.Table, $r.ForeignKeyName
+            $key = '{0}|{1}' -f $fk.Table, (Get-NameKey ([string]$r.ForeignKeyName))
             $display = '{0}.{1}' -f $fk.Table, $r.ForeignKeyName
         }
         $props = [ordered]@{
@@ -771,12 +797,13 @@ function Get-SchemaSnapshot {
     foreach ($r in (Invoke-SqlQuery $Connection $Sql.CheckConstraints)) {
         $table = '{0}.{1}' -f $r.SchemaName, $r.TableName
         $expression = [string]$r.Expression
-        if ($r.IsSystemNamed) {
+        # An unreadable expression cannot identify the constraint, so it falls back to the name.
+        if ($r.IsSystemNamed -and $expression -ne $HiddenValue) {
             $key = '{0}|CK:{1}' -f $table, $expression
             $display = '{0} (check: {1})' -f $table, $expression
         }
         else {
-            $key = '{0}|{1}' -f $table, $r.ConstraintName
+            $key = '{0}|{1}' -f $table, (Get-NameKey ([string]$r.ConstraintName))
             $display = '{0}.{1}' -f $table, $r.ConstraintName
         }
         $props = [ordered]@{ Expression = $expression; State = [string]$r.State }
@@ -792,8 +819,10 @@ function Get-SchemaSnapshot {
             $props.Table = [string]$r.ParentName
             $props.State = [string]$r.TriggerState
         }
+        # The raw text is kept for the sync script (string literals must not change); comparison
+        # and the report use the normalized form.
         if ([int]$r.IsHidden) { $definition = $HiddenDefinition }
-        else { $definition = Get-DisplayDefinition ([string]$r.Definition) }
+        else { $definition = [string]$r.Definition }
         $sqlParts = @{
             Schema       = [string]$r.SchemaName
             Name         = [string]$r.ObjectName
@@ -824,7 +853,7 @@ function Get-SchemaSnapshot {
         $tableTypes[$key].Specs.Add(('{0} {1} {2}' -f $r.ColumnName, $r.DataType, $r.Nullable))
         $tableTypes[$key].Columns.Add(@{ Name = [string]$r.ColumnName; Type = [string]$r.DataType; Nullable = [string]$r.Nullable })
     }
-    foreach ($key in $tableTypes.Keys) {
+    foreach ($key in $tableTypes.get_Keys()) {
         $tt = $tableTypes[$key]
         $spec = '(' + ($tt.Specs -join ', ') + ')'
         $sqlParts = @{ Schema = $tt.Schema; Name = $tt.Name; Columns = $tt.Columns.ToArray() }
@@ -865,15 +894,24 @@ function Get-ComparableText([string]$Text) {
 
 # SQL Server stores a module deployed with CREATE OR ALTER as "CREATE   PROCEDURE ..." (the two
 # words become spaces), so the leading CREATE [OR ALTER] is compared as a plain "CREATE ".
-$ModuleHeader = New-Object System.Text.RegularExpressions.Regex('\A((?:\s|--[^\n]*(?:\n|\z)|/\*[\s\S]*?\*/)*)CREATE\s+(?:OR\s+ALTER\s+)?', 'IgnoreCase')
+$ModuleHeader = New-Object System.Text.RegularExpressions.Regex('\A((?:\s|--[^\n]*(?:\n|\z)|/\*[\s\S]*?\*/)*)CREATE(?:\s|/\*[\s\S]*?\*/)+(?:OR(?:\s|/\*[\s\S]*?\*/)+ALTER(?:\s|/\*[\s\S]*?\*/)+)?', 'IgnoreCase')
 
 function Get-ComparableDefinition([string]$Text) {
-    return Get-ComparableText ($ModuleHeader.Replace($Text, '${1}CREATE ', 1))
+    return Get-ComparableText ($ModuleHeader.Replace((Get-DisplayDefinition $Text), '${1}CREATE ', 1))
 }
 
 function Test-SameText([string]$A, [string]$B) {
     if ($IgnoreCase) { return $A -eq $B }
     return $A -ceq $B
+}
+
+# Table and column names are matched ignoring case, so lists of column names inside an index or a
+# foreign key are compared the same way (otherwise "Id" vs "id" shows up as a changed index).
+$NameListProps = @{ 'Columns' = $true; 'Include' = $true; 'References' = $true }
+
+function Test-SameProp([string]$Prop, [string]$A, [string]$B) {
+    if ($NameListProps.ContainsKey($Prop)) { return (Get-ComparableText $A) -eq (Get-ComparableText $B) }
+    return Test-SameText (Get-ComparableText $A) (Get-ComparableText $B)
 }
 
 # Returns which side holds an unreadable value ('' when both sides are readable).
@@ -890,7 +928,7 @@ function Format-Value([string]$Value) {
 }
 
 function Get-ComparedProps($Item) {
-    foreach ($prop in $Item.Props.Keys) {
+    foreach ($prop in $Item.Props.get_Keys()) {
         if (-not $IgnoredProps.ContainsKey($prop)) { $prop }
     }
 }
@@ -928,7 +966,10 @@ function New-DiffRecord {
 }
 
 function Get-ItemSignature($Item) {
-    $values = foreach ($prop in (Get-ComparedProps $Item)) { Get-ComparableText ([string]$Item.Props[$prop]) }
+    $values = foreach ($prop in (Get-ComparedProps $Item)) {
+        $value = Get-ComparableText ([string]$Item.Props[$prop])
+        if ($NameListProps.ContainsKey($prop)) { $value.ToLowerInvariant() } else { $value }
+    }
     $signature = $Item.Parent + [char]31 + (@($values) -join [char]31)
     if ($IgnoreCase) { $signature = $signature.ToLowerInvariant() }
     return $signature
@@ -943,8 +984,8 @@ function Compare-SchemaSet {
     )
 
     $keys = New-Object 'System.Collections.Generic.SortedSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
-    foreach ($key in $Source.Keys) { [void]$keys.Add($key) }
-    foreach ($key in $Target.Keys) { [void]$keys.Add($key) }
+    foreach ($key in $Source.get_Keys()) { [void]$keys.Add($key) }
+    foreach ($key in $Target.get_Keys()) { [void]$keys.Add($key) }
 
     $records = New-Object System.Collections.Generic.List[object]
     $onlySource = New-Object System.Collections.Generic.List[object]
@@ -977,15 +1018,15 @@ function Compare-SchemaSet {
             $b = [string]$t.Props[$prop]
             $side = Get-UnreadableSide $a $b $HiddenValue
             if ($side) { $unreadable.Add("${prop}: $side") }
-            elseif (-not (Test-SameText (Get-ComparableText $a) (Get-ComparableText $b))) {
-                $changes.Add(('{0}: {1} -> {2}' -f $prop, (Format-Value $a), (Format-Value $b)))
+            elseif (-not (Test-SameProp $prop $a $b)) {
+                $changes.Add(('{0}: source {1}, target {2}' -f $prop, (Format-Value $a), (Format-Value $b)))
             }
         }
 
         if ($changes.Count -gt 0) {
             $detail = @($changes) + @($unreadable | ForEach-Object { "$_ (not compared)" })
             if ($definitionChanged) {
-                $records.Add((New-DiffRecord $Category $s.Name 'Different' ($detail -join "`n") $s.Definition $t.Definition $key $key))
+                $records.Add((New-DiffRecord $Category $s.Name 'Different' ($detail -join "`n") (Get-ShownDefinition $s.Definition) (Get-ShownDefinition $t.Definition) $key $key))
             }
             else {
                 $records.Add((New-DiffRecord $Category $s.Name 'Different' ($detail -join "`n") $null $null $key $key))
@@ -1014,7 +1055,7 @@ function Compare-SchemaSet {
             $candidates.RemoveAt(0)
             # Same name on both sides means only the system-named flag differs: not a schema change.
             if (-not (Test-SameText $s.ObjectName $t.ObjectName)) {
-                $detail = 'Name: {0} -> {1}' -f $s.ObjectName, $t.ObjectName
+                $detail = 'Name: source {0}, target {1}' -f $s.ObjectName, $t.ObjectName
                 $records.Add((New-DiffRecord $Category $s.Name 'Different' $detail $null $null $s.Key $t.Key))
             }
         }
@@ -1027,10 +1068,10 @@ function Compare-SchemaSet {
     }
 
     foreach ($s in $onlySource) {
-        $records.Add((New-DiffRecord $Category $s.Name 'OnlyInSource' (Get-ItemSummary $s) $s.Definition $null $s.Key $null))
+        $records.Add((New-DiffRecord $Category $s.Name 'OnlyInSource' (Get-ItemSummary $s) (Get-ShownDefinition $s.Definition) $null $s.Key $null))
     }
     foreach ($t in $onlyTarget) {
-        $records.Add((New-DiffRecord $Category $t.Name 'OnlyInTarget' (Get-ItemSummary $t) $null $t.Definition $null $t.Key))
+        $records.Add((New-DiffRecord $Category $t.Name 'OnlyInTarget' (Get-ItemSummary $t) $null (Get-ShownDefinition $t.Definition) $null $t.Key))
     }
 
     $records | Sort-Object Object
@@ -1068,6 +1109,21 @@ function Get-OptionText {
     return $text
 }
 
+# Fills __PLACEHOLDER__ markers in one pass, so text inside a value (a database named
+# "__DATA_JSON__", say) is never replaced again.
+function Expand-Template([string]$Template, [hashtable]$Values) {
+    $pattern = (@($Values.get_Keys() | ForEach-Object { [regex]::Escape($_) }) -join '|')
+    $builder = New-Object System.Text.StringBuilder
+    $last = 0
+    foreach ($m in [regex]::Matches($Template, $pattern)) {
+        [void]$builder.Append($Template, $last, $m.Index - $last)
+        [void]$builder.Append([string]$Values[$m.Value])
+        $last = $m.Index + $m.Length
+    }
+    [void]$builder.Append($Template, $last, $Template.Length - $last)
+    return $builder.ToString()
+}
+
 function ConvertTo-JsArray($Values) {
     return '[' + (@($Values | ForEach-Object { ConvertTo-JsLiteral $_ }) -join ',') + ']'
 }
@@ -1091,7 +1147,7 @@ function Add-JsonValue([System.Text.StringBuilder]$Builder, $Value) {
     if ($Value -is [System.Collections.IDictionary]) {
         [void]$Builder.Append('{')
         $first = $true
-        foreach ($key in $Value.Keys) {
+        foreach ($key in $Value.get_Keys()) {
             if (-not $first) { [void]$Builder.Append(',') }
             $first = $false
             [void]$Builder.Append((ConvertTo-JsLiteral ([string]$key)))
@@ -1168,6 +1224,27 @@ function Export-SchemaSnapshot([string]$Path, $Snap, [string]$ServerLabel, [stri
     })
 }
 
+# Snapshots written before 2026-10-27 lost the index name parts (a hashtable entry called "Keys"
+# hid the real key list during export). Rebuild them from the props so index scripting works.
+function Repair-IndexSql([string]$Key, $Item) {
+    $parent = [string]$Item.Parent
+    $dot = $parent.IndexOf('.')
+    if ($dot -lt 1) { return $null }
+    $keyParts = @(([string]$Item.Props['Columns']) -split ', ' | Where-Object { $_ } | ForEach-Object {
+        if ($_ -match '^(.*) DESC$') { @{ Name = $Matches[1]; Desc = $true } } else { @{ Name = $_; Desc = $false } }
+    })
+    $includes = @(([string]$Item.Props['Include']) -split ', ' | Where-Object { $_ })
+    $systemNamed = ([string]$Item.Props['Name'] -eq '(system-named)') -or ($Key -like '*|UQ(*')
+    return @{
+        Schema        = $parent.Substring(0, $dot)
+        Table         = $parent.Substring($dot + 1)
+        Name          = [string]$Item.ObjectName
+        IsSystemNamed = $systemNamed
+        KeyParts      = $keyParts
+        Includes      = $includes
+    }
+}
+
 function Import-SchemaSnapshot([string]$Path) {
     $doc = Read-JsonFile $Path
     if ($doc['format'] -ne 'database-diff-snapshot') { throw "Not a database-diff snapshot: $Path" }
@@ -1177,13 +1254,17 @@ function Import-SchemaSnapshot([string]$Path) {
         $set = @{}
         $items = $doc['categories'][$category]
         if ($items) {
-            foreach ($key in $items.Keys) {
+            foreach ($key in $items.get_Keys()) {
                 $i = $items[$key]
                 $props = [ordered]@{}
-                if ($i['Props']) { foreach ($prop in $i['Props'].Keys) { $props[$prop] = [string]$i['Props'][$prop] } }
+                if ($i['Props']) { foreach ($prop in $i['Props'].get_Keys()) { $props[$prop] = [string]$i['Props'][$prop] } }
                 $sqlParts = $null
                 if ($i.ContainsKey('Sql')) { $sqlParts = $i['Sql'] }
-                $set[$key] = New-SchemaItem ([string]$i['Name']) $props ([string]$i['Parent']) $i['Definition'] ([string]$i['ObjectName']) $sqlParts
+                $item = New-SchemaItem ([string]$i['Name']) $props ([string]$i['Parent']) $i['Definition'] ([string]$i['ObjectName']) $sqlParts
+                if ($category -eq 'Index' -and ($null -eq $sqlParts -or -not $sqlParts.ContainsKey('KeyParts'))) {
+                    $item.Sql = Repair-IndexSql $key $item
+                }
+                $set[$key] = $item
             }
         }
         $snap[$category] = $set
@@ -1218,7 +1299,8 @@ function Write-JsonReport([string]$Path, $Result, $SourceSnap, $TargetSnap) {
             login             = $TargetSnap['Meta'].LoginName
             canViewDefinition = [bool]$TargetSnap['Meta'].CanViewDefinition
         }
-        categories = $categories
+        categories  = $categories
+        perspective = $Perspective
         options   = [ordered]@{
             ignoreWhitespace   = [bool]$IgnoreWhitespace
             ignoreCase         = [bool]$IgnoreCase
@@ -1234,6 +1316,8 @@ function Write-JsonReport([string]$Path, $Result, $SourceSnap, $TargetSnap) {
         warnings   = $warnings
         syncScript = $Result.SyncScript
         syncError  = $Result.SyncError
+        rollbackScript = $Result.RollbackScript
+        rollbackError  = $Result.RollbackError
         summary    = $summary
         diffs      = $diffs
     })
@@ -1267,6 +1351,7 @@ function Write-HtmlReport {
         '"ignoreWhitespace":' + (ConvertTo-JsLiteral ([bool]$IgnoreWhitespace))
         '"ignoreCase":' + (ConvertTo-JsLiteral ([bool]$IgnoreCase))
         '"categories":' + (ConvertTo-JsArray $SelectedCategories)
+        '"perspective":' + (ConvertTo-JsLiteral $Perspective)
         '"warnings":' + (ConvertTo-JsArray @($Warnings))
         '"summary":[' + $summaryJs + ']'
     ) -join ',') + '}'
@@ -1275,7 +1360,7 @@ function Write-HtmlReport {
         ConvertTo-JsArray @($_.Category, $_.Object, $_.Status, $_.Detail, $_.SourceDefinition, $_.TargetDefinition)
     }) -join ",`n") + ']'
 
-    $html = $ReportTemplate.Replace('__META_JSON__', $meta).Replace('__DATA_JSON__', $data)
+    $html = Expand-Template $ReportTemplate @{ '__META_JSON__' = $meta; '__DATA_JSON__' = $data }
 
     $directory = Split-Path -Parent $Path
     if ($directory -and -not (Test-Path -LiteralPath $directory)) {
@@ -1325,7 +1410,7 @@ function Invoke-DatabaseComparison {
     $TargetDb = $TargetSide.Database
 
     $commonTables = @{}
-    foreach ($key in $sourceSnap['Table'].Keys) {
+    foreach ($key in $sourceSnap['Table'].get_Keys()) {
         if ($targetSnap['Table'].ContainsKey($key)) { $commonTables[$key] = $true }
     }
 
@@ -1341,8 +1426,8 @@ function Invoke-DatabaseComparison {
         $items = @($diffs | Where-Object { $_.Category -eq $category })
         [pscustomobject]@{
             Category     = $category
-            Source       = $sourceSnap[$category].Count
-            Target       = $targetSnap[$category].Count
+            Source       = $sourceSnap[$category].get_Count()
+            Target       = $targetSnap[$category].get_Count()
             OnlyInSource = @($items | Where-Object { $_.Status -eq 'OnlyInSource' }).Count
             OnlyInTarget = @($items | Where-Object { $_.Status -eq 'OnlyInTarget' }).Count
             Different    = @($items | Where-Object { $_.Status -eq 'Different' }).Count
@@ -1362,7 +1447,7 @@ function Invoke-DatabaseComparison {
 
     Write-HtmlReport $ReportPath $SourceSide.Label $TargetSide.Label $diffs $summary $warnings
 
-    # A failing sync script must not lose the comparison itself; the error is reported instead.
+    # A failing sync or rollback script must not lose the comparison itself; the error is reported instead.
     $syncPath = [System.IO.Path]::ChangeExtension($ReportPath, '.sync.sql')
     $syncError = ''
     try {
@@ -1371,6 +1456,16 @@ function Invoke-DatabaseComparison {
     catch {
         $syncError = $_.Exception.Message
         Write-Host ('Sync script failed: {0}' -f $syncError) -ForegroundColor Red
+        Write-Verbose $_.ScriptStackTrace
+    }
+    $rollbackPath = [System.IO.Path]::ChangeExtension($ReportPath, '.rollback.sql')
+    $rollbackError = ''
+    try {
+        Write-RollbackScript $rollbackPath $sourceSnap $targetSnap $diffs $SourceSide.Label $TargetSide.Label $TargetDb $warnings
+    }
+    catch {
+        $rollbackError = $_.Exception.Message
+        Write-Host ('Rollback script failed: {0}' -f $rollbackError) -ForegroundColor Red
         Write-Verbose $_.ScriptStackTrace
     }
 
@@ -1386,6 +1481,8 @@ function Invoke-DatabaseComparison {
         Unverified   = @($diffs | Where-Object { $_.Status -eq 'Unverified' }).Count
         SyncScript   = $(if ($syncError) { '' } else { Split-Path -Leaf $syncPath })
         SyncError    = $syncError
+        RollbackScript = $(if ($rollbackError) { '' } else { Split-Path -Leaf $rollbackPath })
+        RollbackError  = $rollbackError
     }
     Write-JsonReport ([System.IO.Path]::ChangeExtension($ReportPath, '.json')) $result $sourceSnap $targetSnap
     return $result
@@ -1407,10 +1504,12 @@ function Get-ResultColor($Result) {
     return 'Green'
 }
 
-function Get-DatabaseNames([hashtable]$Endpoint) {
+function Get-DatabaseList([hashtable]$Endpoint) {
     $connection = Open-SqlConnection $Endpoint 'master'
     try {
-        foreach ($r in (Invoke-SqlQuery $connection $Sql.DatabaseList)) { [string]$r.DatabaseName }
+        foreach ($r in (Invoke-SqlQuery $connection $Sql.DatabaseList)) {
+            [pscustomobject]@{ Name = [string]$r.DatabaseName; HasAccess = ([int]$r.HasAccess -eq 1) }
+        }
     }
     finally {
         $connection.Dispose()
@@ -1423,7 +1522,12 @@ function Write-DatabaseList([hashtable]$Endpoint) {
     try {
         $info = @(Invoke-SqlQuery $connection $Sql.ServerInfo)[0]
         $databases = foreach ($r in (Invoke-SqlQuery $connection $Sql.DatabaseList)) {
-            [ordered]@{ name = [string]$r.DatabaseName; canViewDefinition = ([int]$r.CanViewDefinition -eq 1) }
+            [ordered]@{
+                name              = [string]$r.DatabaseName
+                hasAccess         = ([int]$r.HasAccess -eq 1)
+                canViewDefinition = ([int]$r.CanViewDefinition -eq 1)
+                state             = [string]$r.State
+            }
         }
     }
     finally {
@@ -1449,7 +1553,8 @@ function Write-IndexReport {
         [string]$TargetLabel,
         $Results,
         [string[]]$OnlyOnSourceServer,
-        [string[]]$OnlyOnTargetServer
+        [string[]]$OnlyOnTargetServer,
+        $NoAccess = @()
     )
 
     $enc = { param($text) [System.Net.WebUtility]::HtmlEncode([string]$text) }
@@ -1471,7 +1576,7 @@ function Write-IndexReport {
         $sides = @($r.Warnings | ForEach-Object { if ($_ -match 'in (source|target) database') { $Matches[1] } })
         if ($sides) { $result += '<span class="warn-text">Incomplete: no VIEW DEFINITION on {0}</span>' -f ($sides -join ' and ') }
         '<tr><td><a href="{0}">{1}</a></td>{2}{3}{4}{5}<td>{6}</td></tr>' -f (& $enc $r.Report), (& $enc $r.Database),
-            (& $cell $r.OnlyInSource 'src'), (& $cell $r.OnlyInTarget 'tgt'), (& $cell $r.Different 'chg'), (& $cell $r.Unverified 'unk'), $result
+            (& $cell $r.OnlyInSource 'add'), (& $cell $r.OnlyInTarget 'del'), (& $cell $r.Different 'chg'), (& $cell $r.Unverified 'unk'), $result
     }
 
     $banner = ''
@@ -1489,16 +1594,32 @@ function Write-IndexReport {
     if ($OnlyOnTargetServer) {
         $extra += "`n" + ('  <h2>Databases only on the target server</h2><div class="names">{0}</div>' -f (& $enc ($OnlyOnTargetServer -join ', ')))
     }
+    if (@($NoAccess).Count -gt 0) {
+        $names = @($NoAccess | ForEach-Object {
+            $sides = @()
+            if (-not $_.source) { $sides += 'source' }
+            if (-not $_.target) { $sides += 'target' }
+            '{0} (no access on {1})' -f $_.database, ($sides -join ' and ')
+        }) -join ', '
+        $extra += "`n" + ('  <h2>On both servers but the login cannot open them (not compared)</h2><div class="names">{0}</div>' -f (& $enc $names))
+    }
 
-    $html = $IndexTemplate.Replace('__SOURCE__', (& $enc $SourceLabel)).Replace('__TARGET__', (& $enc $TargetLabel))
-    $html = $html.Replace('__GENERATED__', (Get-Date -Format 'yyyy-MM-dd HH:mm:ss')).Replace('__OPTIONS__', (& $enc (Get-OptionText)))
-    $html = $html.Replace('__ROWS__', (@($rows) -join "`n")).Replace('__EXTRA__', $extra).Replace('__BANNER__', $banner)
+    $html = Expand-Template $IndexTemplate @{
+        '__SOURCE__'    = (& $enc $SourceLabel)
+        '__TARGET__'    = (& $enc $TargetLabel)
+        '__GENERATED__' = (Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+        '__OPTIONS__'   = (& $enc (Get-OptionText))
+        '__ROWS__'      = (@($rows) -join "`n")
+        '__EXTRA__'     = $extra
+        '__BANNER__'    = $banner
+    }
     [System.IO.File]::WriteAllText($Path, $html, (New-Object System.Text.UTF8Encoding($false)))
 }
 
 $exitCode = 0
 try {
     $SelectedCategories = Resolve-Categories $Categories
+    if ($SourceSnapshot) { $Perspective = 'timeline' }
 
     # Explicit -*Server / -*Credential parameters override what a profile says.
     if ($SourceProfile) { $source = Read-ConnectionProfile $SourceProfile }
@@ -1530,6 +1651,8 @@ try {
 
     if (-not $batch) {
         if (-not $TargetDatabase) { $TargetDatabase = $SourceDatabase }
+        # A live side without a database name would silently read the login's default database.
+        if (-not $TargetSnapshot -and -not $TargetDatabase) { throw 'Specify -TargetDatabase: the target is a live database.' }
         $sourceSide = New-Side $source $SourceDatabase $SourceSnapshot
         $targetSide = New-Side $target $TargetDatabase $TargetSnapshot
         if (-not $OutputPath) {
@@ -1563,18 +1686,27 @@ try {
         if ($PassThru) { $result.Diffs }
     }
     else {
-        $sourceNames = @(Get-DatabaseNames $source)
-        $targetNames = @(Get-DatabaseNames $target)
+        $sourceList = @(Get-DatabaseList $source)
+        $targetList = @(Get-DatabaseList $target)
+        $sourceAll = @($sourceList | ForEach-Object { $_.Name })
+        $targetAll = @($targetList | ForEach-Object { $_.Name })
+        $sourceNames = @($sourceList | Where-Object { $_.HasAccess } | ForEach-Object { $_.Name })
+        $targetNames = @($targetList | Where-Object { $_.HasAccess } | ForEach-Object { $_.Name })
+        $onlyOnSource = @()
+        $onlyOnTarget = @()
+        $noAccess = @()
         if ($Databases) {
             # powershell -File passes "a,b" as one string, so split on commas here as well.
             $names = @($Databases | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
-            $onlyOnSource = @()
-            $onlyOnTarget = @()
         }
         else {
             $names = @($sourceNames | Where-Object { $targetNames -contains $_ } | Sort-Object)
-            $onlyOnSource = @($sourceNames | Where-Object { $targetNames -notcontains $_ } | Sort-Object)
-            $onlyOnTarget = @($targetNames | Where-Object { $sourceNames -notcontains $_ } | Sort-Object)
+            $onlyOnSource = @($sourceAll | Where-Object { $targetAll -notcontains $_ } | Sort-Object)
+            $onlyOnTarget = @($targetAll | Where-Object { $sourceAll -notcontains $_ } | Sort-Object)
+            # On both servers, but the login cannot open it on at least one side: not compared.
+            $noAccess = @($sourceAll | Where-Object { $targetAll -contains $_ -and $names -notcontains $_ } | Sort-Object | ForEach-Object {
+                [ordered]@{ database = $_; source = ($sourceNames -contains $_); target = ($targetNames -contains $_) }
+            })
         }
 
         if (-not $OutputPath) {
@@ -1589,14 +1721,21 @@ try {
         Write-Host ('Databases to compare: {0}' -f $names.Count)
 
         $index = 0
+        $usedBaseNames = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
         $results = foreach ($db in $names) {
             $index++
+            # "sales 2024" and "sales_2024" would share a file name; number the later ones.
             $baseName = $db -replace '[^\w.-]', '_'
+            $candidate = $baseName
+            for ($n = 2; -not $usedBaseNames.Add($candidate); $n++) { $candidate = '{0}-{1}' -f $baseName, $n }
+            $baseName = $candidate
             $file = $baseName + '.html'
             $prefix = '[{0}/{1}] {2}' -f $index, $names.Count, $db
             try {
-                if ($sourceNames -notcontains $db) { throw 'database not found (or no access) on the source server' }
-                if ($targetNames -notcontains $db) { throw 'database not found (or no access) on the target server' }
+                if ($sourceAll -notcontains $db) { throw 'database not found on the source server' }
+                if ($sourceNames -notcontains $db) { throw 'the login has no access to this database on the source server' }
+                if ($targetAll -notcontains $db) { throw 'database not found on the target server' }
+                if ($targetNames -notcontains $db) { throw 'the login has no access to this database on the target server' }
                 $sourceSide = New-Side $source $db
                 $targetSide = New-Side $target $db
                 if ($SaveSnapshots) {
@@ -1617,20 +1756,21 @@ try {
                     SourceSnapshot = $(if ($sourceSide.SaveSnapshot) { Split-Path -Leaf $sourceSide.SaveSnapshot } else { '' })
                     TargetSnapshot = $(if ($targetSide.SaveSnapshot) { Split-Path -Leaf $targetSide.SaveSnapshot } else { '' })
                     SyncScript     = $result.SyncScript
+                    RollbackScript = $result.RollbackScript
                 }
             }
             catch {
                 Write-Host ('{0} : error: {1}' -f $prefix, $_.Exception.Message) -ForegroundColor Red
                 [pscustomobject]@{
                     Database = $db; OnlyInSource = 0; OnlyInTarget = 0; Different = 0; Unverified = 0; Warnings = @()
-                    Report = ''; Error = $_.Exception.Message; Diffs = $null; SourceSnapshot = ''; TargetSnapshot = ''; SyncScript = ''
+                    Report = ''; Error = $_.Exception.Message; Diffs = $null; SourceSnapshot = ''; TargetSnapshot = ''; SyncScript = ''; RollbackScript = ''
                 }
             }
         }
         $results = @($results)
 
         $indexPath = Join-Path $OutputPath 'index.html'
-        Write-IndexReport $indexPath (Get-ServerLabel $source) (Get-ServerLabel $target) $results $onlyOnSource $onlyOnTarget
+        Write-IndexReport $indexPath (Get-ServerLabel $source) (Get-ServerLabel $target) $results $onlyOnSource $onlyOnTarget $noAccess
         $databaseRows = [object[]]@($results | ForEach-Object {
             $rowWarnings = [object[]]@($_.Warnings)
             [ordered]@{
@@ -1645,10 +1785,12 @@ try {
                 sourceSnapshot = $_.SourceSnapshot
                 targetSnapshot = $_.TargetSnapshot
                 syncScript     = $_.SyncScript
+                rollbackScript = $_.RollbackScript
             }
         })
         $onlySourceList = [object[]]@($onlyOnSource)
         $onlyTargetList = [object[]]@($onlyOnTarget)
+        $noAccessList = [object[]]@($noAccess)
         Write-JsonFile (Join-Path $OutputPath 'index.json') ([ordered]@{
             format       = 'database-diff-batch'
             version      = 1
@@ -1658,12 +1800,16 @@ try {
             databases    = $databaseRows
             onlyOnSource = $onlySourceList
             onlyOnTarget = $onlyTargetList
+            noAccess     = $noAccessList
         })
         $timer.Stop()
 
         Write-Host ''
         if ($onlyOnSource) { Write-Host ('Databases only on source server: {0}' -f ($onlyOnSource -join ', ')) }
         if ($onlyOnTarget) { Write-Host ('Databases only on target server: {0}' -f ($onlyOnTarget -join ', ')) }
+        if ($noAccess) {
+            Write-Host ('Databases on both servers that the login cannot open (not compared): {0}' -f (($noAccess | ForEach-Object { $_.database }) -join ', ')) -ForegroundColor Yellow
+        }
         Write-Host ('Index: {0}  ({1:N1}s)' -f $indexPath, $timer.Elapsed.TotalSeconds)
 
         $incompleteCount = @($results | Where-Object { $_.Warnings.Count -gt 0 }).Count

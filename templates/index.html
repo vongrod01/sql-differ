@@ -8,12 +8,12 @@
   :root {
     color-scheme: light dark;
     --bg: #f5f6f8; --panel: #ffffff; --text: #1c2230; --muted: #5d6878; --border: #dfe3e9; --head: #eef1f5;
-    --src: #b42318; --tgt: #1a7f37; --chg: #8a5d00; --err: #b42318; --ok: #1a7f37; --accent: #2f5bd3;
+    --del: #b42318; --add: #1a7f37; --chg: #8a5d00; --err: #b42318; --ok: #1a7f37; --accent: #2f5bd3;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #12151a; --panel: #1a1e25; --text: #e3e7ed; --muted: #98a3b3; --border: #2c333e; --head: #20252d;
-      --src: #ff9b94; --tgt: #74d491; --chg: #e8c060; --err: #ff9b94; --ok: #74d491; --accent: #8eaaff;
+      --del: #ff9b94; --add: #74d491; --chg: #e8c060; --err: #ff9b94; --ok: #74d491; --accent: #8eaaff;
     }
   }
   * { box-sizing: border-box; }
@@ -32,8 +32,9 @@
   tbody tr:last-child td { border-bottom: 0; }
   a { color: var(--accent); }
   td.zero { color: var(--muted); }
-  td.src { color: var(--src); font-weight: 600; }
-  td.tgt { color: var(--tgt); font-weight: 600; }
+  /* Read as changes to the target: only in source = to add (green), only in target = to remove (red). */
+  td.add { color: var(--add); font-weight: 600; }
+  td.del { color: var(--del); font-weight: 600; }
   td.chg { color: var(--chg); font-weight: 600; }
   td.unk { color: var(--muted); font-weight: 600; }
   .warn-text { display: block; color: var(--err); font-size: 13px; }

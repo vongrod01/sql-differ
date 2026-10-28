@@ -21,8 +21,15 @@ const OPTION_SWITCHES = {
   compareColumnOrder: '-CompareColumnOrder',
 };
 
-// Live runs: id -> EventEmitter ('line', 'end'). Finished runs are read from disk.
+// Live runs of this process: id -> { emitter ('line', 'end'), lines }. The lines are kept in memory
+// so a viewer that joins late gets every line, including ones the log file has not flushed yet.
+// Finished runs are read from disk.
 const live = new Map();
+// The process running a job touches this file; a stale one means the process is gone even when
+// its PID now belongs to another program.
+const HEARTBEAT_FILE = 'heartbeat';
+const HEARTBEAT_MS = 30000;
+const HEARTBEAT_STALE_MS = 3 * HEARTBEAT_MS;
 
 function httpError(status, message) {
   return Object.assign(new Error(message), { status });
@@ -52,13 +59,26 @@ function isAlive(pid) {
 
 // A run left "running" by a process that no longer exists (server restarted or closed, machine
 // shut down) would stay that way forever; record it as interrupted instead.
+function heartbeatStale(id) {
+  try {
+    return Date.now() - fs.statSync(path.join(config.RUNS, id, HEARTBEAT_FILE)).mtimeMs > HEARTBEAT_STALE_MS;
+  } catch {
+    return false; // runs started before heartbeats existed: decide by PID only
+  }
+}
+
 function reconcile(meta) {
-  if (meta.status !== 'running' || live.has(meta.id) || isAlive(meta.ownerPid)) return meta;
-  meta.status = 'failed';
-  meta.finishedAt = meta.finishedAt || new Date().toISOString();
-  meta.resultError = 'Interrupted: the process running it stopped before it finished (server restarted or closed).';
-  store.writeJson(path.join(config.RUNS, meta.id, 'run.json'), meta);
-  return meta;
+  if (meta.status !== 'running' || live.has(meta.id)) return meta;
+  if (isAlive(meta.ownerPid) && !heartbeatStale(meta.id)) return meta;
+  // The owner may have finished between the first read and now; never overwrite its result.
+  const file = path.join(config.RUNS, meta.id, 'run.json');
+  const current = store.readJson(file, meta);
+  if (current.status !== 'running') return current;
+  current.status = 'failed';
+  current.finishedAt = current.finishedAt || new Date().toISOString();
+  current.resultError = 'Interrupted: the process running it stopped before it finished (server restarted or closed).';
+  store.writeJson(file, current);
+  return current;
 }
 
 function readMeta(id) {
@@ -82,10 +102,9 @@ function list() {
 }
 
 function remove(id) {
-  if (live.has(id)) throw httpError(409, 'The run is still in progress');
-  const dir = runDir(id);
-  if (!fs.existsSync(dir)) throw httpError(404, `Unknown run: ${id}`);
-  fs.rmSync(dir, { recursive: true, force: true });
+  // readMeta also covers runs of other processes (scheduled jobs) and marks dead ones interrupted.
+  if (live.has(id) || readMeta(id).status === 'running') throw httpError(409, 'The run is still in progress');
+  fs.rmSync(runDir(id), { recursive: true, force: true });
 }
 
 function snapshotPath(ref) {
@@ -103,6 +122,7 @@ function checkDatabaseName(name) {
 
 // Validates a run spec from the UI or a scheduled job and fills in display labels.
 function normalizeSpec(spec) {
+  if (!spec || typeof spec !== 'object') throw httpError(400, 'Missing run spec');
   const kind = spec.kind;
   if (!['compare', 'batch', 'drift'].includes(kind)) throw httpError(400, 'Unknown run kind');
   const options = {};
@@ -112,7 +132,7 @@ function normalizeSpec(spec) {
   const unknown = requested.filter((c) => !CATEGORIES.includes(c));
   if (unknown.length) throw httpError(400, `Unknown category: ${unknown.join(', ')}`);
   const categories = CATEGORIES.filter((c) => requested.includes(c));
-  const out = { kind, options, categories, trigger: spec.trigger || 'manual', jobId: spec.jobId || null, jobName: spec.jobName || null };
+  const out = { kind, options, categories, trigger: spec.trigger === 'schedule' ? 'schedule' : 'manual', jobId: spec.jobId || null, jobName: spec.jobName || null };
 
   const side = (s, name, allowSnapshot) => {
     if (!s) throw httpError(400, `Missing ${name}`);
@@ -130,28 +150,30 @@ function normalizeSpec(spec) {
   if (kind === 'drift' && !out.source.snapshot) throw httpError(400, 'Drift needs a snapshot as the source');
   if (kind === 'batch') {
     out.allDatabases = Boolean(spec.allDatabases);
-    out.databases = out.allDatabases ? [] : (spec.databases || []).map(checkDatabaseName);
+    out.databases = out.allDatabases ? [] : (Array.isArray(spec.databases) ? spec.databases : []).map(checkDatabaseName);
     if (!out.allDatabases && out.databases.length === 0) throw httpError(400, 'Pick at least one database');
   }
   return out;
 }
 
+// Values use the -Name:value form: with -File, PowerShell reads a separate value that starts with
+// "-" (a database named "-x") as another parameter name.
 function buildArgs(spec, dir) {
   const args = ['-File', config.ENGINE];
   const report = path.join(dir, 'report.html');
   if (spec.kind === 'batch') {
     args.push(...servers.engineArgs(spec.source.serverId, 'Source'), ...servers.engineArgs(spec.target.serverId, 'Target'));
     if (spec.allDatabases) args.push('-AllDatabases');
-    else args.push('-Databases', spec.databases.join(','));
-    args.push('-OutputPath', dir);
+    else args.push(`-Databases:${spec.databases.join(',')}`);
+    args.push(`-OutputPath:${dir}`);
   } else {
-    if (spec.source.snapshot) args.push('-SourceSnapshot', snapshotPath(spec.source.snapshot));
-    else args.push(...servers.engineArgs(spec.source.serverId, 'Source'), '-SourceDatabase', spec.source.database);
-    if (spec.target.snapshot) args.push('-TargetSnapshot', snapshotPath(spec.target.snapshot));
-    else args.push(...servers.engineArgs(spec.target.serverId, 'Target'), '-TargetDatabase', spec.target.database);
-    args.push('-OutputPath', report);
+    if (spec.source.snapshot) args.push(`-SourceSnapshot:${snapshotPath(spec.source.snapshot)}`);
+    else args.push(...servers.engineArgs(spec.source.serverId, 'Source'), `-SourceDatabase:${spec.source.database}`);
+    if (spec.target.snapshot) args.push(`-TargetSnapshot:${snapshotPath(spec.target.snapshot)}`);
+    else args.push(...servers.engineArgs(spec.target.serverId, 'Target'), `-TargetDatabase:${spec.target.database}`);
+    args.push(`-OutputPath:${report}`);
   }
-  args.push('-SaveSnapshots', '-Categories', spec.categories.join(','));
+  args.push('-SaveSnapshots', `-Categories:${spec.categories.join(',')}`);
   for (const [key, flag] of Object.entries(OPTION_SWITCHES)) if (spec.options[key]) args.push(flag);
   return args;
 }
@@ -173,6 +195,7 @@ function collectResults(meta, dir) {
       database: d.database,
       report: d.report,
       syncScript: d.syncScript || '',
+      rollbackScript: d.rollbackScript || '',
       error: d.error || '',
       counts: { onlyInSource: d.onlyInSource, onlyInTarget: d.onlyInTarget, different: d.different, unverified: d.unverified },
       incomplete: (d.warnings || []).length > 0,
@@ -185,6 +208,7 @@ function collectResults(meta, dir) {
     meta.errors = meta.databases.filter((d) => d.error).length;
     meta.onlyOnSource = index.onlyOnSource || [];
     meta.onlyOnTarget = index.onlyOnTarget || [];
+    meta.noAccess = index.noAccess || [];
     for (const d of index.databases) {
       addSnapshot(d.sourceSnapshot, 'source', d.database);
       addSnapshot(d.targetSnapshot, 'target', d.database);
@@ -195,6 +219,8 @@ function collectResults(meta, dir) {
     meta.report = 'report.html';
     meta.syncScript = result.syncScript || '';
     meta.syncError = result.syncError || '';
+    meta.rollbackScript = result.rollbackScript || '';
+    meta.rollbackError = result.rollbackError || '';
     meta.counts = result.counts;
     meta.warnings = result.warnings;
     meta.incomplete = result.warnings.length > 0;
@@ -216,13 +242,22 @@ function start(rawSpec) {
 
   const emitter = new EventEmitter();
   emitter.setMaxListeners(50);
-  live.set(id, emitter);
+  const entry = { emitter, lines: [] };
+  live.set(id, entry);
   const logFile = path.join(dir, 'run.log');
   const log = fs.createWriteStream(logFile, { encoding: 'utf8' });
+  const heartbeat = path.join(dir, HEARTBEAT_FILE);
+  const beat = () => { try { fs.writeFileSync(heartbeat, new Date().toISOString()); } catch { /* the next beat retries */ } };
+  beat();
+  const beatTimer = setInterval(beat, HEARTBEAT_MS);
+  beatTimer.unref();
 
   const done = runPowerShell(args, {
     onLine: (line) => {
       log.write(line + '\n');
+      // Blank lines are skipped here as in a replay of the file, so both views show the same.
+      if (!line.trim()) return;
+      entry.lines.push(line);
       emitter.emit('line', line);
     },
   }).then(({ code }) => {
@@ -241,7 +276,9 @@ function start(rawSpec) {
     meta.resultError = err.message;
     return meta;
   }).then((final) => new Promise((resolve) => log.end(() => {
+    clearInterval(beatTimer);
     store.writeJson(path.join(dir, 'run.json'), final);
+    fs.rmSync(heartbeat, { force: true });
     live.delete(id);
     emitter.emit('end', final);
     resolve(final);
@@ -268,6 +305,7 @@ function readLog(id, from = 0, whole = false) {
   return { text: data.subarray(from, end).toString('utf8'), next: end };
 }
 
+// { emitter, lines } of a run in this process, or null.
 function subscribe(id) {
   return live.get(id) || null;
 }
@@ -285,8 +323,8 @@ function listSnapshots() {
 
 function file(id, name) {
   const full = store.safeJoin(runDir(id), name);
-  if (!fs.existsSync(full) || fs.statSync(full).isDirectory()) throw httpError(404, 'Not found');
+  if (!fs.existsSync(full) || !fs.statSync(full).isFile()) throw httpError(404, 'Not found');
   return full;
 }
 
-module.exports = { start, list, readMeta, remove, readLog, subscribe, listSnapshots, file, runDir, RUN_ID, CATEGORIES, DEFAULT_CATEGORIES };
+module.exports = { start, list, readMeta, remove, readLog, subscribe, listSnapshots, file, runDir, normalizeSpec, RUN_ID, CATEGORIES, DEFAULT_CATEGORIES };

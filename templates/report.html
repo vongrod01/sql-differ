@@ -68,8 +68,8 @@
   .card:hover { border-color: var(--accent); }
   .card.active { outline: 2px solid var(--accent); outline-offset: -1px; }
   .card .n { display: block; font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
-  .card.src .n { color: var(--src); }
-  .card.tgt .n { color: var(--tgt); }
+  .card.del .n { color: var(--src); }
+  .card.add .n { color: var(--tgt); }
   .card.chg .n { color: var(--chg); }
   .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
   .scroll-x { overflow-x: auto; }
@@ -84,8 +84,8 @@
   .summary tbody tr:hover { background: var(--head); }
   .summary tbody tr:last-child td { border-bottom: 0; }
   .summary tr.zero td { color: var(--muted); }
-  .summary td.src { color: var(--src); font-weight: 600; }
-  .summary td.tgt { color: var(--tgt); font-weight: 600; }
+  .summary td.del { color: var(--src); font-weight: 600; }
+  .summary td.add { color: var(--tgt); font-weight: 600; }
   .summary td.chg { color: var(--chg); font-weight: 600; }
   .summary td.unk { color: var(--unk); font-weight: 600; }
   .toolbar {
@@ -107,8 +107,8 @@
   .results td.obj { font-family: Consolas, "Cascadia Mono", "Leelawadee UI", monospace; word-break: break-all; width: 38%; }
   .results td.detail div { word-break: break-word; }
   .tag { display: inline-block; padding: 1px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; }
-  .tag.src { color: var(--src); background: var(--src-bg); }
-  .tag.tgt { color: var(--tgt); background: var(--tgt-bg); }
+  .tag.del { color: var(--src); background: var(--src-bg); }
+  .tag.add { color: var(--tgt); background: var(--tgt-bg); }
   .tag.chg { color: var(--chg); background: var(--chg-bg); }
   .tag.unk { color: var(--unk); background: var(--unk-bg); }
   .card.unk .n { color: var(--unk); }
@@ -167,9 +167,13 @@ const META = __META_JSON__;
 const DATA = __DATA_JSON__;
 (function () {
   'use strict';
+  // sync (default): read as changes to the target, which becomes like the source model, so
+  // "only in source" is something to add (green) and "only in target" something to remove (red).
+  // timeline (drift): read from the older source to the later target, the other way round.
+  const TIMELINE = META.perspective === 'timeline';
   const STATUS = {
-    OnlyInSource: { label: 'Only in source', cls: 'src' },
-    OnlyInTarget: { label: 'Only in target', cls: 'tgt' },
+    OnlyInSource: { label: 'Only in source', cls: TIMELINE ? 'del' : 'add' },
+    OnlyInTarget: { label: 'Only in target', cls: TIMELINE ? 'add' : 'del' },
     Different: { label: 'Different', cls: 'chg' },
     Unverified: { label: 'Cannot compare', cls: 'unk' }
   };
@@ -189,8 +193,8 @@ const DATA = __DATA_JSON__;
   function renderCards() {
     const cards = [
       ['all', 'All items', rows.length, ''],
-      ['OnlyInSource', 'Only in source', total('OnlyInSource'), 'src'],
-      ['OnlyInTarget', 'Only in target', total('OnlyInTarget'), 'tgt'],
+      ['OnlyInSource', 'Only in source', total('OnlyInSource'), STATUS.OnlyInSource.cls],
+      ['OnlyInTarget', 'Only in target', total('OnlyInTarget'), STATUS.OnlyInTarget.cls],
       ['Different', 'Different', total('Different'), 'chg'],
       ['Unverified', 'Cannot compare', total('Unverified'), 'unk']
     ];
@@ -205,7 +209,7 @@ const DATA = __DATA_JSON__;
     META.summary.forEach(s => {
       const zero = s[3] + s[4] + s[5] + s[6] === 0;
       html += `<tr data-cat="${esc(s[0])}"${zero ? ' class="zero"' : ''}><td>${esc(s[0])}</td><td>${s[1]}</td><td>${s[2]}</td>` +
-        `<td${s[3] ? ' class="src"' : ''}>${s[3]}</td><td${s[4] ? ' class="tgt"' : ''}>${s[4]}</td>` +
+        `<td${s[3] ? ` class="${STATUS.OnlyInSource.cls}"` : ''}>${s[3]}</td><td${s[4] ? ` class="${STATUS.OnlyInTarget.cls}"` : ''}>${s[4]}</td>` +
         `<td${s[5] ? ' class="chg"' : ''}>${s[5]}</td><td${s[6] ? ' class="unk"' : ''}>${s[6]}</td></tr>`;
     });
     $('summary').innerHTML = html + '</tbody>';
@@ -303,7 +307,8 @@ const DATA = __DATA_JSON__;
     return ops;
   }
 
-  function renderDiff(a, b) {
+  // a is the "before" side (red, -) and b the "after" side (green, +).
+  function renderDiff(a, b, aName, bName) {
     const ops = diffLines(a.split('\n'), b.split('\n'));
     const CONTEXT = 3;
     const show = new Uint8Array(ops.length);
@@ -324,7 +329,7 @@ const DATA = __DATA_JSON__;
         `<td class="sig">${t === ' ' ? '' : t}</td><td>${esc(op[1])}</td></tr>`;
     });
     if (hidden) html += gap(hidden);
-    return '<div class="legend">- source line &nbsp; + target line &nbsp; (line numbers: source | target)</div>' +
+    return `<div class="legend">- ${aName} &nbsp; + ${bName} &nbsp; (line numbers: ${aName.split(' ')[0]} | ${bName.split(' ')[0]})</div>` +
       `<div class="code-wrap"><table class="code">${html}</table></div>`;
   }
 
@@ -365,9 +370,11 @@ const DATA = __DATA_JSON__;
     const r = rows[Number(btn.dataset.id)];
     const tr = $('def-' + r.id);
     if (!tr.dataset.ready) {
-      tr.firstElementChild.innerHTML = r.a !== null && r.b !== null
-        ? renderDiff(r.a, r.b)
-        : renderPlain(r.a !== null ? r.a : r.b);
+      let html;
+      if (r.a === null || r.b === null) html = renderPlain(r.a !== null ? r.a : r.b);
+      else if (TIMELINE) html = renderDiff(r.a, r.b, 'source (from)', 'target (to)');
+      else html = renderDiff(r.b, r.a, 'target (current)', 'source (model)');
+      tr.firstElementChild.innerHTML = html;
       tr.dataset.ready = '1';
     }
     tr.hidden = !tr.hidden;

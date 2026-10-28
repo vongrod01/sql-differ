@@ -113,11 +113,13 @@ function engineArgs(id, side) {
 }
 
 // DPAPI (CurrentUser): only this Windows user on this machine can decrypt the result, which is
-// also the account the scheduled tasks run as. The password travels over stdin, never argv.
+// also the account the scheduled tasks run as. The password travels over stdin, never argv, as
+// base64 UTF-8: PowerShell decodes stdin with the system code page, which mangles Thai and other
+// non-ASCII characters.
 async function protect(plain) {
   if (!plain) return '';
-  const script = '$p = [Console]::In.ReadToEnd(); ConvertTo-SecureString $p -AsPlainText -Force | ConvertFrom-SecureString';
-  const { code, stdout, stderr } = await runPowerShell(['-Command', script], { input: plain });
+  const script = '$p = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String([Console]::In.ReadToEnd().Trim())); ConvertTo-SecureString $p -AsPlainText -Force | ConvertFrom-SecureString';
+  const { code, stdout, stderr } = await runPowerShell(['-Command', script], { input: Buffer.from(plain, 'utf8').toString('base64') });
   if (code !== 0 || !stdout.trim()) throw new Error(`Could not encrypt the password: ${stderr.trim()}`);
   return stdout.trim();
 }
@@ -140,7 +142,12 @@ async function buildProfile(def, existing) {
   let password = '';
   if (v.auth === 'sql') {
     if (def.password) password = await protect(String(def.password));
-    else if (existing && existing.user) password = existing.password || '';
+    else if (existing && existing.user) {
+      // The stored password only goes back to the server and login it was saved for.
+      const sameLogin = existing.server === v.server && (existing.port || null) === v.port && existing.user === v.user;
+      if (!sameLogin) throw httpError(400, 'The server or user changed: enter the password again');
+      password = existing.password || '';
+    }
   }
   return {
     name: v.name,

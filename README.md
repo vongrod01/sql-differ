@@ -1,7 +1,7 @@
 # database-diff
 
 ระบบเปรียบเทียบ schema ของ SQL Server (table, column, index, FK, check, view, SP, function, trigger, type, sequence, synonym) ทั้งในเซิร์ฟเวอร์เดียวกันและข้ามเซิร์ฟเวอร์ มีทั้งหน้าเว็บบนเครื่องนี้และ command line
-ทำงานแบบ **read-only**: อ่านจาก catalog views (`sys.*`) อย่างเดียว ไม่แก้ไขฐานใดๆ ส่วน sync script ที่สร้างขึ้นมา ระบบไม่รันให้เอง
+ทำงานแบบ **read-only**: อ่านจาก catalog views (`sys.*`) อย่างเดียว ไม่แก้ไขฐานใดๆ ส่วน sync script และ rollback script ที่สร้างขึ้นมา ระบบไม่รันให้เอง
 
 ต้องมี: Windows PowerShell 5.1 (มากับ Windows) และ Node.js สำหรับหน้าเว็บ ไม่ต้องติดตั้ง package เพิ่ม
 
@@ -20,7 +20,7 @@
 
 | หน้า | ใช้ทำอะไร |
 |---|---|
-| เปรียบเทียบ | เลือก server/ฐานทั้งสองฝั่ง แบบฐานเดียวหรือหลายฐาน (batch) กดเริ่มแล้วดู log สด ได้รายงาน HTML + sync script |
+| เปรียบเทียบ | เลือก server/ฐานทั้งสองฝั่ง แบบฐานเดียวหรือหลายฐาน (batch) กดเริ่มแล้วดู log สด ได้รายงาน HTML + sync script + rollback script |
 | ประวัติ | ผลทุกครั้งที่รัน (ทั้งกดเองและตั้งเวลา) เปิดรายงานย้อนหลังได้ |
 | Schema drift | เทียบ schema ของฐานเดียวกันระหว่างสองช่วงเวลา (snapshot เก่า กับ snapshot อื่นหรือฐานจริงตอนนี้) |
 | ตั้งเวลา | ตั้งให้รันเปรียบเทียบอัตโนมัติทุกวันหรือบางวัน ผ่าน Windows Task Scheduler |
@@ -45,9 +45,24 @@
 - คำสั่งที่ลบของ (DROP TABLE / DROP COLUMN / DROP PROCEDURE ...) ถูก **comment ไว้** ท้ายไฟล์
 - `ALTER COLUMN` เปิดใช้งานอยู่: ต้องเช็คเองว่าไม่ทำข้อมูลหาย (type แคบลง หรือเปลี่ยนเป็น NOT NULL)
 - เรียงตามชนิด object ไม่ได้เรียงตาม dependency ถ้าบางส่วนล้มเหลว ให้รันส่วนนั้นซ้ำหลังส่วนอื่น
-- view / SP / function / trigger ใช้ `CREATE OR ALTER` (ต้องเป็น SQL Server 2016 SP1 ขึ้นไป)
+- view / SP / function / trigger ใช้ `CREATE OR ALTER` (ต้องเป็น SQL Server 2016 SP1 ขึ้นไป) ยกเว้น object ที่เปลี่ยนชนิด (เช่น scalar function เป็น table-valued) ซึ่ง ALTER ทำไม่ได้: ไฟล์จะมี `DROP` ที่ comment ไว้ให้ แล้วต้องรัน definition จากรายงานเอง
+- ตารางใหม่ถูกสร้างพร้อม primary key แต่ index / FK / check จะถูกสร้างก็ต่อเมื่อเลือกหมวดนั้นด้วย
 - รายการที่ "เทียบไม่ได้" จะไม่ถูกสร้างคำสั่ง แต่จะลิสต์ไว้ในไฟล์
 - ในหน้า drift ไฟล์เดียวกันนี้คือ "script ย้อนกลับ": ทำให้ฝั่ง "ถึง" กลับไปเป็นแบบ "จาก"
+
+### Rollback script
+
+ทุกครั้งที่เปรียบเทียบจะได้ไฟล์ `.rollback.sql` คู่กับ `.sync.sql` ใช้ย้อนผลของ sync script: รันบนฝั่ง **target** หลังรัน sync script แล้ว schema จะกลับไปเป็นแบบตอนที่เปรียบเทียบ (สร้างจาก snapshot ของ target ก่อน sync)
+- ใช้ได้ถูกต้องเมื่อหลังเปรียบเทียบ target ถูกแก้โดย sync script เท่านั้น ถ้ามีคนแก้อย่างอื่นด้วย ให้เปรียบเทียบใหม่
+- object ที่ sync script **แก้** (column, index, check, FK, view, SP, function, trigger, synonym, sequence) ถูกแก้กลับเป็นแบบเดิม
+- object ที่ sync script **สร้างใหม่**:
+  - procedure / view / function / trigger / synonym / index / FK / check ถูก DROP จริงตั้งแต่ต้นไฟล์ ใช้ `DROP ... IF EXISTS` จึงรันได้แม้ sync script หยุดกลางทาง หรือรัน rollback ซ้ำ
+  - table / column / sequence / type / schema ถูก **comment ไว้** ท้ายไฟล์ เพราะลบแล้วข้อมูลที่เขียนเข้ามาหลัง sync หายด้วย
+  - constraint ที่ระบบตั้งชื่อเอง (ไม่มีชื่อใน source) ได้ชื่อใหม่ตอน sync จึงลบด้วยชื่อไม่ได้: ไฟล์จะมีหมายเหตุให้หาชื่อแล้วลบเอง
+- object ที่มีแค่ฝั่ง target ไม่อยู่ใน rollback เพราะ sync script ไม่ได้ลบมัน (DROP ถูก comment ไว้) ถ้าไป uncomment แล้วรัน ต้องกู้จาก backup
+- schema ที่ sync script สร้างให้ "เฉพาะเมื่อยังไม่มี" (กรณีไม่ได้เลือกหมวด Schema) ไม่ถูกลบ
+- ข้อมูลที่หายไปแล้ว (เช่นจาก ALTER COLUMN ที่แคบลง) rollback กู้คืนไม่ได้ ต้องใช้ backup
+- หน้า drift ไม่มีปุ่ม rollback เพราะ script ของหน้านั้นเป็น script ย้อนกลับอยู่แล้ว
 
 ## Command line
 
@@ -80,7 +95,7 @@ powershell -ExecutionPolicy Bypass -File .\Compare-Database.ps1 -ListDatabases -
 
 ดูพารามิเตอร์ทั้งหมด: `powershell -ExecutionPolicy Bypass -Command "Get-Help .\Compare-Database.ps1 -Full"`
 
-ผลลัพธ์ของแต่ละการเทียบ: `.html` (รายงาน), `.json` (ข้อมูลดิบ), `.sync.sql` และถ้าใส่ `-SaveSnapshots` จะได้ `.source.snapshot.json` / `.target.snapshot.json` ด้วย
+ผลลัพธ์ของแต่ละการเทียบ: `.html` (รายงาน), `.json` (ข้อมูลดิบ), `.sync.sql`, `.rollback.sql` และถ้าใส่ `-SaveSnapshots` จะได้ `.source.snapshot.json` / `.target.snapshot.json` ด้วย
 
 ### Profile
 
@@ -104,9 +119,10 @@ powershell -ExecutionPolicy Bypass -File .\Compare-Database.ps1 -ListDatabases -
 ## กติกาการเทียบที่ลดผลต่างหลอก
 
 - Column / Index / FK / Check เทียบเฉพาะตารางที่มีทั้งสองฝั่ง (ตารางที่ขาดรายงานครั้งเดียวในหมวด Table)
-- Constraint ที่ระบบตั้งชื่อเอง (`PK__Orders__3214EC07...`) จับคู่ด้วยตาราง + นิยาม ไม่ใช้ชื่อ ถ้านิยามตรงแต่ชื่อต่าง รายงานเป็น `Name: a -> b`
-- Definition ถูก normalize ก่อนเทียบ: line ending, ช่องว่างท้ายบรรทัด, บรรทัดว่างหัวท้าย
-- ข้าม object ของ SSMS diagram (`sysdiagrams`, `sp_*diagram*`, `fn_diagramobjects`)
+- Constraint ที่ระบบตั้งชื่อเอง (`PK__Orders__3214EC07...`) จับคู่ด้วยตาราง + นิยาม ไม่ใช้ชื่อ ถ้านิยามตรงแต่ชื่อต่าง รายงานเป็น `Name: source a, target b`
+- Definition ถูก normalize ก่อนเทียบ: line ending, ช่องว่างท้ายบรรทัด, บรรทัดว่างหัวท้าย, `CREATE OR ALTER` นับเป็น `CREATE` (sync script ยังใช้ข้อความดิบ ไม่ตัดช่องว่างใน string literal)
+- ชื่อตารางและคอลัมน์จับคู่แบบไม่สนตัวพิมพ์ (ตรงกับ collation แบบ CI) ชื่อที่ต่างแค่ตัวพิมพ์ (`Id` กับ `id`) จึงไม่ถูกรายงาน และรายชื่อคอลัมน์ใน index / FK ก็เทียบแบบไม่สนตัวพิมพ์เช่นกัน
+- ข้าม object ของ SSMS diagram: ดูจาก extended property `microsoft_database_tools_support` ที่ SSMS ใส่ไว้ (ปกติคือ `sysdiagrams`, `sp_*diagram*`, `fn_diagramobjects`) รวมถึงคอลัมน์และ index ของ `sysdiagrams` ด้วย
 
 ## สถานะในรายงาน
 
@@ -129,7 +145,7 @@ Login ทั้งสองฝั่งควรมี `VIEW DEFINITION` ใน�
 | path | คือ |
 |---|---|
 | `Compare-Database.ps1` | engine (อ่าน schema, เทียบ, เขียนรายงาน) |
-| `lib\SyncScript.ps1` | สร้าง sync script |
+| `lib\SyncScript.ps1` | สร้าง sync script และ rollback script |
 | `templates\` | template ของรายงาน HTML |
 | `app\` | หน้าเว็บ (Node, ไม่มี dependency) และ `cli.js` / `run-job.ps1` สำหรับงานตั้งเวลา |
 | `data\` | ประวัติการรัน, snapshot, profile ของ server, งานตั้งเวลา (ไม่เข้า git) |

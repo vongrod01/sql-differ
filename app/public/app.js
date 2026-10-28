@@ -25,13 +25,24 @@ function fmtTime(iso) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-function countsHtml(c, incomplete) {
+// Compare runs read as changes to the target (it becomes like the source): "only in source" is
+// something to add (green), "only in target" something to remove (red). Drift reads from the older
+// side to the later one, so the colours and words flip.
+function onlyIn(kind) {
+  if (kind === 'drift') {
+    return { source: { cls: 'src', label: 'มีแค่ "จาก"' }, target: { cls: 'tgt', label: 'มีแค่ "ถึง"' } };
+  }
+  return { source: { cls: 'tgt', label: 'มีแค่ source' }, target: { cls: 'src', label: 'มีแค่ target' } };
+}
+
+function countsHtml(c, incomplete, kind) {
   if (!c) return '<span class="muted">-</span>';
   const total = c.onlyInSource + c.onlyInTarget + c.different;
+  const o = onlyIn(kind);
   const parts = [];
   if (total === 0 && !c.unverified) parts.push('<span class="tag ok">เหมือนกัน</span>');
-  if (c.onlyInSource) parts.push(`<span class="tag src">มีแค่ source ${c.onlyInSource}</span>`);
-  if (c.onlyInTarget) parts.push(`<span class="tag tgt">มีแค่ target ${c.onlyInTarget}</span>`);
+  if (c.onlyInSource) parts.push(`<span class="tag ${o.source.cls}">${o.source.label} ${c.onlyInSource}</span>`);
+  if (c.onlyInTarget) parts.push(`<span class="tag ${o.target.cls}">${o.target.label} ${c.onlyInTarget}</span>`);
   if (c.different) parts.push(`<span class="tag chg">ต่างกัน ${c.different}</span>`);
   if (c.unverified) parts.push(`<span class="tag">เทียบไม่ได้ ${c.unverified}</span>`);
   if (incomplete) parts.push('<span class="tag err">ผลไม่ครบ</span>');
@@ -146,11 +157,14 @@ const OPTIONS = [
 async function specForm(root, initial, opts = {}) {
   const spec = initial || { kind: 'compare', source: { serverId: 'local' }, target: { serverId: 'local' }, options: {} };
   const list = await getServers();
+  // A saved server that no longer exists is shown as missing (and blocks saving) rather than
+  // letting the browser fall back to the first server in the list.
+  const missing = (id) => (id && !list.some((s) => s.id === id) ? `<option value="" selected>ไม่พบ server: ${esc(id)}</option>` : '');
   const side = (name, title) => `
     <div class="panel">
       <div class="side-title">${title}</div>
       <label class="field"><span>Server</span>
-        <select data-role="${name}-server">${list.map((s) => serverOption(s, spec[name].serverId)).join('')}</select></label>
+        <select data-role="${name}-server">${missing(spec[name].serverId)}${list.map((s) => serverOption(s, spec[name].serverId)).join('')}</select></label>
       <label class="field single-only"><span>Database</span>
         <select data-role="${name}-db"><option value="">กำลังโหลด...</option></select></label>
       <div class="hint" data-role="${name}-info"></div>
@@ -180,6 +194,7 @@ async function specForm(root, initial, opts = {}) {
   const q = (role) => root.querySelector(`[data-role="${role}"]`);
   const kind = () => root.querySelector('input[name=kind]:checked').value;
   const state = { source: null, target: null };
+  const failures = { source: false, target: false };
   let picked = new Set(spec.allDatabases ? [] : spec.databases || []);
 
   const applyKind = () => {
@@ -191,11 +206,20 @@ async function specForm(root, initial, opts = {}) {
 
   const renderGrid = () => {
     const grid = q('db-grid');
+    const failed = ['source', 'target'].filter((n) => failures[n]);
+    if (failed.length) { grid.innerHTML = `<span class="warn-text">โหลดรายชื่อฐานฝั่ง ${failed.join(', ')} ไม่ได้ ดูรายละเอียดใต้ช่อง Server</span>`; return; }
     if (!state.source || !state.target) { grid.innerHTML = '<span class="muted">กำลังโหลด...</span>'; return; }
-    const targetNames = new Set(state.target.databases.map((d) => d.name.toLowerCase()));
-    const common = state.source.databases.filter((d) => targetNames.has(d.name.toLowerCase()));
+    const targetByName = new Map(state.target.databases.map((d) => [d.name.toLowerCase(), d]));
+    const common = state.source.databases.filter((d) => targetByName.has(d.name.toLowerCase()));
     if (!common.length) { grid.innerHTML = '<span class="muted">ไม่มีฐานที่ชื่อตรงกันทั้งสองฝั่ง</span>'; return; }
-    grid.innerHTML = common.map((d) => `<label class="check"><input type="checkbox" value="${esc(d.name)}"${picked.has(d.name) ? ' checked' : ''}>${esc(d.name)}</label>`).join('');
+    grid.innerHTML = common.map((d) => {
+      const t = targetByName.get(d.name.toLowerCase());
+      const blocked = [d.hasAccess === false ? 'source' : '', t.hasAccess === false ? 'target' : ''].filter(Boolean);
+      // A database the login cannot open is listed (so the list is complete) but cannot be picked.
+      if (blocked.length) picked.delete(d.name);
+      const note = blocked.length ? ` <span class="muted small">(เข้าไม่ได้ฝั่ง ${blocked.join(', ')})</span>` : '';
+      return `<label class="check"><input type="checkbox" value="${esc(d.name)}"${picked.has(d.name) ? ' checked' : ''}${blocked.length ? ' disabled' : ''}>${esc(d.name)}${note}</label>`;
+    }).join('');
   };
 
   const fillDb = async (name, preferred) => {
@@ -205,19 +229,38 @@ async function specForm(root, initial, opts = {}) {
     select.innerHTML = '<option value="">กำลังโหลด...</option>';
     info.textContent = '';
     state[name] = null;
+    failures[name] = false;
+    if (!serverId) {
+      // A saved job or draft whose server has since been deleted.
+      select.innerHTML = '<option value="">เลือก server ก่อน</option>';
+      info.innerHTML = '<span class="warn-text">ไม่พบ server เดิมแล้ว เลือก server ใหม่</span>';
+      failures[name] = true;
+      renderGrid();
+      return;
+    }
     try {
       const result = await getDatabases(serverId);
       if (q(`${name}-server`).value !== serverId) return;
       state[name] = result;
       // No database is picked for the user; only an edited job (preferred) comes back selected.
+      // Databases the login cannot open stay in the list (disabled) so it matches what the server has.
       select.innerHTML = '<option value="">-- เลือก database --</option>' +
-        result.databases.map((d) => `<option value="${esc(d.name)}"${d.name === preferred ? ' selected' : ''}>${esc(d.name)}${d.canViewDefinition ? '' : ' (ไม่มีสิทธิ์ VIEW DEFINITION)'}</option>`).join('');
-      const noView = result.databases.filter((d) => !d.canViewDefinition).length;
+        result.databases.map((d) => {
+          const open = d.hasAccess !== false;
+          const note = !open ? ' (เข้าไม่ได้)' : d.canViewDefinition ? '' : ' (ไม่มีสิทธิ์ VIEW DEFINITION)';
+          return `<option value="${esc(d.name)}"${open && d.name === preferred ? ' selected' : ''}${open ? '' : ' disabled'}>${esc(d.name)}${note}</option>`;
+        }).join('');
+      const accessible = result.databases.filter((d) => d.hasAccess !== false);
+      const noAccess = result.databases.length - accessible.length;
+      const noView = accessible.filter((d) => !d.canViewDefinition).length;
       info.innerHTML = `${esc(result.edition)} ${esc(result.version)} &middot; login ${esc(result.login)}` +
-        (noView ? `<div class="warn-text">login นี้ไม่มีสิทธิ์ VIEW DEFINITION ใน ${noView} ฐาน ผลเทียบของฐานเหล่านั้นจะไม่ครบ</div>` : '');
+        (noAccess ? `<div class="warn-text">login นี้เข้าได้ ${accessible.length} จาก ${result.databases.length} ฐาน (ฐานที่เข้าไม่ได้แสดงไว้แต่เลือกไม่ได้)</div>` : '') +
+        (noView ? `<div class="warn-text">ไม่มีสิทธิ์ VIEW DEFINITION ใน ${noView} ฐานที่เข้าได้ ผลเทียบของฐานเหล่านั้นจะไม่ครบ</div>` : '');
     } catch (err) {
+      if (q(`${name}-server`).value !== serverId) return;
       select.innerHTML = '<option value="">โหลดไม่ได้</option>';
       info.innerHTML = `<span class="warn-text">${esc(err.message)}</span>`;
+      failures[name] = true;
     }
     renderGrid();
   };
@@ -235,7 +278,7 @@ async function specForm(root, initial, opts = {}) {
   q('db-grid').addEventListener('change', (e) => {
     if (e.target.checked) picked.add(e.target.value); else picked.delete(e.target.value);
   });
-  q('all').addEventListener('click', () => { q('db-grid').querySelectorAll('input').forEach((i) => { i.checked = true; picked.add(i.value); }); });
+  q('all').addEventListener('click', () => { q('db-grid').querySelectorAll('input:not(:disabled)').forEach((i) => { i.checked = true; picked.add(i.value); }); });
   q('none').addEventListener('click', () => { picked = new Set(); q('db-grid').querySelectorAll('input').forEach((i) => { i.checked = false; }); });
 
   const getDraft = () => {
@@ -274,9 +317,12 @@ async function specForm(root, initial, opts = {}) {
         categories: readCategories(root),
         options,
       };
+      if (!out.source.serverId || !out.target.serverId) throw new Error('เลือก server ทั้งสองฝั่งก่อน');
       if (out.kind === 'batch') {
         out.allDatabases = root.querySelector('input[name=dbmode]:checked').value === 'all';
-        out.databases = out.allDatabases ? [] : [...picked];
+        // Only what the grid shows ticked: a pick kept from another server or an old draft is not
+        // on screen and must not be sent.
+        out.databases = out.allDatabases ? [] : [...q('db-grid').querySelectorAll('input:checked:not(:disabled)')].map((i) => i.value);
         if (!out.allDatabases && !out.databases.length) throw new Error('เลือกฐานอย่างน้อย 1 ฐาน');
       } else {
         out.source.database = q('source-db').value;
@@ -330,13 +376,18 @@ async function pageCompare() {
     clearDraft();
     pageCompare();
   });
+  const formEl = document.getElementById('form');
+  const startButton = document.getElementById('start');
   let form;
   try {
-    form = await specForm(document.getElementById('form'), loadDraft() || undefined, { onChange: saveDraft });
+    form = await specForm(formEl, loadDraft() || undefined, { onChange: saveDraft });
   } catch (err) {
-    return showError(document.getElementById('form'), err);
+    return showError(formEl, err);
   }
-  document.getElementById('start').addEventListener('click', async (e) => {
+  // Reset or another page replaced this page while the lists loaded; the newer page wires its own
+  // button, and wiring it here too would start a second run from this stale form.
+  if (!startButton.isConnected) return;
+  startButton.addEventListener('click', async (e) => {
     const msg = document.getElementById('msg');
     msg.textContent = '';
     try {
@@ -379,34 +430,53 @@ async function pageRun(id) {
       result.innerHTML = `<div class="notice error">การรันล้มเหลว ${esc(final.resultError || '')} ดูรายละเอียดใน log</div>`;
       return;
     }
-    const syncLabel = final.spec.kind === 'drift' ? 'Script ย้อนกลับ' : 'Sync script';
+    // Open and download buttons of one script file.
+    const scriptButtons = (file, label, downloadLabel) => (file
+      ? `<a class="btn" href="/runs/${final.id}/${encodeURIComponent(file)}" target="_blank" rel="noopener">${label}</a>` +
+        `<a class="btn" href="/runs/${final.id}/${encodeURIComponent(file)}?download=1">${downloadLabel}</a>`
+      : '');
+    // In a drift run the sync script is already the way back, so it has no rollback button.
+    const drift = final.spec.kind === 'drift';
     links.innerHTML = `<a class="btn primary" href="/runs/${final.id}/${final.report}" target="_blank" rel="noopener">เปิดรายงาน</a>` +
-      (final.syncScript ? `<a class="btn" href="/runs/${final.id}/${encodeURIComponent(final.syncScript)}" target="_blank" rel="noopener">${syncLabel}</a>` +
-        `<a class="btn" href="/runs/${final.id}/${encodeURIComponent(final.syncScript)}?download=1">ดาวน์โหลด .sql</a>` : '');
+      (drift
+        ? scriptButtons(final.syncScript, 'Script ย้อนกลับ', 'ดาวน์โหลด .sql')
+        : scriptButtons(final.syncScript, 'Sync script', 'ดาวน์โหลด sync .sql') +
+          scriptButtons(final.rollbackScript, 'Rollback script', 'ดาวน์โหลด rollback .sql'));
     const c = final.counts || {};
+    const o = onlyIn(final.spec.kind);
     let html = `<div class="cards">
-      <div class="card src"><span class="n">${c.onlyInSource || 0}</span>มีแค่ source</div>
-      <div class="card tgt"><span class="n">${c.onlyInTarget || 0}</span>มีแค่ target</div>
+      <div class="card ${o.source.cls}"><span class="n">${c.onlyInSource || 0}</span>${o.source.label}</div>
+      <div class="card ${o.target.cls}"><span class="n">${c.onlyInTarget || 0}</span>${o.target.label}</div>
       <div class="card chg"><span class="n">${c.different || 0}</span>ต่างกัน</div>
       <div class="card unk"><span class="n">${c.unverified || 0}</span>เทียบไม่ได้</div></div>`;
     if (final.incomplete) {
       html += '<div class="notice warn">ผลไม่ครบ: login อย่างน้อยหนึ่งฝั่งไม่มีสิทธิ์ VIEW DEFINITION object ที่มองไม่เห็นจะขึ้นเป็น "มีแค่..." และ definition จะขึ้นเป็น "เทียบไม่ได้"</div>';
     }
     if (final.syncError) html += `<div class="notice error">สร้าง sync script ไม่สำเร็จ: ${esc(final.syncError)}</div>`;
+    if (!drift && final.rollbackError) html += `<div class="notice error">สร้าง rollback script ไม่สำเร็จ: ${esc(final.rollbackError)}</div>`;
     if (final.syncScript || (final.databases && final.databases.some((d) => d.syncScript))) {
-      html += final.spec.kind === 'drift'
+      html += drift
         ? '<div class="notice">Script ย้อนกลับ: ถ้ารันบนฝั่ง "ถึง" จะทำให้ schema กลับไปเป็นแบบ "จาก" ระบบไม่รัน script ให้ ต้อง review และรันเองใน SSMS</div>'
         : '<div class="notice">Sync script: ถ้ารันบนฝั่ง target จะทำให้ schema ตรงกับ source ระบบไม่รัน script ให้ ต้อง review และรันเองใน SSMS คำสั่งที่ลบของ (DROP) ถูก comment ไว้ท้ายไฟล์</div>';
+    }
+    if (!drift && (final.rollbackScript || (final.databases && final.databases.some((d) => d.rollbackScript)))) {
+      html += '<div class="notice">Rollback script: รันบน target หลังรัน sync script แล้ว เพื่อย้อน schema กลับเป็นแบบตอนเปรียบเทียบ (ใช้ได้เมื่อหลังเปรียบเทียบ target ถูกแก้โดย sync script เท่านั้น) ' +
+        'ของที่ sync script สร้างใหม่: procedure, view, function, trigger, index และ constraint จะถูก DROP ส่วน table และ column ถูก comment ไว้ท้ายไฟล์ เพราะลบแล้วข้อมูลหาย</div>';
     }
     if (final.databases) {
       html += `<div class="table-wrap"><table><thead><tr><th>Database</th><th>ผลลัพธ์</th><th></th></tr></thead><tbody>${final.databases.map((d) => `
         <tr><td>${esc(d.database)}</td>
-        <td>${d.error ? `<span class="warn-text">${esc(d.error)}</span>` : countsHtml(d.counts, d.incomplete)}</td>
+        <td>${d.error ? `<span class="warn-text">${esc(d.error)}</span>` : countsHtml(d.counts, d.incomplete, final.spec.kind)}</td>
         <td><div class="actions">${d.report ? `<a href="/runs/${final.id}/${encodeURIComponent(d.report)}" target="_blank" rel="noopener">รายงาน</a>` : ''}
-          ${d.syncScript ? `<a href="/runs/${final.id}/${encodeURIComponent(d.syncScript)}" target="_blank" rel="noopener">sync script</a>` : ''}</div></td></tr>`).join('')}
+          ${d.syncScript ? `<a href="/runs/${final.id}/${encodeURIComponent(d.syncScript)}" target="_blank" rel="noopener">sync script</a>` : ''}
+          ${d.rollbackScript ? `<a href="/runs/${final.id}/${encodeURIComponent(d.rollbackScript)}" target="_blank" rel="noopener">rollback script</a>` : ''}</div></td></tr>`).join('')}
       </tbody></table></div>`;
       if (final.onlyOnSource && final.onlyOnSource.length) html += `<p class="muted small">ฐานที่มีแค่ฝั่ง source: ${esc(final.onlyOnSource.join(', '))}</p>`;
       if (final.onlyOnTarget && final.onlyOnTarget.length) html += `<p class="muted small">ฐานที่มีแค่ฝั่ง target: ${esc(final.onlyOnTarget.join(', '))}</p>`;
+      if (final.noAccess && final.noAccess.length) {
+        const names = final.noAccess.map((d) => `${d.database} (${[d.source ? '' : 'source', d.target ? '' : 'target'].filter(Boolean).join(', ')})`);
+        html += `<div class="notice warn">มีทั้งสองฝั่งแต่ login เข้าไม่ได้ ${final.noAccess.length} ฐาน จึงไม่ได้เทียบ: ${esc(names.join(', '))}</div>`;
+      }
     }
     result.innerHTML = html;
   };
@@ -445,7 +515,7 @@ async function pageHistory() {
       <td class="mono small">${fmtTime(r.createdAt)}</td>
       <td>${KIND_LABEL[r.spec.kind]}${r.spec.trigger === 'schedule' ? '<div class="muted small">ตั้งเวลา</div>' : ''}</td>
       <td>${runTitle(r)}</td>
-      <td>${r.status === 'done' ? countsHtml(r.counts, r.incomplete) : ''}</td>
+      <td>${r.status === 'done' ? countsHtml(r.counts, r.incomplete, r.spec.kind) : ''}</td>
       <td>${statusTag(r.status)}</td>
       <td><div class="actions">${r.report ? `<a class="btn" href="/runs/${r.id}/${r.report}" target="_blank" rel="noopener">รายงาน</a>` : ''}
         ${r.status !== 'running' ? `<button class="danger" data-delete="${r.id}">ลบ</button>` : ''}</div></td></tr>`).join('')}
@@ -557,7 +627,7 @@ function scheduleText(s) {
 function specText(spec) {
   const servers = serverCache || [];
   const name = (id) => { const s = servers.find((x) => x.id === id); return s ? (s.kind === 'builtin' ? 'localhost' : s.name) : id; };
-  if (spec.kind === 'batch') return `${name(spec.source.serverId)} &rarr; ${name(spec.target.serverId)}: ${esc(spec.allDatabases ? 'ทุกฐานที่ชื่อตรงกัน' : spec.databases.join(', '))}`;
+  if (spec.kind === 'batch') return `${esc(name(spec.source.serverId))} &rarr; ${esc(name(spec.target.serverId))}: ${esc(spec.allDatabases ? 'ทุกฐานที่ชื่อตรงกัน' : spec.databases.join(', '))}`;
   return `${esc(name(spec.source.serverId))} / ${esc(spec.source.database)} &rarr; ${esc(name(spec.target.serverId))} / ${esc(spec.target.database)}`;
 }
 
@@ -579,7 +649,7 @@ async function pageSchedules() {
         <td class="small">${specText(j.spec)}</td>
         <td class="small">${scheduleText(j.schedule)}</td>
         <td class="small">${j.enabled ? (j.task.registered ? esc(j.task.nextRun) : '<span class="warn-text">ไม่พบใน Task Scheduler</span>') : '-'}</td>
-        <td>${j.lastRun ? `<a href="#/runs/${j.lastRun.id}">${fmtTime(j.lastRun.createdAt)}</a>${j.lastRun.status === 'done' ? countsHtml(j.lastRun.counts, j.lastRun.incomplete) : statusTag(j.lastRun.status)}` : '<span class="muted">ยังไม่เคยรัน</span>'}</td>
+        <td>${j.lastRun ? `<a href="#/runs/${j.lastRun.id}">${fmtTime(j.lastRun.createdAt)}</a>${j.lastRun.status === 'done' ? countsHtml(j.lastRun.counts, j.lastRun.incomplete, j.spec.kind) : statusTag(j.lastRun.status)}` : '<span class="muted">ยังไม่เคยรัน</span>'}</td>
         <td><div class="actions"><button data-run="${j.id}">รันตอนนี้</button><button data-edit="${j.id}">แก้ไข</button><button class="danger" data-delete="${j.id}">ลบ</button></div></td>
       </tr>`).join('')}</tbody></table></div>`;
     listEl.onclick = async (e) => {
@@ -589,7 +659,11 @@ async function pageSchedules() {
       try {
         if (run) { const { id } = await api('POST', `/api/jobs/${run.dataset.run}/run`); location.hash = `#/runs/${id}`; }
         if (edit) openEditor(jobs.find((j) => j.id === edit.dataset.edit));
-        if (del) armDelete(del, async () => { await api('DELETE', `/api/jobs/${del.dataset.delete}`); load(); });
+        if (del) {
+          armDelete(del, async () => {
+            try { await api('DELETE', `/api/jobs/${del.dataset.delete}`); load(); } catch (err) { alertInline(listEl, err); }
+          });
+        }
       } catch (err) { alertInline(listEl, err); }
     };
   };
@@ -611,9 +685,12 @@ async function pageSchedules() {
     const applyType = () => { days.hidden = editor.querySelector('input[name=stype]:checked').value !== 'weekly'; };
     editor.querySelectorAll('input[name=stype]').forEach((r) => r.addEventListener('change', applyType));
     applyType();
+    const saveButton = document.getElementById('job-save');
     const form = await specForm(document.getElementById('job-spec'), job ? job.spec : undefined);
+    // Another job was opened (or the page left) while the lists loaded: that editor owns the buttons.
+    if (!saveButton.isConnected) return;
     document.getElementById('job-cancel').onclick = () => { editor.innerHTML = ''; };
-    document.getElementById('job-save').onclick = async (e) => {
+    saveButton.onclick = async (e) => {
       const msg = document.getElementById('job-msg');
       try {
         e.target.disabled = true;
@@ -643,11 +720,13 @@ async function pageSchedules() {
 }
 
 function testResultHtml(r) {
-  const noView = r.databases.filter((d) => !d.canViewDefinition).length;
-  return `<div class="notice ${noView ? 'warn' : 'ok'}">
+  const accessible = r.databases.filter((d) => d.hasAccess !== false);
+  const noView = accessible.filter((d) => !d.canViewDefinition).length;
+  const limited = noView || accessible.length < r.databases.length;
+  return `<div class="notice ${limited ? 'warn' : 'ok'}">
     <b>เชื่อมต่อได้</b> &middot; ${esc(r.edition)} ${esc(r.version)} &middot; collation ${esc(r.collation)}<br>
-    login: ${esc(r.login)} &middot; เข้าถึงได้ ${r.databases.length} ฐาน &middot; VIEW ANY DEFINITION: ${r.viewAnyDefinition ? 'มี' : 'ไม่มี'}
-    ${noView ? `<br>ไม่มีสิทธิ์ VIEW DEFINITION ใน ${noView} ฐาน: ผลเทียบของฐานเหล่านั้นจะไม่ครบ` : ''}</div>`;
+    login: ${esc(r.login)} &middot; เข้าได้ ${accessible.length} จาก ${r.databases.length} ฐาน &middot; VIEW ANY DEFINITION: ${r.viewAnyDefinition ? 'มี' : 'ไม่มี'}
+    ${noView ? `<br>ไม่มีสิทธิ์ VIEW DEFINITION ใน ${noView} ฐานที่เข้าได้: ผลเทียบของฐานเหล่านั้นจะไม่ครบ` : ''}</div>`;
 }
 
 async function pageServers() {

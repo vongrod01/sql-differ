@@ -58,11 +58,21 @@ async function register(job) {
   if (code !== 0) throw httpError(500, `Task Scheduler: ${(stderr || stdout).trim()}`);
 }
 
+// Asks first whether the task exists, so no English error text has to be matched (schtasks
+// messages follow the Windows display language).
 async function unregister(id) {
+  if ((await schtasks(['/Query', '/TN', taskName(id)])).code !== 0) return;
   const { code, stdout, stderr } = await schtasks(['/Delete', '/F', '/TN', taskName(id)]);
-  if (code !== 0 && !/cannot find|does not exist/i.test(stderr + stdout)) {
-    throw httpError(500, `Task Scheduler: ${(stderr || stdout).trim()}`);
-  }
+  if (code !== 0) throw httpError(500, `Task Scheduler: ${(stderr || stdout).trim()}`);
+}
+
+// Saves and deletes run one at a time: each reads jobs.json, waits for schtasks, then writes it
+// back, and two of them overlapping would lose one job while its task stays registered.
+let queue = Promise.resolve();
+function serialized(fn) {
+  const next = queue.then(fn, fn);
+  queue = next.catch(() => {});
+  return next;
 }
 
 function parseCsvLine(line) {
@@ -100,11 +110,17 @@ function get(id) {
   return job;
 }
 
-async function save(input) {
+function save(input) {
+  return serialized(() => saveNow(input));
+}
+
+async function saveNow(input) {
   const name = String(input.name || '').trim();
   if (!name) throw httpError(400, 'Name is required');
   const schedule = validateSchedule(input.schedule);
-  if (!input.spec || input.spec.kind === 'drift') throw httpError(400, 'A schedule runs a compare or batch spec');
+  if (!input.spec || typeof input.spec !== 'object' || input.spec.kind === 'drift') throw httpError(400, 'A schedule runs a compare or batch spec');
+  // Fails now (unknown server, category or database name) instead of at the first scheduled run.
+  runs.normalizeSpec(input.spec);
   const jobs = readAll();
   let job;
   if (input.id) {
@@ -123,7 +139,11 @@ async function save(input) {
   return job;
 }
 
-async function remove(id) {
+function remove(id) {
+  return serialized(() => removeNow(id));
+}
+
+async function removeNow(id) {
   if (!JOB_ID.test(id)) throw httpError(400, 'Invalid job id');
   const jobs = readAll();
   const index = jobs.findIndex((j) => j.id === id);
@@ -133,9 +153,10 @@ async function remove(id) {
   writeAll(jobs);
 }
 
-function runNow(id) {
+// trigger: 'schedule' from Task Scheduler (cli.js), 'manual' from the "run now" button.
+function runNow(id, trigger = 'schedule') {
   const job = get(id);
-  return runs.start({ ...job.spec, trigger: 'schedule', jobId: job.id, jobName: job.name });
+  return runs.start({ ...job.spec, trigger, jobId: job.id, jobName: job.name });
 }
 
 module.exports = { list, get, save, remove, runNow, taskName };
