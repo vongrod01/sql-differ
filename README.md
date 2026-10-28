@@ -3,7 +3,7 @@
 ระบบเปรียบเทียบ schema ของ SQL Server (table, column, index, FK, check, view, SP, function, trigger, type, sequence, synonym) ทั้งในเซิร์ฟเวอร์เดียวกันและข้ามเซิร์ฟเวอร์ มีทั้งหน้าเว็บบนเครื่องนี้และ command line
 ทำงานแบบ **read-only**: อ่านจาก catalog views (`sys.*`) อย่างเดียว ไม่แก้ไขฐานใดๆ ส่วน sync script และ rollback script ที่สร้างขึ้นมา ระบบไม่รันให้เอง
 
-ต้องมี: Windows PowerShell 5.1 (มากับ Windows) และ Node.js สำหรับหน้าเว็บ ไม่ต้องติดตั้ง package เพิ่ม
+ต้องมี: Windows PowerShell 5.1 (มากับ Windows) และ Node.js 22 ขึ้นไปสำหรับหน้าเว็บ หน้าเว็บไม่ต้องติดตั้ง package เพิ่ม ส่วน test ต้อง `npm install` ก่อน (ดู [Test](#test))
 
 ## หมวดที่เปรียบเทียบ
 
@@ -140,6 +140,24 @@ Login ทั้งสองฝั่งควรมี `VIEW DEFINITION` ใน�
 
 ระบบตรวจสิทธิ์ให้อัตโนมัติ และขึ้นเตือนในหน้าเว็บ รายงาน และหัว sync script
 
+## Test
+
+```powershell
+npm install
+npm run typecheck
+npm test                     # ราว 30 วินาที
+npm run test:update-golden   # เขียน golden ใหม่จากผลปัจจุบัน
+```
+
+- test สร้างฐานทดสอบชื่อ `ddtest_*` ใน LocalDB (`(localdb)\MSSQLLocalDB`) แล้วรัน engine จริง จะลบและสร้างใหม่เฉพาะฐานที่ชื่อขึ้นต้นด้วย `ddtest_` เท่านั้น
+- ใช้ server อื่นได้ด้วย `DATABASE_DIFF_TEST_SERVER` (ต้องเป็น Windows auth และเป็นเครื่องทดสอบ เพราะ test รัน sync/rollback script จริง)
+- ถ้าต่อ server ไม่ได้ test ที่ใช้ฐานจะถูก skip ถ้าตั้ง `DATABASE_DIFF_REQUIRE_DB=1` (สำหรับ CI) จะ fail แทน
+- fixture อยู่ใน `test\fixtures\<ชุด>\`: `common.sql` รันทั้งสองฝั่ง แล้ว `source.sql` / `target.sql` รันเฉพาะฝั่งนั้น เคสทั้งหมดอยู่ใน `test\cases.ts`
+- golden (`test\golden\<เคส>\`) คือผลของ engine (JSON, sync script, rollback script, snapshot) โดยแทนค่าที่เปลี่ยนทุกครั้งด้วย placeholder (เวลา, ชื่อ server, login, ชื่อ constraint ที่ระบบสุ่ม) ถ้าตั้งใจเปลี่ยนผลของ engine ให้รัน `test:update-golden` แล้ว **อ่าน git diff ของ golden ก่อน commit**
+- เคส round-trip (`core`) รัน sync script บน target แล้วเทียบใหม่ จากนั้นรัน rollback script (สองรอบ) แล้วเทียบกับ snapshot เดิม และเช็คว่าข้อมูลยังอยู่
+- test ที่มีป้าย `todo` คือ bug ที่รู้แล้วแต่ยังไม่แก้ ไม่ทำให้ชุด test fail
+- ผลของแต่ละรอบอยู่ใน `test\.out\` (ไม่เข้า git) ไว้เปิดดูเมื่อ test fail
+
 ## ไฟล์ในโปรเจกต์
 
 | path | คือ |
@@ -148,5 +166,7 @@ Login ทั้งสองฝั่งควรมี `VIEW DEFINITION` ใน�
 | `lib\SyncScript.ps1` | สร้าง sync script และ rollback script |
 | `templates\` | template ของรายงาน HTML |
 | `app\` | หน้าเว็บ (Node, ไม่มี dependency) และ `cli.js` / `run-job.ps1` สำหรับงานตั้งเวลา |
+| `test\` | test ของ engine (TypeScript, `node:test`): fixture, golden, helper |
+| `scripts\` | script สำหรับพัฒนา (`update-golden.ts`) |
 | `data\` | ประวัติการรัน, snapshot, profile ของ server, งานตั้งเวลา (ไม่เข้า git) |
 | `reports\` | ผลของการรันจาก command line (ไม่เข้า git) |

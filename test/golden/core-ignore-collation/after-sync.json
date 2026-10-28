@@ -1,0 +1,219 @@
+{
+  "format": "database-diff-result",
+  "version": 1,
+  "generated": "<time>",
+  "source": {
+    "label": "<server> / ddtest_core_ignore_collation_src",
+    "login": "<login>",
+    "canViewDefinition": true
+  },
+  "target": {
+    "label": "<server> / ddtest_core_ignore_collation_tgt",
+    "login": "<login>",
+    "canViewDefinition": true
+  },
+  "categories": [
+    "Database",
+    "Schema",
+    "Table",
+    "Column",
+    "Index",
+    "Foreign key",
+    "Check constraint",
+    "View",
+    "Stored procedure",
+    "Function",
+    "Trigger",
+    "User-defined type",
+    "Sequence",
+    "Synonym"
+  ],
+  "perspective": "sync",
+  "options": {
+    "ignoreWhitespace": false,
+    "ignoreCase": false,
+    "ignoreCollation": true,
+    "compareColumnOrder": false
+  },
+  "counts": {
+    "onlyInSource": 0,
+    "onlyInTarget": 4,
+    "different": 0,
+    "unverified": 0
+  },
+  "warnings": [],
+  "syncScript": "after-sync.sync.sql",
+  "syncError": "",
+  "rollbackScript": "after-sync.rollback.sql",
+  "rollbackError": "",
+  "summary": [
+    {
+      "Category": "Database",
+      "Source": 1,
+      "Target": 1,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "Schema",
+      "Source": 1,
+      "Target": 1,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "Table",
+      "Source": 4,
+      "Target": 5,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 1,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "Column",
+      "Source": 38,
+      "Target": 41,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 1,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "Index",
+      "Source": 6,
+      "Target": 8,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 1,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "Foreign key",
+      "Source": 2,
+      "Target": 2,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "Check constraint",
+      "Source": 2,
+      "Target": 2,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "View",
+      "Source": 2,
+      "Target": 2,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "Stored procedure",
+      "Source": 2,
+      "Target": 3,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 1,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "Function",
+      "Source": 2,
+      "Target": 2,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "Trigger",
+      "Source": 1,
+      "Target": 1,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "User-defined type",
+      "Source": 1,
+      "Target": 1,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "Sequence",
+      "Source": 2,
+      "Target": 2,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "Synonym",
+      "Source": 1,
+      "Target": 1,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    }
+  ],
+  "diffs": [
+    {
+      "Category": "Table",
+      "Object": "dbo.LegacyLog",
+      "Status": "OnlyInTarget",
+      "Detail": "",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": null,
+      "TargetKey": "dbo.LegacyLog"
+    },
+    {
+      "Category": "Column",
+      "Object": "dbo.Orders.LegacyCode",
+      "Status": "OnlyInTarget",
+      "Detail": "Type: varchar(10); Nullable: NULL",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": null,
+      "TargetKey": "dbo.Orders.LegacyCode"
+    },
+    {
+      "Category": "Index",
+      "Object": "dbo.Customers.IX_Customers_Name",
+      "Status": "OnlyInTarget",
+      "Detail": "Kind: INDEX; Type: NONCLUSTERED; Columns: Name",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": null,
+      "TargetKey": "dbo.Customers|IX_Customers_Name"
+    },
+    {
+      "Category": "Stored procedure",
+      "Object": "dbo.pLegacyCleanup",
+      "Status": "OnlyInTarget",
+      "Detail": "Type: SQL_STORED_PROCEDURE",
+      "SourceDefinition": null,
+      "TargetDefinition": "CREATE PROCEDURE dbo.pLegacyCleanup\nAS\nDELETE FROM dbo.LegacyLog WHERE Id < 0;",
+      "SourceKey": null,
+      "TargetKey": "dbo.pLegacyCleanup"
+    }
+  ]
+}

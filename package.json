@@ -1,0 +1,21 @@
+{
+  "name": "database-diff",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SQL Server schema comparison: engine, sync/rollback scripts and web app",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node app/server.js --open",
+    "typecheck": "tsc",
+    "test": "node --import tsx --test \"test/**/*.test.ts\"",
+    "test:update-golden": "node --import tsx scripts/update-golden.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}

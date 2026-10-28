@@ -1,0 +1,1291 @@
+{
+  "canViewDefinition": true,
+  "captured": "<time>",
+  "categories": {
+    "Check constraint": {
+      "dbo.Customers|CK:(len([Name])>(0))": {
+        "Definition": null,
+        "Name": "dbo.Customers (check: (len([Name])>(0)))",
+        "ObjectName": "CK__Customers__Name__<id>",
+        "Parent": "dbo.Customers",
+        "Props": {
+          "Expression": "(len([Name])>(0))",
+          "State": "ENABLED"
+        },
+        "Sql": {
+          "IsSystemNamed": true,
+          "Name": "CK__Customers__Name__<id>",
+          "Schema": "dbo",
+          "Table": "Customers"
+        }
+      },
+      "dbo.Orders|CK_Orders_Amount": {
+        "Definition": null,
+        "Name": "dbo.Orders.CK_Orders_Amount",
+        "ObjectName": "CK_Orders_Amount",
+        "Parent": "dbo.Orders",
+        "Props": {
+          "Expression": "([Amount]>=(0))",
+          "State": "ENABLED"
+        },
+        "Sql": {
+          "IsSystemNamed": false,
+          "Name": "CK_Orders_Amount",
+          "Schema": "dbo",
+          "Table": "Orders"
+        }
+      }
+    },
+    "Column": {
+      "dbo.AllTypes.Id": {
+        "Definition": null,
+        "Name": "dbo.AllTypes.Id",
+        "ObjectName": "",
+        "Parent": "dbo.AllTypes",
+        "Props": {
+          "Collation": "",
+          "Computed": "",
+          "Default": "",
+          "Identity": "IDENTITY(100,5)",
+          "Nullable": "NOT NULL",
+          "Ordinal": "1",
+          "Type": "bigint"
+        },
+        "Sql": {
+          "Name": "Id",
+          "Schema": "dbo",
+          "Table": "AllTypes"
+        }
+      },
+      "dbo.AllTypes.cBin": {
+        "Definition": null,
+        "Name": "dbo.AllTypes.cBin",
+        "ObjectName": "",
+        "Parent": "dbo.AllTypes",
+        "Props": {
+          "Collation": "",
+          "Computed": "",
+          "Default": "",
+          "Identity": "",
+          "Nullable": "NULL",
+          "Ordinal": "19",
+          "Type": "binary(8)"
+        },
+        "Sql": {
+          "Name": "cBin",
+          "Schema": "dbo",
+          "Table": "AllTypes"
+        }
+      },
+      "dbo.AllTypes.cBit": {
+        "Definition": null,
+        "Name": "dbo.AllTypes.cBit",
+        "ObjectName": "",
+        "Parent": "dbo.AllTypes",
+        "Props": {
+          "Collation": "",
+          "Computed": "",
+          "Default": "((0))",
+          "Identity": "",
+          "Nullable": "NOT NULL",
+          "Ordinal": "2",
+          "Type": "bit"
+        },
+        "Sql": {
+          "Name": "cBit",
+          "Schema": "dbo",
+          "Table": "AllTypes"
+        }
+      },
+      "dbo.AllTypes.cChar": {
+        "Definition": null,
+        "Name": "dbo.AllTypes.cChar",
+        "ObjectName": "",
+        "Parent": "dbo.AllTypes",
+        "Props": {
+          "Collation": "Thai_CI_AS",
+          "Computed": "",
+          "Default": "",
+          "Identity": "",
+          "Nullable": "NULL",
+          "Ordinal": "15",
+          "Type": "char(10)"
+        },
+        "Sql": {
+          "Name": "cChar",
+          "Schema": "dbo",
+          "Table": "AllTypes"
+        }
+      },
+      "dbo.AllTypes.cComputed": {
+        "Definition": null,
+        "Name": "dbo.AllTypes.cComputed",
+        "ObjectName": "",
+        "Parent": "dbo.AllTypes",
+        "Props": {
+          "Collation": "",
+          "Computed": "([cTiny]*(2))",
+          "Default": "",
+          "Identity": "",
+          "Nullable": "NULL",
+          "Ordinal": "25",
+          "Type": "int"
+        },
+        "Sql": {
+          "Name": "cComputed",
+          "Schema": "dbo",
+          "Table": "AllTypes"
+        }
+      },
+      "dbo.AllTypes.cDate": {
+        "Definition": null,
+        "Name": "dbo.AllTypes.cDate",
+        "ObjectName": "",
+        "Parent": "dbo.AllTypes",
+        "Props": {
+          "Collation": "",
+          "Computed": "",
+          "Default": "",
+          "Identity": "",
+          "Nullable": "NULL",
+          "Ordinal": "10",
+          "Type": "date"
+        },
+        "Sql": {
+          "Name": "cDate",
+          "Schema": "dbo",
+          "Table": "AllTypes"
+        }
+      },
+      "dbo.AllTypes.cDateTime": {
+        "Definition": null,
+        "Name": "dbo.AllTypes.cDateTime",
+        "ObjectName": "",
+        "Parent": "dbo.AllTypes",
+        "Props": {
+          "Collation": "",
+          "Computed": "",
+          "Default": "",
+          "Identity": "",
+          "Nullable": "NULL",
+          "Ordinal": "11",
+          "Type": "datetime"
+        },
+        "Sql": {
+          "Name": "cDateTime",
+          "Schema": "dbo",
+          "Table": "AllTypes"
+        }
+      },
+      "dbo.AllTypes.cDateTime2": {
+        "Definition": null,
+        "Name": "dbo.AllTypes.cDateTime2",
+        "ObjectName": "",
+        "Parent": "dbo.AllTypes",
+        "Props": {
+          "Collation": "",
+          "Computed": "",
+          "Default": "",
+          "Identity": "",
+          "Nullable": "NULL",
+          "Ordinal": "12",
+          "Type": "datetime2(7)"
+        },
+        "Sql": {
+          "Name": "cDateTime2",
+          "Schema": "dbo",
+          "Table": "AllTypes"
+        }
+      },
+      "dbo.AllTypes.cDec": {
+        "Definition": null,
+        "Name": "dbo.AllTypes.cDec",
+        "ObjectName": "",
+        "Parent": "dbo.AllTypes",
+        "Props": {
+          "Collation": "",
+          "Computed": "",
+          "Default": "",
+          "Identity": "",
+          "Nullable": "NULL",
+          "Ordinal": "5",
+          "Type": "decimal(18,4)"
+        },
+        "Sql": {
+          "Name": "cDec",
+          "Schema": "dbo",
+          "Table": "AllTypes"
+        }
+      },
+      "dbo.AllTypes.cFloat": {
+        "Definition": null,
+        "Name": "dbo.AllTypes.cFloat",
+        "ObjectName": "",
+        "Parent": "dbo.AllTypes",
+        "Props": {
+          "Collation": "",
+          "Computed": "",
+          "Default": "",
+          "Identity": "",
+          "Nullable": "NULL",
+          "Ordinal": "8",
+          "Type": "float"
+        },
+        "Sql": {
+          "Name": "cFloat",
+          "Schema": "dbo",
+          "Table": "AllTypes"
+        }
+      },
+      "dbo.AllTypes.cGuid": {
+        "Definition": null,
+        "Name": "dbo.AllTypes.cGuid",
+        "ObjectName": "",
+        "Parent": "dbo.AllTypes",
+        "Props": {
+          "Collation": "",
+          "Computed": "",
+          "Default": "(newsequentialid())",
+          "Identity": "",
+          "Nullable": "NOT NULL",
+          "Ordinal": "21",
+          "Type": "uniqueidentifier"
+        },
+        "Sql": {
+          "Name": "cGuid",
+          "Schema": "dbo",
+          "Table": "AllTypes"
+        }
+      },
+      "dbo.AllTypes.cMoney": {
+        "Definition": null,
+        "Name": "dbo.AllTypes.cMoney",
+        "ObjectName": "",
+        "Parent": "dbo.AllTypes",
+        "Props": {
+          "Collation": "",
+          "Computed": "",
+          "Default": "",
+          "Identity": "",
+          "Nullable": "NULL",
+          "Ordinal": "7",
+          "Type": "money"
+        },
+        "Sql": {
+          "Name": "cMoney",
+          "Schema": "dbo",
+          "Table": "AllTypes"
+        }
+      },
+      "dbo.AllTypes.cNChar": {
+        "Definition": null,
+        "Name": "dbo.AllTypes.cNChar",
+        "ObjectName": "",
+        "Parent": "dbo.AllTypes",
+        "Props": {
+          "Collation": "Thai_BIN",
+          "Computed": "",
+          "Default": "",
+          "Identity": "",
+          "Nullable": "NULL",
+          "Ordinal": "17",
+          "Type": "nchar(5)"
+        },
+        "Sql": {
+          "Name": "cNChar",
+          "Schema": "dbo",
+          "Table": "AllTypes"
+        }
+      },
+      "dbo.AllTypes.cNVarMax": {
+        "Definition": null,
+        "Name": "dbo.AllTypes.cNVarMax",
+        "ObjectName": "",
+        "Parent": "dbo.AllTypes",
+        "Props": {
+          "Collation": "Thai_CI_AS",
+          "Computed": "",
+          "Default": "",
+          "Identity": "",
+          "Nullable": "NULL",
+          "Ordinal": "18",
+          "Type": "nvarchar(max)"
+        },
+        "Sql": {
+          "Name": "cNVarMax",
+          "Schema": "dbo",
+          "Table": "AllTypes"
+        }
+      },
+      "dbo.AllTypes.cNum": {
+        "Definition": null,
+        "Name": "dbo.AllTypes.cNum",
+        "ObjectName": "",
+        "Parent": "dbo.AllTypes",
+        "Props": {
+          "Collation": "",
+          "Computed": "",
+          "Default": "",
+          "Identity": "",
+          "Nullable": "NULL",
+          "Ordinal": "6",
+          "Type": "numeric(9,2)"
+        },
+        "Sql": {
+          "Name": "cNum",
+          "Schema": "dbo",
+          "Table": "AllTypes"
+        }
+      },
+      "dbo.AllTypes.cOffset": {
+        "Definition": null,
+        "Name": "dbo.AllTypes.cOffset",
+        "ObjectName": "",
+        "Parent": "dbo.AllTypes",
+        "Props": {
+          "Collation": "",
+          "Computed": "",
+          "Default": "",
+          "Identity": "",
+          "Nullable": "NULL",
+          "Ordinal": "13",
+          "Type": "datetimeoffset(3)"
+        },
+        "Sql": {
+          "Name": "cOffset",
+          "Schema": "dbo",
+          "Table": "AllTypes"
+        }
+      },
+      "dbo.AllTypes.cReal": {
+        "Definition": null,
+        "Name": "dbo.AllTypes.cReal",
+        "ObjectName": "",
+        "Parent": "dbo.AllTypes",
+        "Props": {
+          "Collation": "",
+          "Computed": "",
+          "Default": "",
+          "Identity": "",
+          "Nullable": "NULL",
+          "Ordinal": "9",
+          "Type": "real"
+        },
+        "Sql": {
+          "Name": "cReal",
+          "Schema": "dbo",
+          "Table": "AllTypes"
+        }
+      },
+      "dbo.AllTypes.cRowVersion": {
+        "Definition": null,
+        "Name": "dbo.AllTypes.cRowVersion",
+        "ObjectName": "",
+        "Parent": "dbo.AllTypes",
+        "Props": {
+          "Collation": "",
+          "Computed": "",
+          "Default": "",
+          "Identity": "",
+          "Nullable": "NOT NULL",
+          "Ordinal": "24",
+          "Type": "timestamp"
+        },
+        "Sql": {
+          "Name": "cRowVersion",
+          "Schema": "dbo",
+          "Table": "AllTypes"
+        }
+      },
+      "dbo.AllTypes.cSmall": {
+        "Definition": null,
+        "Name": "dbo.AllTypes.cSmall",
+        "ObjectName": "",
+        "Parent": "dbo.AllTypes",
+        "Props": {
+          "Collation": "",
+          "Computed": "",
+          "Default": "",
+          "Identity": "",
+          "Nullable": "NULL",
+          "Ordinal": "4",
+          "Type": "smallint"
+        },
+        "Sql": {
+          "Name": "cSmall",
+          "Schema": "dbo",
+          "Table": "AllTypes"
+        }
+      },
+      "dbo.AllTypes.cTime": {
+        "Definition": null,
+        "Name": "dbo.AllTypes.cTime",
+        "ObjectName": "",
+        "Parent": "dbo.AllTypes",
+        "Props": {
+          "Collation": "",
+          "Computed": "",
+          "Default": "",
+          "Identity": "",
+          "Nullable": "NULL",
+          "Ordinal": "14",
+          "Type": "time(0)"
+        },
+        "Sql": {
+          "Name": "cTime",
+          "Schema": "dbo",
+          "Table": "AllTypes"
+        }
+      },
+      "dbo.AllTypes.cTiny": {
+        "Definition": null,
+        "Name": "dbo.AllTypes.cTiny",
+        "ObjectName": "",
+        "Parent": "dbo.AllTypes",
+        "Props": {
+          "Collation": "",
+          "Computed": "",
+          "Default": "",
+          "Identity": "",
+          "Nullable": "NULL",
+          "Ordinal": "3",
+          "Type": "tinyint"
+        },
+        "Sql": {
+          "Name": "cTiny",
+          "Schema": "dbo",
+          "Table": "AllTypes"
+        }
+      },
+      "dbo.AllTypes.cVarBin": {
+        "Definition": null,
+        "Name": "dbo.AllTypes.cVarBin",
+        "ObjectName": "",
+        "Parent": "dbo.AllTypes",
+        "Props": {
+          "Collation": "",
+          "Computed": "",
+          "Default": "",
+          "Identity": "",
+          "Nullable": "NULL",
+          "Ordinal": "20",
+          "Type": "varbinary(max)"
+        },
+        "Sql": {
+          "Name": "cVarBin",
+          "Schema": "dbo",
+          "Table": "AllTypes"
+        }
+      },
+      "dbo.AllTypes.cVarMax": {
+        "Definition": null,
+        "Name": "dbo.AllTypes.cVarMax",
+        "ObjectName": "",
+        "Parent": "dbo.AllTypes",
+        "Props": {
+          "Collation": "Thai_CI_AS",
+          "Computed": "",
+          "Default": "",
+          "Identity": "",
+          "Nullable": "NULL",
+          "Ordinal": "16",
+          "Type": "varchar(max)"
+        },
+        "Sql": {
+          "Name": "cVarMax",
+          "Schema": "dbo",
+          "Table": "AllTypes"
+        }
+      },
+      "dbo.AllTypes.cVariant": {
+        "Definition": null,
+        "Name": "dbo.AllTypes.cVariant",
+        "ObjectName": "",
+        "Parent": "dbo.AllTypes",
+        "Props": {
+          "Collation": "",
+          "Computed": "",
+          "Default": "",
+          "Identity": "",
+          "Nullable": "NULL",
+          "Ordinal": "23",
+          "Type": "sql_variant"
+        },
+        "Sql": {
+          "Name": "cVariant",
+          "Schema": "dbo",
+          "Table": "AllTypes"
+        }
+      },
+      "dbo.AllTypes.cXml": {
+        "Definition": null,
+        "Name": "dbo.AllTypes.cXml",
+        "ObjectName": "",
+        "Parent": "dbo.AllTypes",
+        "Props": {
+          "Collation": "",
+          "Computed": "",
+          "Default": "",
+          "Identity": "",
+          "Nullable": "NULL",
+          "Ordinal": "22",
+          "Type": "xml"
+        },
+        "Sql": {
+          "Name": "cXml",
+          "Schema": "dbo",
+          "Table": "AllTypes"
+        }
+      },
+      "dbo.Customers.Email": {
+        "Definition": null,
+        "Name": "dbo.Customers.Email",
+        "ObjectName": "",
+        "Parent": "dbo.Customers",
+        "Props": {
+          "Collation": "SQL_Latin1_General_CP1_CI_AS",
+          "Computed": "",
+          "Default": "",
+          "Identity": "",
+          "Nullable": "NULL",
+          "Ordinal": "3",
+          "Type": "varchar(100)"
+        },
+        "Sql": {
+          "Name": "Email",
+          "Schema": "dbo",
+          "Table": "Customers"
+        }
+      },
+      "dbo.Customers.Id": {
+        "Definition": null,
+        "Name": "dbo.Customers.Id",
+        "ObjectName": "",
+        "Parent": "dbo.Customers",
+        "Props": {
+          "Collation": "",
+          "Computed": "",
+          "Default": "",
+          "Identity": "IDENTITY(1,1)",
+          "Nullable": "NOT NULL",
+          "Ordinal": "1",
+          "Type": "int"
+        },
+        "Sql": {
+          "Name": "Id",
+          "Schema": "dbo",
+          "Table": "Customers"
+        }
+      },
+      "dbo.Customers.Name": {
+        "Definition": null,
+        "Name": "dbo.Customers.Name",
+        "ObjectName": "",
+        "Parent": "dbo.Customers",
+        "Props": {
+          "Collation": "Thai_CI_AS",
+          "Computed": "",
+          "Default": "",
+          "Identity": "",
+          "Nullable": "NOT NULL",
+          "Ordinal": "2",
+          "Type": "nvarchar(100)"
+        },
+        "Sql": {
+          "Name": "Name",
+          "Schema": "dbo",
+          "Table": "Customers"
+        }
+      },
+      "dbo.Customers.Phone": {
+        "Definition": null,
+        "Name": "dbo.Customers.Phone",
+        "ObjectName": "",
+        "Parent": "dbo.Customers",
+        "Props": {
+          "Collation": "Thai_CI_AS",
+          "Computed": "",
+          "Default": "",
+          "Identity": "",
+          "Nullable": "NULL",
+          "Ordinal": "4",
+          "Type": "dbo.tPhone"
+        },
+        "Sql": {
+          "Name": "Phone",
+          "Schema": "dbo",
+          "Table": "Customers"
+        }
+      },
+      "dbo.Orders.Amount": {
+        "Definition": null,
+        "Name": "dbo.Orders.Amount",
+        "ObjectName": "",
+        "Parent": "dbo.Orders",
+        "Props": {
+          "Collation": "",
+          "Computed": "",
+          "Default": "((1))",
+          "Identity": "",
+          "Nullable": "NOT NULL",
+          "Ordinal": "4",
+          "Type": "decimal(10,2)"
+        },
+        "Sql": {
+          "Name": "Amount",
+          "Schema": "dbo",
+          "Table": "Orders"
+        }
+      },
+      "dbo.Orders.CreatedAt": {
+        "Definition": null,
+        "Name": "dbo.Orders.CreatedAt",
+        "ObjectName": "",
+        "Parent": "dbo.Orders",
+        "Props": {
+          "Collation": "",
+          "Computed": "",
+          "Default": "(sysdatetime())",
+          "Identity": "",
+          "Nullable": "NOT NULL",
+          "Ordinal": "5",
+          "Type": "datetime2(3)"
+        },
+        "Sql": {
+          "Name": "CreatedAt",
+          "Schema": "dbo",
+          "Table": "Orders"
+        }
+      },
+      "dbo.Orders.CustomerId": {
+        "Definition": null,
+        "Name": "dbo.Orders.CustomerId",
+        "ObjectName": "",
+        "Parent": "dbo.Orders",
+        "Props": {
+          "Collation": "",
+          "Computed": "",
+          "Default": "",
+          "Identity": "",
+          "Nullable": "NULL",
+          "Ordinal": "2",
+          "Type": "int"
+        },
+        "Sql": {
+          "Name": "CustomerId",
+          "Schema": "dbo",
+          "Table": "Orders"
+        }
+      },
+      "dbo.Orders.Id": {
+        "Definition": null,
+        "Name": "dbo.Orders.Id",
+        "ObjectName": "",
+        "Parent": "dbo.Orders",
+        "Props": {
+          "Collation": "",
+          "Computed": "",
+          "Default": "",
+          "Identity": "",
+          "Nullable": "NOT NULL",
+          "Ordinal": "1",
+          "Type": "int"
+        },
+        "Sql": {
+          "Name": "Id",
+          "Schema": "dbo",
+          "Table": "Orders"
+        }
+      },
+      "dbo.Orders.Name": {
+        "Definition": null,
+        "Name": "dbo.Orders.Name",
+        "ObjectName": "",
+        "Parent": "dbo.Orders",
+        "Props": {
+          "Collation": "Thai_CI_AS",
+          "Computed": "",
+          "Default": "",
+          "Identity": "",
+          "Nullable": "NOT NULL",
+          "Ordinal": "3",
+          "Type": "nvarchar(100)"
+        },
+        "Sql": {
+          "Name": "Name",
+          "Schema": "dbo",
+          "Table": "Orders"
+        }
+      },
+      "dbo.Shipments.Id": {
+        "Definition": null,
+        "Name": "dbo.Shipments.Id",
+        "ObjectName": "",
+        "Parent": "dbo.Shipments",
+        "Props": {
+          "Collation": "",
+          "Computed": "",
+          "Default": "",
+          "Identity": "IDENTITY(1,1)",
+          "Nullable": "NOT NULL",
+          "Ordinal": "1",
+          "Type": "int"
+        },
+        "Sql": {
+          "Name": "Id",
+          "Schema": "dbo",
+          "Table": "Shipments"
+        }
+      },
+      "dbo.Shipments.Note": {
+        "Definition": null,
+        "Name": "dbo.Shipments.Note",
+        "ObjectName": "",
+        "Parent": "dbo.Shipments",
+        "Props": {
+          "Collation": "Thai_CI_AS",
+          "Computed": "",
+          "Default": "",
+          "Identity": "",
+          "Nullable": "NULL",
+          "Ordinal": "4",
+          "Type": "nvarchar(200)"
+        },
+        "Sql": {
+          "Name": "Note",
+          "Schema": "dbo",
+          "Table": "Shipments"
+        }
+      },
+      "dbo.Shipments.OrderId": {
+        "Definition": null,
+        "Name": "dbo.Shipments.OrderId",
+        "ObjectName": "",
+        "Parent": "dbo.Shipments",
+        "Props": {
+          "Collation": "",
+          "Computed": "",
+          "Default": "",
+          "Identity": "",
+          "Nullable": "NOT NULL",
+          "Ordinal": "2",
+          "Type": "int"
+        },
+        "Sql": {
+          "Name": "OrderId",
+          "Schema": "dbo",
+          "Table": "Shipments"
+        }
+      },
+      "dbo.Shipments.Phone": {
+        "Definition": null,
+        "Name": "dbo.Shipments.Phone",
+        "ObjectName": "",
+        "Parent": "dbo.Shipments",
+        "Props": {
+          "Collation": "Thai_CI_AS",
+          "Computed": "",
+          "Default": "",
+          "Identity": "",
+          "Nullable": "NULL",
+          "Ordinal": "3",
+          "Type": "dbo.tPhone"
+        },
+        "Sql": {
+          "Name": "Phone",
+          "Schema": "dbo",
+          "Table": "Shipments"
+        }
+      }
+    },
+    "Database": {
+      "(database)": {
+        "Definition": null,
+        "Name": "(database)",
+        "ObjectName": "",
+        "Parent": "",
+        "Props": {
+          "Collation": "Thai_CI_AS",
+          "CompatibilityLevel": "140"
+        },
+        "Sql": null
+      }
+    },
+    "Foreign key": {
+      "dbo.Orders|FK_Orders_Customers": {
+        "Definition": null,
+        "Name": "dbo.Orders.FK_Orders_Customers",
+        "ObjectName": "FK_Orders_Customers",
+        "Parent": "dbo.Orders",
+        "Props": {
+          "Columns": "CustomerId",
+          "OnDelete": "NO_ACTION",
+          "OnUpdate": "NO_ACTION",
+          "References": "dbo.Customers (Id)",
+          "State": "ENABLED"
+        },
+        "Sql": {
+          "Columns": [
+            "CustomerId"
+          ],
+          "IsSystemNamed": false,
+          "Name": "FK_Orders_Customers",
+          "RefColumns": [
+            "Id"
+          ],
+          "RefSchema": "dbo",
+          "RefTable": "Customers",
+          "Schema": "dbo",
+          "Table": "Orders"
+        }
+      },
+      "dbo.Shipments|FK_Shipments_Orders": {
+        "Definition": null,
+        "Name": "dbo.Shipments.FK_Shipments_Orders",
+        "ObjectName": "FK_Shipments_Orders",
+        "Parent": "dbo.Shipments",
+        "Props": {
+          "Columns": "OrderId",
+          "OnDelete": "NO_ACTION",
+          "OnUpdate": "NO_ACTION",
+          "References": "dbo.Orders (Id)",
+          "State": "ENABLED"
+        },
+        "Sql": {
+          "Columns": [
+            "OrderId"
+          ],
+          "IsSystemNamed": false,
+          "Name": "FK_Shipments_Orders",
+          "RefColumns": [
+            "Id"
+          ],
+          "RefSchema": "dbo",
+          "RefTable": "Orders",
+          "Schema": "dbo",
+          "Table": "Shipments"
+        }
+      }
+    },
+    "Function": {
+      "dbo.fOrderTotal": {
+        "Definition": "CREATE FUNCTION dbo.fOrderTotal (@CustomerId int)\nRETURNS decimal(18,2)\nAS\nBEGIN\n    RETURN ISNULL((SELECT SUM(Amount) FROM dbo.Orders WHERE CustomerId = @CustomerId), 0);\nEND;\n",
+        "Name": "dbo.fOrderTotal",
+        "ObjectName": "",
+        "Parent": "",
+        "Props": {
+          "Type": "SQL_SCALAR_FUNCTION"
+        },
+        "Sql": {
+          "Name": "fOrderTotal",
+          "ObjectType": "FN",
+          "ParentObject": "",
+          "ParentSchema": "",
+          "Schema": "dbo"
+        }
+      },
+      "dbo.fOrdersOf": {
+        "Definition": "CREATE FUNCTION dbo.fOrdersOf (@CustomerId int)\nRETURNS TABLE\nAS\nRETURN SELECT Id, Name, Amount FROM dbo.Orders WHERE CustomerId = @CustomerId;\n",
+        "Name": "dbo.fOrdersOf",
+        "ObjectName": "",
+        "Parent": "",
+        "Props": {
+          "Type": "SQL_INLINE_TABLE_VALUED_FUNCTION"
+        },
+        "Sql": {
+          "Name": "fOrdersOf",
+          "ObjectType": "IF",
+          "ParentObject": "",
+          "ParentSchema": "",
+          "Schema": "dbo"
+        }
+      }
+    },
+    "Index": {
+      "dbo.AllTypes|PK": {
+        "Definition": null,
+        "Name": "dbo.AllTypes (primary key)",
+        "ObjectName": "PK_AllTypes",
+        "Parent": "dbo.AllTypes",
+        "Props": {
+          "Columns": "Id",
+          "Filter": "",
+          "Include": "",
+          "Kind": "PRIMARY KEY",
+          "Name": "PK_AllTypes",
+          "Type": "CLUSTERED"
+        },
+        "Sql": {
+          "Includes": [],
+          "IsSystemNamed": false,
+          "KeyParts": [
+            {
+              "Desc": false,
+              "Name": "Id"
+            }
+          ],
+          "Name": "PK_AllTypes",
+          "Schema": "dbo",
+          "Table": "AllTypes"
+        }
+      },
+      "dbo.Customers|PK": {
+        "Definition": null,
+        "Name": "dbo.Customers (primary key)",
+        "ObjectName": "PK_Customers",
+        "Parent": "dbo.Customers",
+        "Props": {
+          "Columns": "Id",
+          "Filter": "",
+          "Include": "",
+          "Kind": "PRIMARY KEY",
+          "Name": "PK_Customers",
+          "Type": "CLUSTERED"
+        },
+        "Sql": {
+          "Includes": [],
+          "IsSystemNamed": false,
+          "KeyParts": [
+            {
+              "Desc": false,
+              "Name": "Id"
+            }
+          ],
+          "Name": "PK_Customers",
+          "Schema": "dbo",
+          "Table": "Customers"
+        }
+      },
+      "dbo.Orders|IX_Orders_CreatedAt": {
+        "Definition": null,
+        "Name": "dbo.Orders.IX_Orders_CreatedAt",
+        "ObjectName": "IX_Orders_CreatedAt",
+        "Parent": "dbo.Orders",
+        "Props": {
+          "Columns": "CreatedAt DESC",
+          "Filter": "",
+          "Include": "",
+          "Kind": "INDEX",
+          "Type": "NONCLUSTERED"
+        },
+        "Sql": {
+          "Includes": [],
+          "IsSystemNamed": false,
+          "KeyParts": [
+            {
+              "Desc": true,
+              "Name": "CreatedAt"
+            }
+          ],
+          "Name": "IX_Orders_CreatedAt",
+          "Schema": "dbo",
+          "Table": "Orders"
+        }
+      },
+      "dbo.Orders|IX_Orders_CustomerId": {
+        "Definition": null,
+        "Name": "dbo.Orders.IX_Orders_CustomerId",
+        "ObjectName": "IX_Orders_CustomerId",
+        "Parent": "dbo.Orders",
+        "Props": {
+          "Columns": "CustomerId",
+          "Filter": "",
+          "Include": "Amount",
+          "Kind": "INDEX",
+          "Type": "NONCLUSTERED"
+        },
+        "Sql": {
+          "Includes": [
+            "Amount"
+          ],
+          "IsSystemNamed": false,
+          "KeyParts": [
+            {
+              "Desc": false,
+              "Name": "CustomerId"
+            }
+          ],
+          "Name": "IX_Orders_CustomerId",
+          "Schema": "dbo",
+          "Table": "Orders"
+        }
+      },
+      "dbo.Orders|PK": {
+        "Definition": null,
+        "Name": "dbo.Orders (primary key)",
+        "ObjectName": "PK_Orders",
+        "Parent": "dbo.Orders",
+        "Props": {
+          "Columns": "Id",
+          "Filter": "",
+          "Include": "",
+          "Kind": "PRIMARY KEY",
+          "Name": "PK_Orders",
+          "Type": "CLUSTERED"
+        },
+        "Sql": {
+          "Includes": [],
+          "IsSystemNamed": false,
+          "KeyParts": [
+            {
+              "Desc": false,
+              "Name": "Id"
+            }
+          ],
+          "Name": "PK_Orders",
+          "Schema": "dbo",
+          "Table": "Orders"
+        }
+      },
+      "dbo.Shipments|PK": {
+        "Definition": null,
+        "Name": "dbo.Shipments (primary key)",
+        "ObjectName": "PK_Shipments",
+        "Parent": "dbo.Shipments",
+        "Props": {
+          "Columns": "Id",
+          "Filter": "",
+          "Include": "",
+          "Kind": "PRIMARY KEY",
+          "Name": "PK_Shipments",
+          "Type": "CLUSTERED"
+        },
+        "Sql": {
+          "Includes": [],
+          "IsSystemNamed": false,
+          "KeyParts": [
+            {
+              "Desc": false,
+              "Name": "Id"
+            }
+          ],
+          "Name": "PK_Shipments",
+          "Schema": "dbo",
+          "Table": "Shipments"
+        }
+      }
+    },
+    "Schema": {
+      "rpt": {
+        "Definition": null,
+        "Name": "rpt",
+        "ObjectName": "",
+        "Parent": "",
+        "Props": {},
+        "Sql": {
+          "Schema": "rpt"
+        }
+      }
+    },
+    "Sequence": {
+      "dbo.seqInvoice": {
+        "Definition": null,
+        "Name": "dbo.seqInvoice",
+        "ObjectName": "",
+        "Parent": "",
+        "Props": {
+          "Cache": "CACHE (default)",
+          "Cycle": "NO CYCLE",
+          "DataType": "int",
+          "Increment": "10",
+          "Max": "2147483647",
+          "Min": "-2147483648",
+          "Start": "1"
+        },
+        "Sql": {
+          "Name": "seqInvoice",
+          "Schema": "dbo"
+        }
+      },
+      "dbo.seqShipment": {
+        "Definition": null,
+        "Name": "dbo.seqShipment",
+        "ObjectName": "",
+        "Parent": "",
+        "Props": {
+          "Cache": "CACHE (default)",
+          "Cycle": "NO CYCLE",
+          "DataType": "bigint",
+          "Increment": "1",
+          "Max": "9223372036854775807",
+          "Min": "-9223372036854775808",
+          "Start": "1000"
+        },
+        "Sql": {
+          "Name": "seqShipment",
+          "Schema": "dbo"
+        }
+      }
+    },
+    "Stored procedure": {
+      "dbo.pGetOrder": {
+        "Definition": "-- A Thai column alias in a string literal (Bytebase's parser fails on this).\nCREATE PROCEDURE dbo.pGetOrder @Id int\nAS\nSELECT Id, Name AS 'ชื่อรายการ', Amount FROM dbo.Orders WHERE Id = @Id;\n",
+        "Name": "dbo.pGetOrder",
+        "ObjectName": "",
+        "Parent": "",
+        "Props": {
+          "Type": "SQL_STORED_PROCEDURE"
+        },
+        "Sql": {
+          "Name": "pGetOrder",
+          "ObjectType": "P",
+          "ParentObject": "",
+          "ParentSchema": "",
+          "Schema": "dbo"
+        }
+      },
+      "dbo.pNewOrder": {
+        "Definition": "CREATE PROCEDURE dbo.pNewOrder @Id int, @CustomerId int, @Name nvarchar(100)\nAS\nINSERT INTO dbo.Orders (Id, CustomerId, Name) VALUES (@Id, @CustomerId, @Name);\n",
+        "Name": "dbo.pNewOrder",
+        "ObjectName": "",
+        "Parent": "",
+        "Props": {
+          "Type": "SQL_STORED_PROCEDURE"
+        },
+        "Sql": {
+          "Name": "pNewOrder",
+          "ObjectType": "P",
+          "ParentObject": "",
+          "ParentSchema": "",
+          "Schema": "dbo"
+        }
+      }
+    },
+    "Synonym": {
+      "dbo.synOrders": {
+        "Definition": null,
+        "Name": "dbo.synOrders",
+        "ObjectName": "",
+        "Parent": "",
+        "Props": {
+          "BaseObject": "[dbo].[vOrders]"
+        },
+        "Sql": {
+          "Name": "synOrders",
+          "Schema": "dbo"
+        }
+      }
+    },
+    "Table": {
+      "dbo.AllTypes": {
+        "Definition": null,
+        "Name": "dbo.AllTypes",
+        "ObjectName": "",
+        "Parent": "",
+        "Props": {},
+        "Sql": {
+          "Name": "AllTypes",
+          "Schema": "dbo"
+        }
+      },
+      "dbo.Customers": {
+        "Definition": null,
+        "Name": "dbo.Customers",
+        "ObjectName": "",
+        "Parent": "",
+        "Props": {},
+        "Sql": {
+          "Name": "Customers",
+          "Schema": "dbo"
+        }
+      },
+      "dbo.Orders": {
+        "Definition": null,
+        "Name": "dbo.Orders",
+        "ObjectName": "",
+        "Parent": "",
+        "Props": {},
+        "Sql": {
+          "Name": "Orders",
+          "Schema": "dbo"
+        }
+      },
+      "dbo.Shipments": {
+        "Definition": null,
+        "Name": "dbo.Shipments",
+        "ObjectName": "",
+        "Parent": "",
+        "Props": {},
+        "Sql": {
+          "Name": "Shipments",
+          "Schema": "dbo"
+        }
+      }
+    },
+    "Trigger": {
+      "dbo.trOrders_Insert": {
+        "Definition": "CREATE TRIGGER dbo.trOrders_Insert ON dbo.Orders AFTER INSERT\nAS\nSET NOCOUNT ON;\n",
+        "Name": "dbo.trOrders_Insert",
+        "ObjectName": "",
+        "Parent": "",
+        "Props": {
+          "State": "DISABLED",
+          "Table": "dbo.Orders",
+          "Type": "SQL_TRIGGER"
+        },
+        "Sql": {
+          "Name": "trOrders_Insert",
+          "ObjectType": "TR",
+          "ParentObject": "Orders",
+          "ParentSchema": "dbo",
+          "Schema": "dbo"
+        }
+      }
+    },
+    "User-defined type": {
+      "dbo.tPhone": {
+        "Definition": null,
+        "Name": "dbo.tPhone",
+        "ObjectName": "",
+        "Parent": "",
+        "Props": {
+          "Kind": "alias type",
+          "Spec": "varchar(20) NULL"
+        },
+        "Sql": {
+          "Name": "tPhone",
+          "Schema": "dbo"
+        }
+      }
+    },
+    "View": {
+      "dbo.vOrders": {
+        "Definition": "CREATE VIEW dbo.vOrders\nAS\nSELECT o.Id, o.CustomerId, o.Name, o.Amount FROM dbo.Orders AS o;\n",
+        "Name": "dbo.vOrders",
+        "ObjectName": "",
+        "Parent": "",
+        "Props": {
+          "Type": "VIEW"
+        },
+        "Sql": {
+          "Name": "vOrders",
+          "ObjectType": "V",
+          "ParentObject": "",
+          "ParentSchema": "",
+          "Schema": "dbo"
+        }
+      },
+      "rpt.vDailyTotal": {
+        "Definition": "CREATE VIEW rpt.vDailyTotal\nAS\nSELECT CAST(CreatedAt AS date) AS OrderDate, SUM(Amount) AS Total\nFROM dbo.Orders\nGROUP BY CAST(CreatedAt AS date);\n",
+        "Name": "rpt.vDailyTotal",
+        "ObjectName": "",
+        "Parent": "",
+        "Props": {
+          "Type": "VIEW"
+        },
+        "Sql": {
+          "Name": "vDailyTotal",
+          "ObjectType": "V",
+          "ParentObject": "",
+          "ParentSchema": "",
+          "Schema": "rpt"
+        }
+      }
+    }
+  },
+  "database": "ddtest_core_src",
+  "format": "database-diff-snapshot",
+  "login": "<login>",
+  "server": "<server>",
+  "version": 1
+}

@@ -1,0 +1,439 @@
+{
+  "format": "database-diff-result",
+  "version": 1,
+  "generated": "<time>",
+  "source": {
+    "label": "<server> / ddtest_core_ignore_collation_src",
+    "login": "<login>",
+    "canViewDefinition": true
+  },
+  "target": {
+    "label": "<server> / ddtest_core_ignore_collation_tgt",
+    "login": "<login>",
+    "canViewDefinition": true
+  },
+  "categories": [
+    "Database",
+    "Schema",
+    "Table",
+    "Column",
+    "Index",
+    "Foreign key",
+    "Check constraint",
+    "View",
+    "Stored procedure",
+    "Function",
+    "Trigger",
+    "User-defined type",
+    "Sequence",
+    "Synonym"
+  ],
+  "perspective": "sync",
+  "options": {
+    "ignoreWhitespace": false,
+    "ignoreCase": false,
+    "ignoreCollation": true,
+    "compareColumnOrder": false
+  },
+  "counts": {
+    "onlyInSource": 13,
+    "onlyInTarget": 4,
+    "different": 9,
+    "unverified": 0
+  },
+  "warnings": [],
+  "syncScript": "before.sync.sql",
+  "syncError": "",
+  "rollbackScript": "before.rollback.sql",
+  "rollbackError": "",
+  "summary": [
+    {
+      "Category": "Database",
+      "Source": 1,
+      "Target": 1,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "Schema",
+      "Source": 1,
+      "Target": 0,
+      "OnlyInSource": 1,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "Table",
+      "Source": 4,
+      "Target": 3,
+      "OnlyInSource": 2,
+      "OnlyInTarget": 1,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "Column",
+      "Source": 38,
+      "Target": 11,
+      "OnlyInSource": 1,
+      "OnlyInTarget": 1,
+      "Different": 2,
+      "Unverified": 0
+    },
+    {
+      "Category": "Index",
+      "Source": 6,
+      "Target": 5,
+      "OnlyInSource": 1,
+      "OnlyInTarget": 1,
+      "Different": 1,
+      "Unverified": 0
+    },
+    {
+      "Category": "Foreign key",
+      "Source": 2,
+      "Target": 0,
+      "OnlyInSource": 1,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "Check constraint",
+      "Source": 2,
+      "Target": 0,
+      "OnlyInSource": 2,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "View",
+      "Source": 2,
+      "Target": 1,
+      "OnlyInSource": 1,
+      "OnlyInTarget": 0,
+      "Different": 1,
+      "Unverified": 0
+    },
+    {
+      "Category": "Stored procedure",
+      "Source": 2,
+      "Target": 2,
+      "OnlyInSource": 1,
+      "OnlyInTarget": 1,
+      "Different": 1,
+      "Unverified": 0
+    },
+    {
+      "Category": "Function",
+      "Source": 2,
+      "Target": 1,
+      "OnlyInSource": 1,
+      "OnlyInTarget": 0,
+      "Different": 1,
+      "Unverified": 0
+    },
+    {
+      "Category": "Trigger",
+      "Source": 1,
+      "Target": 1,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 1,
+      "Unverified": 0
+    },
+    {
+      "Category": "User-defined type",
+      "Source": 1,
+      "Target": 0,
+      "OnlyInSource": 1,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "Sequence",
+      "Source": 2,
+      "Target": 1,
+      "OnlyInSource": 1,
+      "OnlyInTarget": 0,
+      "Different": 1,
+      "Unverified": 0
+    },
+    {
+      "Category": "Synonym",
+      "Source": 1,
+      "Target": 1,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 1,
+      "Unverified": 0
+    }
+  ],
+  "diffs": [
+    {
+      "Category": "Schema",
+      "Object": "rpt",
+      "Status": "OnlyInSource",
+      "Detail": "",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "rpt",
+      "TargetKey": null
+    },
+    {
+      "Category": "Table",
+      "Object": "dbo.AllTypes",
+      "Status": "OnlyInSource",
+      "Detail": "",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.AllTypes",
+      "TargetKey": null
+    },
+    {
+      "Category": "Table",
+      "Object": "dbo.LegacyLog",
+      "Status": "OnlyInTarget",
+      "Detail": "",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": null,
+      "TargetKey": "dbo.LegacyLog"
+    },
+    {
+      "Category": "Table",
+      "Object": "dbo.Shipments",
+      "Status": "OnlyInSource",
+      "Detail": "",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.Shipments",
+      "TargetKey": null
+    },
+    {
+      "Category": "Column",
+      "Object": "dbo.Customers.Phone",
+      "Status": "OnlyInSource",
+      "Detail": "Type: dbo.tPhone; Nullable: NULL",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.Customers.Phone",
+      "TargetKey": null
+    },
+    {
+      "Category": "Column",
+      "Object": "dbo.Orders.Amount",
+      "Status": "Different",
+      "Detail": "Default: source ((1)), target ((0))",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.Orders.Amount",
+      "TargetKey": "dbo.Orders.Amount"
+    },
+    {
+      "Category": "Column",
+      "Object": "dbo.Orders.LegacyCode",
+      "Status": "OnlyInTarget",
+      "Detail": "Type: varchar(10); Nullable: NULL",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": null,
+      "TargetKey": "dbo.Orders.LegacyCode"
+    },
+    {
+      "Category": "Column",
+      "Object": "dbo.Orders.Name",
+      "Status": "Different",
+      "Detail": "Type: source nvarchar(100), target nvarchar(50)\nNullable: source NOT NULL, target NULL",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.Orders.Name",
+      "TargetKey": "dbo.Orders.Name"
+    },
+    {
+      "Category": "Index",
+      "Object": "dbo.Customers.IX_Customers_Name",
+      "Status": "OnlyInTarget",
+      "Detail": "Kind: INDEX; Type: NONCLUSTERED; Columns: Name",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": null,
+      "TargetKey": "dbo.Customers|IX_Customers_Name"
+    },
+    {
+      "Category": "Index",
+      "Object": "dbo.Orders.IX_Orders_CreatedAt",
+      "Status": "OnlyInSource",
+      "Detail": "Kind: INDEX; Type: NONCLUSTERED; Columns: CreatedAt DESC",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.Orders|IX_Orders_CreatedAt",
+      "TargetKey": null
+    },
+    {
+      "Category": "Index",
+      "Object": "dbo.Orders.IX_Orders_CustomerId",
+      "Status": "Different",
+      "Detail": "Include: source Amount, target (none)",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.Orders|IX_Orders_CustomerId",
+      "TargetKey": "dbo.Orders|IX_Orders_CustomerId"
+    },
+    {
+      "Category": "Foreign key",
+      "Object": "dbo.Orders.FK_Orders_Customers",
+      "Status": "OnlyInSource",
+      "Detail": "Columns: CustomerId; References: dbo.Customers (Id); OnDelete: NO_ACTION; OnUpdate: NO_ACTION; State: ENABLED",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.Orders|FK_Orders_Customers",
+      "TargetKey": null
+    },
+    {
+      "Category": "Check constraint",
+      "Object": "dbo.Customers (check: (len([Name])>(0)))",
+      "Status": "OnlyInSource",
+      "Detail": "Expression: (len([Name])>(0)); State: ENABLED",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.Customers|CK:(len([Name])>(0))",
+      "TargetKey": null
+    },
+    {
+      "Category": "Check constraint",
+      "Object": "dbo.Orders.CK_Orders_Amount",
+      "Status": "OnlyInSource",
+      "Detail": "Expression: ([Amount]>=(0)); State: ENABLED",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.Orders|CK_Orders_Amount",
+      "TargetKey": null
+    },
+    {
+      "Category": "View",
+      "Object": "dbo.vOrders",
+      "Status": "Different",
+      "Detail": "Definition differs",
+      "SourceDefinition": "CREATE VIEW dbo.vOrders\nAS\nSELECT o.Id, o.CustomerId, o.Name, o.Amount FROM dbo.Orders AS o;",
+      "TargetDefinition": "CREATE VIEW dbo.vOrders\nAS\nSELECT o.Id, o.Name, o.Amount FROM dbo.Orders AS o;",
+      "SourceKey": "dbo.vOrders",
+      "TargetKey": "dbo.vOrders"
+    },
+    {
+      "Category": "View",
+      "Object": "rpt.vDailyTotal",
+      "Status": "OnlyInSource",
+      "Detail": "Type: VIEW",
+      "SourceDefinition": "CREATE VIEW rpt.vDailyTotal\nAS\nSELECT CAST(CreatedAt AS date) AS OrderDate, SUM(Amount) AS Total\nFROM dbo.Orders\nGROUP BY CAST(CreatedAt AS date);",
+      "TargetDefinition": null,
+      "SourceKey": "rpt.vDailyTotal",
+      "TargetKey": null
+    },
+    {
+      "Category": "Stored procedure",
+      "Object": "dbo.pGetOrder",
+      "Status": "Different",
+      "Detail": "Definition differs",
+      "SourceDefinition": "-- A Thai column alias in a string literal (Bytebase's parser fails on this).\nCREATE PROCEDURE dbo.pGetOrder @Id int\nAS\nSELECT Id, Name AS 'ชื่อรายการ', Amount FROM dbo.Orders WHERE Id = @Id;",
+      "TargetDefinition": "CREATE PROCEDURE dbo.pGetOrder @Id int\nAS\nSELECT Id, Name, Amount FROM dbo.Orders WHERE Id = @Id;",
+      "SourceKey": "dbo.pGetOrder",
+      "TargetKey": "dbo.pGetOrder"
+    },
+    {
+      "Category": "Stored procedure",
+      "Object": "dbo.pLegacyCleanup",
+      "Status": "OnlyInTarget",
+      "Detail": "Type: SQL_STORED_PROCEDURE",
+      "SourceDefinition": null,
+      "TargetDefinition": "CREATE PROCEDURE dbo.pLegacyCleanup\nAS\nDELETE FROM dbo.LegacyLog WHERE Id < 0;",
+      "SourceKey": null,
+      "TargetKey": "dbo.pLegacyCleanup"
+    },
+    {
+      "Category": "Stored procedure",
+      "Object": "dbo.pNewOrder",
+      "Status": "OnlyInSource",
+      "Detail": "Type: SQL_STORED_PROCEDURE",
+      "SourceDefinition": "CREATE PROCEDURE dbo.pNewOrder @Id int, @CustomerId int, @Name nvarchar(100)\nAS\nINSERT INTO dbo.Orders (Id, CustomerId, Name) VALUES (@Id, @CustomerId, @Name);",
+      "TargetDefinition": null,
+      "SourceKey": "dbo.pNewOrder",
+      "TargetKey": null
+    },
+    {
+      "Category": "Function",
+      "Object": "dbo.fOrdersOf",
+      "Status": "OnlyInSource",
+      "Detail": "Type: SQL_INLINE_TABLE_VALUED_FUNCTION",
+      "SourceDefinition": "CREATE FUNCTION dbo.fOrdersOf (@CustomerId int)\nRETURNS TABLE\nAS\nRETURN SELECT Id, Name, Amount FROM dbo.Orders WHERE CustomerId = @CustomerId;",
+      "TargetDefinition": null,
+      "SourceKey": "dbo.fOrdersOf",
+      "TargetKey": null
+    },
+    {
+      "Category": "Function",
+      "Object": "dbo.fOrderTotal",
+      "Status": "Different",
+      "Detail": "Definition differs",
+      "SourceDefinition": "CREATE FUNCTION dbo.fOrderTotal (@CustomerId int)\nRETURNS decimal(18,2)\nAS\nBEGIN\n    RETURN ISNULL((SELECT SUM(Amount) FROM dbo.Orders WHERE CustomerId = @CustomerId), 0);\nEND;",
+      "TargetDefinition": "CREATE FUNCTION dbo.fOrderTotal (@CustomerId int)\nRETURNS decimal(18,2)\nAS\nBEGIN\n    RETURN (SELECT SUM(Amount) FROM dbo.Orders WHERE CustomerId = @CustomerId);\nEND;",
+      "SourceKey": "dbo.fOrderTotal",
+      "TargetKey": "dbo.fOrderTotal"
+    },
+    {
+      "Category": "Trigger",
+      "Object": "dbo.trOrders_Insert",
+      "Status": "Different",
+      "Detail": "State: source DISABLED, target ENABLED",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.trOrders_Insert",
+      "TargetKey": "dbo.trOrders_Insert"
+    },
+    {
+      "Category": "User-defined type",
+      "Object": "dbo.tPhone",
+      "Status": "OnlyInSource",
+      "Detail": "Kind: alias type; Spec: varchar(20) NULL",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.tPhone",
+      "TargetKey": null
+    },
+    {
+      "Category": "Sequence",
+      "Object": "dbo.seqInvoice",
+      "Status": "Different",
+      "Detail": "Increment: source 10, target 1",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.seqInvoice",
+      "TargetKey": "dbo.seqInvoice"
+    },
+    {
+      "Category": "Sequence",
+      "Object": "dbo.seqShipment",
+      "Status": "OnlyInSource",
+      "Detail": "DataType: bigint; Start: 1000; Increment: 1; Min: -9223372036854775808; Max: 9223372036854775807; Cycle: NO CYCLE; Cache: CACHE (default)",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.seqShipment",
+      "TargetKey": null
+    },
+    {
+      "Category": "Synonym",
+      "Object": "dbo.synOrders",
+      "Status": "Different",
+      "Detail": "BaseObject: source [dbo].[vOrders], target [dbo].[Orders]",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.synOrders",
+      "TargetKey": "dbo.synOrders"
+    }
+  ]
+}
