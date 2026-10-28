@@ -46,6 +46,7 @@ ALTER TABLE dbo.Customers ALTER COLUMN Email varchar(100) COLLATE SQL_Latin1_Gen
 ALTER TABLE dbo.Orders DROP CONSTRAINT DF_Orders_Amount;
 ALTER TABLE dbo.Orders ADD CONSTRAINT DF_Orders_Amount DEFAULT (1) FOR Amount;
 ALTER TABLE dbo.Customers ADD Phone dbo.tPhone NULL;
+ALTER TABLE dbo.Orders ALTER COLUMN AmountWithVat ADD PERSISTED;
 GO
 -- A changed index (INCLUDE), a new index, a new foreign key, new checks (one unnamed).
 DROP INDEX IX_Orders_CustomerId ON dbo.Orders;

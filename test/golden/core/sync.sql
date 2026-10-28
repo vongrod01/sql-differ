@@ -40,7 +40,7 @@ GO
 -- ==========================================================================================
 CREATE TABLE [dbo].[AllTypes] (
     [Id] bigint IDENTITY(100,5) NOT NULL,
-    [cBit] bit NOT NULL DEFAULT ((0)),
+    [cBit] bit NOT NULL CONSTRAINT [DF_AllTypes_cBit] DEFAULT ((0)),
     [cTiny] tinyint NULL,
     [cSmall] smallint NULL,
     [cDec] decimal(18,4) NULL,
@@ -59,11 +59,11 @@ CREATE TABLE [dbo].[AllTypes] (
     [cNVarMax] nvarchar(max) NULL,
     [cBin] binary(8) NULL,
     [cVarBin] varbinary(max) NULL,
-    [cGuid] uniqueidentifier NOT NULL DEFAULT (newsequentialid()),
+    [cGuid] uniqueidentifier NOT NULL CONSTRAINT [DF_AllTypes_cGuid] DEFAULT (newsequentialid()),
     [cXml] xml NULL,
     [cVariant] sql_variant NULL,
     [cRowVersion] timestamp NOT NULL,
-    [cComputed] AS ([cTiny]*(2)),
+    [cComputed] AS ([cTiny]*(2)) PERSISTED,
     CONSTRAINT [PK_AllTypes] PRIMARY KEY CLUSTERED ([Id])
 );
 GO
@@ -89,7 +89,10 @@ GO
 DECLARE @default sysname, @drop nvarchar(max);
 SELECT @default = dc.name FROM sys.default_constraints dc JOIN sys.columns c ON c.object_id = dc.parent_object_id AND c.column_id = dc.parent_column_id WHERE dc.parent_object_id = OBJECT_ID(N'[dbo].[Orders]') AND c.name = N'Amount';
 IF @default IS NOT NULL BEGIN SET @drop = N'ALTER TABLE [dbo].[Orders] DROP CONSTRAINT ' + QUOTENAME(@default); EXEC (@drop); END
-ALTER TABLE [dbo].[Orders] ADD DEFAULT ((1)) FOR [Amount];
+ALTER TABLE [dbo].[Orders] ADD CONSTRAINT [DF_Orders_Amount] DEFAULT ((1)) FOR [Amount];
+GO
+-- dbo.Orders.AmountWithVat: Persisted: source PERSISTED, target (none)
+ALTER TABLE [dbo].[Orders] ALTER COLUMN [AmountWithVat] ADD PERSISTED;
 GO
 -- dbo.Orders.Name: Type: source nvarchar(100), target nvarchar(50) Nullable: source NOT NULL, target NULL
 -- Fails if an index, constraint or schema-bound object uses this column; check for data loss.

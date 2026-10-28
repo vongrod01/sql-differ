@@ -53,7 +53,10 @@ GO
 DECLARE @default sysname, @drop nvarchar(max);
 SELECT @default = dc.name FROM sys.default_constraints dc JOIN sys.columns c ON c.object_id = dc.parent_object_id AND c.column_id = dc.parent_column_id WHERE dc.parent_object_id = OBJECT_ID(N'[dbo].[Orders]') AND c.name = N'Amount';
 IF @default IS NOT NULL BEGIN SET @drop = N'ALTER TABLE [dbo].[Orders] DROP CONSTRAINT ' + QUOTENAME(@default); EXEC (@drop); END
-ALTER TABLE [dbo].[Orders] ADD DEFAULT ((0)) FOR [Amount];
+ALTER TABLE [dbo].[Orders] ADD CONSTRAINT [DF_Orders_Amount] DEFAULT ((0)) FOR [Amount];
+GO
+-- dbo.Orders.AmountWithVat: Persisted: source PERSISTED, target (none)
+ALTER TABLE [dbo].[Orders] ALTER COLUMN [AmountWithVat] DROP PERSISTED;
 GO
 -- dbo.Orders.Name: Type: source nvarchar(100), target nvarchar(50) Nullable: source NOT NULL, target NULL
 -- Fails if an index, constraint or schema-bound object uses this column; check for data loss.

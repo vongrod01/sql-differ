@@ -38,7 +38,7 @@
   "counts": {
     "onlyInSource": 13,
     "onlyInTarget": 4,
-    "different": 9,
+    "different": 10,
     "unverified": 0
   },
   "warnings": [],
@@ -76,11 +76,11 @@
     },
     {
       "Category": "Column",
-      "Source": 38,
-      "Target": 11,
+      "Source": 39,
+      "Target": 12,
       "OnlyInSource": 1,
       "OnlyInTarget": 1,
-      "Different": 2,
+      "Different": 3,
       "Unverified": 0
     },
     {
@@ -234,6 +234,16 @@
       "TargetDefinition": null,
       "SourceKey": "dbo.Orders.Amount",
       "TargetKey": "dbo.Orders.Amount"
+    },
+    {
+      "Category": "Column",
+      "Object": "dbo.Orders.AmountWithVat",
+      "Status": "Different",
+      "Detail": "Persisted: source PERSISTED, target (none)",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.Orders.AmountWithVat",
+      "TargetKey": "dbo.Orders.AmountWithVat"
     },
     {
       "Category": "Column",

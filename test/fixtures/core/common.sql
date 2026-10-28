@@ -10,7 +10,8 @@ CREATE TABLE dbo.Orders (
     CustomerId int NULL,
     Name nvarchar(50) NULL,
     Amount decimal(10,2) NOT NULL CONSTRAINT DF_Orders_Amount DEFAULT (0),
-    CreatedAt datetime2(3) NOT NULL CONSTRAINT DF_Orders_CreatedAt DEFAULT (sysdatetime())
+    CreatedAt datetime2(3) NOT NULL CONSTRAINT DF_Orders_CreatedAt DEFAULT (sysdatetime()),
+    AmountWithVat AS (Amount * 1.07)
 );
 GO
 CREATE INDEX IX_Orders_CustomerId ON dbo.Orders (CustomerId);

@@ -119,7 +119,29 @@
           "Type": "decimal(10,2)"
         },
         "Sql": {
+          "DefaultName": "DF_Orders_Amount",
           "Name": "Amount",
+          "Schema": "dbo",
+          "Table": "Orders"
+        }
+      },
+      "dbo.Orders.AmountWithVat": {
+        "Definition": null,
+        "Name": "dbo.Orders.AmountWithVat",
+        "ObjectName": "",
+        "Parent": "dbo.Orders",
+        "Props": {
+          "Collation": "",
+          "Computed": "([Amount]*(1.07))",
+          "Default": "",
+          "Identity": "",
+          "Nullable": "NULL",
+          "Ordinal": "6",
+          "Persisted": "",
+          "Type": "numeric(14,4)"
+        },
+        "Sql": {
+          "Name": "AmountWithVat",
           "Schema": "dbo",
           "Table": "Orders"
         }
@@ -139,6 +161,7 @@
           "Type": "datetime2(3)"
         },
         "Sql": {
+          "DefaultName": "DF_Orders_CreatedAt",
           "Name": "CreatedAt",
           "Schema": "dbo",
           "Table": "Orders"
@@ -195,7 +218,7 @@
           "Default": "",
           "Identity": "",
           "Nullable": "NULL",
-          "Ordinal": "6",
+          "Ordinal": "7",
           "Type": "varchar(10)"
         },
         "Sql": {

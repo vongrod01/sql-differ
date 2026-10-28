@@ -46,7 +46,8 @@ export interface CompareOptions {
   name: string;
   source?: string;
   sourceSnapshot?: string;
-  target: string;
+  target?: string;
+  targetSnapshot?: string;
   options?: string[];
 }
 
@@ -56,8 +57,9 @@ export function compare(o: CompareOptions): Comparison {
   mkdirSync(dir, { recursive: true });
   const base = path.join(dir, o.name);
   const sourceArgs = o.sourceSnapshot ? ['-SourceSnapshot', o.sourceSnapshot] : ['-SourceDatabase', o.source ?? ''];
+  const targetArgs = o.targetSnapshot ? ['-TargetSnapshot', o.targetSnapshot] : ['-TargetDatabase', o.target ?? ''];
   const run = runEngine([
-    '-SourceServer', TEST_SERVER, ...sourceArgs, '-TargetDatabase', o.target,
+    '-SourceServer', TEST_SERVER, ...sourceArgs, ...targetArgs,
     '-Categories', 'All', '-SaveSnapshots', '-OutputPath', `${base}.html`, ...(o.options ?? []),
   ]);
   const files = {

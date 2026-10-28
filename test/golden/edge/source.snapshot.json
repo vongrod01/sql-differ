@@ -153,6 +153,7 @@
           "Identity": "",
           "Nullable": "NULL",
           "Ordinal": "7",
+          "Persisted": "",
           "Type": "decimal(21,2)"
         },
         "Sql": {

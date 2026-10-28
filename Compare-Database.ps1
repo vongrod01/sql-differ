@@ -317,10 +317,16 @@ SELECT s.name AS SchemaName, t.name AS TableName, c.name AS ColumnName, c.column
        CASE WHEN c.is_identity = 1
             THEN 'IDENTITY(' + CAST(ic.seed_value AS varchar(40)) + ',' + CAST(ic.increment_value AS varchar(40)) + ')'
             ELSE '' END AS IdentitySpec,
+       c.is_computed AS IsComputed,
        CASE WHEN c.is_computed = 1 AND cc.definition IS NULL THEN '(not readable)'
             ELSE ISNULL(cc.definition, '') END AS ComputedDefinition,
+       CASE WHEN c.is_computed = 0 THEN ''
+            WHEN cc.column_id IS NULL THEN '(not readable)'
+            WHEN cc.is_persisted = 1 THEN 'PERSISTED'
+            ELSE '' END AS Persisted,
        CASE WHEN c.default_object_id <> 0 AND dc.definition IS NULL THEN '(not readable)'
             ELSE ISNULL(dc.definition, '') END AS DefaultDefinition,
+       CASE WHEN dc.is_system_named = 0 THEN dc.name ELSE '' END AS DefaultName,
        ISNULL(c.collation_name, '') AS Collation
 FROM sys.columns c
 JOIN sys.tables t ON t.object_id = c.object_id
@@ -672,11 +678,17 @@ function Get-SchemaSnapshot {
             Nullable  = [string]$r.Nullable
             Identity  = [string]$r.IdentitySpec
             Computed  = [string]$r.ComputedDefinition
-            Default   = [string]$r.DefaultDefinition
-            Collation = [string]$r.Collation
-            Ordinal   = [string]$r.Ordinal
         }
+        # Computed columns only, so snapshots taken before 2026-10-28 (no Persisted) still compare
+        # cleanly: a prop missing on one side is not compared.
+        if ([int]$r.IsComputed -eq 1) { $props['Persisted'] = [string]$r.Persisted }
+        $props['Default'] = [string]$r.DefaultDefinition
+        $props['Collation'] = [string]$r.Collation
+        $props['Ordinal'] = [string]$r.Ordinal
         $sqlParts = @{ Schema = [string]$r.SchemaName; Table = [string]$r.TableName; Name = [string]$r.ColumnName }
+        # A default's own name is not compared (system-generated names differ per database), but
+        # the scripts keep a name someone chose.
+        if ([string]$r.DefaultName) { $sqlParts['DefaultName'] = [string]$r.DefaultName }
         $snap['Column'][$key] = New-SchemaItem $key $props $table -Sql $sqlParts
     }
 
@@ -1014,6 +1026,8 @@ function Compare-SchemaSet {
             }
         }
         foreach ($prop in (Get-ComparedProps $s)) {
+            # Only on one side: a snapshot from an engine version that did not read it yet.
+            if (-not $t.Props.Contains($prop)) { continue }
             $a = [string]$s.Props[$prop]
             $b = [string]$t.Props[$prop]
             $side = Get-UnreadableSide $a $b $HiddenValue

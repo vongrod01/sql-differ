@@ -65,13 +65,14 @@ for (const c of CASES) {
       matchGolden(c.name, 'after-sync.json', scrubJsonFile(after.files.json));
     });
 
-    // Known gaps, found by this suite (2026-10-28). Remove `todo` once the engine is fixed.
-    await t.test('sync keeps PERSISTED on computed columns', { todo: 'the snapshot does not read sys.computed_columns.is_persisted' }, () => {
-      const run = query("SELECT is_persisted FROM sys.computed_columns WHERE object_id = OBJECT_ID(N'dbo.AllTypes') AND name = N'cComputed'", target);
-      assert.equal(run.output.trim(), '1');
+    // Both found by this suite on 2026-10-28: the scripts dropped PERSISTED and default names.
+    await t.test('sync keeps PERSISTED on computed columns', () => {
+      const run = query("SELECT CONCAT(OBJECT_NAME(object_id), '.', name, '=', is_persisted) FROM sys.computed_columns ORDER BY 1", target);
+      assert.ok(run.ok, run.output);
+      assert.deepEqual(run.output.trim().split(/\r?\n/), ['AllTypes.cComputed=1', 'Orders.AmountWithVat=1']);
     });
 
-    await t.test('sync keeps the names of named default constraints', { todo: 'the snapshot does not keep default constraint names, so the target gets DF__<table>__<column>__<hex>' }, () => {
+    await t.test('sync keeps the names of named default constraints', () => {
       const run = query('SELECT name FROM sys.default_constraints WHERE is_system_named = 0 ORDER BY name', target);
       assert.deepEqual(run.output.trim().split(/\r?\n/), ['DF_AllTypes_cBit', 'DF_AllTypes_cGuid', 'DF_Orders_Amount', 'DF_Orders_CreatedAt']);
     });
@@ -98,6 +99,13 @@ for (const c of CASES) {
     await t.test('rollback script can run again', () => {
       const run = runScriptFile(before.files.rollback);
       assert.ok(run.ok, run.output);
+    });
+
+    await t.test('rollback puts back PERSISTED and default names', () => {
+      const persisted = query("SELECT is_persisted FROM sys.computed_columns WHERE object_id = OBJECT_ID(N'dbo.Orders') AND name = N'AmountWithVat'", target);
+      assert.equal(persisted.output.trim(), '0');
+      const defaults = query("SELECT CONCAT(name, '=', definition) FROM sys.default_constraints WHERE parent_object_id = OBJECT_ID(N'dbo.Orders') ORDER BY name", target);
+      assert.deepEqual(defaults.output.trim().split(/\r?\n/), ['DF_Orders_Amount=((0))', 'DF_Orders_CreatedAt=(sysdatetime())']);
     });
 
     await t.test('data survives sync and rollback', () => {

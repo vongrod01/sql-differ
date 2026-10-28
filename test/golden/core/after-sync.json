@@ -76,8 +76,8 @@
     },
     {
       "Category": "Column",
-      "Source": 38,
-      "Target": 41,
+      "Source": 39,
+      "Target": 42,
       "OnlyInSource": 0,
       "OnlyInTarget": 1,
       "Different": 0,

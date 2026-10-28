@@ -36,14 +36,24 @@ function Get-ColumnDefinition($Item, [string]$TargetCollation) {
     $name = Get-QuotedName (Get-SqlPart $Item 'Name')
     if ($p['Computed']) {
         if ($p['Computed'] -eq $HiddenValue) { return $null }
-        return '{0} AS {1}' -f $name, $p['Computed']
+        $sql = '{0} AS {1}' -f $name, $p['Computed']
+        if ($p['Persisted'] -eq 'PERSISTED') { $sql += ' PERSISTED' }
+        return $sql
     }
     $parts = @($name, (Format-ColumnType $p['Type']))
     if (-not $IgnoreCollation -and $p['Collation'] -and $p['Collation'] -ne $TargetCollation) { $parts += 'COLLATE ' + $p['Collation'] }
     if ($p['Identity']) { $parts += $p['Identity'] }
     $parts += $p['Nullable']
-    if ($p['Default'] -and $p['Default'] -ne $HiddenValue) { $parts += 'DEFAULT ' + $p['Default'] }
+    if ($p['Default'] -and $p['Default'] -ne $HiddenValue) { $parts += (Get-DefaultConstraintPrefix $Item) + 'DEFAULT ' + $p['Default'] }
     return $parts -join ' '
+}
+
+# "CONSTRAINT [DF_x] " for a default whose name someone chose; empty for a system-named one (and
+# for snapshots taken before 2026-10-28, which did not keep the name).
+function Get-DefaultConstraintPrefix($Column) {
+    $name = [string](Get-SqlPart $Column 'DefaultName')
+    if (-not $name) { return '' }
+    return 'CONSTRAINT ' + (Get-QuotedName $name) + ' '
 }
 
 function Get-ConstraintPrefix($Item) {
@@ -386,6 +396,7 @@ function Write-SyncScript {
             $column = [string](Get-SqlPart $s 'Name')
             $diff = @{}
             foreach ($prop in (Get-ComparedProps $s)) {
+                if (-not $t.Props.Contains($prop)) { continue }
                 $a = [string]$s.Props[$prop]
                 $b = [string]$t.Props[$prop]
                 if ($a -eq $HiddenValue -or $b -eq $HiddenValue) { continue }
@@ -394,6 +405,10 @@ function Write-SyncScript {
             & $note "$($d.Object): $($d.Detail)"
             if ($diff['Identity'] -or $diff['Computed']) {
                 & $add '-- IDENTITY or computed definition differs: SQL Server cannot ALTER this; rebuild the column or table manually.'
+            }
+            elseif ($diff['Persisted']) {
+                if ($s.Props['Persisted'] -eq 'PERSISTED') { $change = 'ADD' } else { $change = 'DROP' }
+                & $add ('ALTER TABLE {0} ALTER COLUMN {1} {2} PERSISTED;' -f $table, (Get-QuotedName $column), $change)
             }
             elseif ($diff['Type'] -or $diff['Nullable'] -or $diff['Collation']) {
                 $parts = @((Get-QuotedName $column), (Format-ColumnType $s.Props['Type']))
@@ -408,7 +423,7 @@ function Write-SyncScript {
             }
             if ($diff['Default']) {
                 & $add (Get-DropDefaultSql $table $column)
-                if ($s.Props['Default']) { & $add ('ALTER TABLE {0} ADD DEFAULT {1} FOR {2};' -f $table, $s.Props['Default'], (Get-QuotedName $column)) }
+                if ($s.Props['Default']) { & $add ('ALTER TABLE {0} ADD {1}DEFAULT {2} FOR {3};' -f $table, (Get-DefaultConstraintPrefix $s), $s.Props['Default'], (Get-QuotedName $column)) }
             }
             if ($diff['Ordinal']) {
                 & $add '-- Column order differs: SQL Server cannot move a column without rebuilding the table, so this is not scripted.'
