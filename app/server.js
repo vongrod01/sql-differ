@@ -185,10 +185,23 @@ async function handle(req, res) {
     return;
   }
 
+  const download = url.searchParams.get('download') === '1';
+
+  // Every database's sync or rollback script of a batch run in one file: /runs/<id>/combined/<kind>.sql
+  // The engine writes no folders into a run, so this path never names a real file.
+  const combined = /^\/runs\/([^/]+)\/combined\/(sync|rollback)\.sql$/.exec(pathname);
+  if (combined && req.method === 'GET') {
+    const { name, text } = runs.combinedScript(combined[1], combined[2]);
+    res.writeHead(200, {
+      'Content-Type': TYPES['.sql'], 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
+      ...(download ? { 'Content-Disposition': attachmentHeader(name) } : {}),
+    });
+    return res.end(text);
+  }
+
   // Reports and snapshots of a run: /runs/<id>/<file>
   const runFile = /^\/runs\/([^/]+)\/(.+)$/.exec(pathname);
   if (runFile && req.method === 'GET') {
-    const download = url.searchParams.get('download') === '1';
     const headers = download ? { 'Content-Disposition': attachmentHeader(path.basename(runFile[2])) } : {};
     return sendFile(res, runs.file(runFile[1], runFile[2]), headers);
   }

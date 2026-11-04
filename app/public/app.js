@@ -430,18 +430,27 @@ async function pageRun(id) {
       result.innerHTML = `<div class="notice error">การรันล้มเหลว ${esc(final.resultError || '')} ดูรายละเอียดใน log</div>`;
       return;
     }
-    // Open and download buttons of one script file.
-    const scriptButtons = (file, label, downloadLabel) => (file
-      ? `<a class="btn" href="/runs/${final.id}/${encodeURIComponent(file)}" target="_blank" rel="noopener">${label}</a>` +
-        `<a class="btn" href="/runs/${final.id}/${encodeURIComponent(file)}?download=1">${downloadLabel}</a>`
-      : '');
+    // Open and download buttons of one script.
+    const linkButtons = (href, label, downloadLabel) =>
+      `<a class="btn" href="${href}" target="_blank" rel="noopener">${label}</a>` +
+      `<a class="btn" href="${href}?download=1">${downloadLabel}</a>`;
+    const scriptButtons = (file, label, downloadLabel) =>
+      (file ? linkButtons(`/runs/${final.id}/${encodeURIComponent(file)}`, label, downloadLabel) : '');
+    // A batch run joins every database's script into one file on the server (runs.combinedScript).
+    // It includes only databases with objects to create or change; keep this rule the same as there.
+    const toApply = (key) => (final.databases || []).some((d) => !d.error && d[key] && d.counts &&
+      (d.counts.onlyInSource || 0) + (d.counts.different || 0) > 0);
+    const combinedSync = toApply('syncScript');
+    const combinedRollback = toApply('rollbackScript');
     // In a drift run the sync script is already the way back, so it has no rollback button.
     const drift = final.spec.kind === 'drift';
     links.innerHTML = `<a class="btn primary" href="/runs/${final.id}/${final.report}" target="_blank" rel="noopener">เปิดรายงาน</a>` +
       (drift
         ? scriptButtons(final.syncScript, 'Script ย้อนกลับ', 'ดาวน์โหลด .sql')
         : scriptButtons(final.syncScript, 'Sync script', 'ดาวน์โหลด sync .sql') +
-          scriptButtons(final.rollbackScript, 'Rollback script', 'ดาวน์โหลด rollback .sql'));
+          scriptButtons(final.rollbackScript, 'Rollback script', 'ดาวน์โหลด rollback .sql')) +
+      (combinedSync ? linkButtons(`/runs/${final.id}/combined/sync.sql`, 'Sync script ทั้งหมด', 'ดาวน์โหลด sync ทั้งหมด .sql') : '') +
+      (combinedRollback ? linkButtons(`/runs/${final.id}/combined/rollback.sql`, 'Rollback script ทั้งหมด', 'ดาวน์โหลด rollback ทั้งหมด .sql') : '');
     const c = final.counts || {};
     const o = onlyIn(final.spec.kind);
     let html = `<div class="cards">
@@ -462,6 +471,12 @@ async function pageRun(id) {
     if (!drift && (final.rollbackScript || (final.databases && final.databases.some((d) => d.rollbackScript)))) {
       html += '<div class="notice">Rollback script: รันบน target หลังรัน sync script แล้ว เพื่อย้อน schema กลับเป็นแบบตอนเปรียบเทียบ (ใช้ได้เมื่อหลังเปรียบเทียบ target ถูกแก้โดย sync script เท่านั้น) ' +
         'ของที่ sync script สร้างใหม่: procedure, view, function, trigger, index และ constraint จะถูก DROP ส่วน table และ column ถูก comment ไว้ท้ายไฟล์ เพราะลบแล้วข้อมูลหาย</div>';
+    }
+    if (combinedSync) {
+      html += '<div class="notice">Sync script ทั้งหมด: รวม sync script ของทุก database ที่มีของต้องสร้างหรือแก้ไว้ในไฟล์เดียว เปิดใน SSMS ที่ต่อกับ server target แล้วรันทีเดียวได้ ' +
+        'ก่อนแต่ละส่วนมี USE ของ database นั้น ถ้าเข้า database ไหนไม่ได้ (เช่นต่อผิด server) script จะหยุดทั้งไฟล์ ไม่รันใส่ database ผิดตัว ' +
+        'database ที่ไม่มีอะไรต้องแก้ไม่ได้ใส่ไว้ รายชื่ออยู่ที่หัวไฟล์' +
+        (combinedRollback ? ' ส่วน Rollback script ทั้งหมด ใช้ย้อนหลังรัน Sync script ทั้งหมดแล้ว' : '') + '</div>';
     }
     if (final.databases) {
       html += `<div class="table-wrap"><table><thead><tr><th>Database</th><th>ผลลัพธ์</th><th></th></tr></thead><tbody>${final.databases.map((d) => `
