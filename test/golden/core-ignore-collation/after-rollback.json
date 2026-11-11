@@ -4,11 +4,13 @@
   "generated": "<time>",
   "source": {
     "label": "<server> / ddtest_core_ignore_collation_tgt (snapshot <time>)",
+    "serverName": "<servername>",
     "login": "<login>",
     "canViewDefinition": true
   },
   "target": {
     "label": "<server> / ddtest_core_ignore_collation_tgt",
+    "serverName": "<servername>",
     "login": "<login>",
     "canViewDefinition": true
   },
@@ -37,7 +39,7 @@
   },
   "counts": {
     "onlyInSource": 0,
-    "onlyInTarget": 7,
+    "onlyInTarget": 9,
     "different": 0,
     "unverified": 0
   },
@@ -67,17 +69,17 @@
     },
     {
       "Category": "Table",
-      "Source": 3,
-      "Target": 5,
+      "Source": 4,
+      "Target": 7,
       "OnlyInSource": 0,
-      "OnlyInTarget": 2,
+      "OnlyInTarget": 3,
       "Different": 0,
       "Unverified": 0
     },
     {
       "Category": "Column",
-      "Source": 12,
-      "Target": 42,
+      "Source": 15,
+      "Target": 49,
       "OnlyInSource": 0,
       "OnlyInTarget": 1,
       "Different": 0,
@@ -85,8 +87,8 @@
     },
     {
       "Category": "Index",
-      "Source": 5,
-      "Target": 7,
+      "Source": 6,
+      "Target": 9,
       "OnlyInSource": 0,
       "OnlyInTarget": 0,
       "Different": 0,
@@ -121,8 +123,8 @@
     },
     {
       "Category": "Stored procedure",
-      "Source": 2,
-      "Target": 2,
+      "Source": 4,
+      "Target": 4,
       "OnlyInSource": 0,
       "OnlyInTarget": 0,
       "Different": 0,
@@ -148,10 +150,10 @@
     },
     {
       "Category": "User-defined type",
-      "Source": 0,
-      "Target": 1,
+      "Source": 1,
+      "Target": 3,
       "OnlyInSource": 0,
-      "OnlyInTarget": 1,
+      "OnlyInTarget": 2,
       "Different": 0,
       "Unverified": 0
     },
@@ -197,6 +199,16 @@
     },
     {
       "Category": "Table",
+      "Object": "dbo.Audit",
+      "Status": "OnlyInTarget",
+      "Detail": "",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": null,
+      "TargetKey": "dbo.Audit"
+    },
+    {
+      "Category": "Table",
       "Object": "dbo.Shipments",
       "Status": "OnlyInTarget",
       "Detail": "",
@@ -234,6 +246,16 @@
       "TargetDefinition": null,
       "SourceKey": null,
       "TargetKey": "dbo.tPhone"
+    },
+    {
+      "Category": "User-defined type",
+      "Object": "dbo.tRows",
+      "Status": "OnlyInTarget",
+      "Detail": "Kind: table type; Spec: (Id int NOT NULL, Code varchar(10) NOT NULL, Qty int NOT NULL, Twice int NOT NULL, Note nvarchar(20) NULL); Details: Id IDENTITY(10,5); Qty DEFAULT ((1)); Twice AS ([Qty]*(2)) PERSISTED; PRIMARY KEY CLUSTERED (Id) WITH (IGNORE_DUP_KEY = ON); UNIQUE NONCLUSTERED (Code DESC, Qty); CHECK ([Qty]>(0))",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": null,
+      "TargetKey": "dbo.tRows"
     },
     {
       "Category": "Sequence",

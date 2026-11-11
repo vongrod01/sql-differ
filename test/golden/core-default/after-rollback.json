@@ -1,0 +1,131 @@
+{
+  "format": "database-diff-result",
+  "version": 1,
+  "generated": "<time>",
+  "source": {
+    "label": "<server> / ddtest_core_default_tgt (snapshot <time>)",
+    "serverName": "<servername>",
+    "login": "<login>",
+    "canViewDefinition": true
+  },
+  "target": {
+    "label": "<server> / ddtest_core_default_tgt",
+    "serverName": "<servername>",
+    "login": "<login>",
+    "canViewDefinition": true
+  },
+  "categories": [
+    "Table",
+    "Column",
+    "View",
+    "Stored procedure",
+    "Function"
+  ],
+  "perspective": "timeline",
+  "options": {
+    "ignoreWhitespace": false,
+    "ignoreCase": false,
+    "ignoreCollation": false,
+    "compareColumnOrder": false
+  },
+  "counts": {
+    "onlyInSource": 0,
+    "onlyInTarget": 4,
+    "different": 0,
+    "unverified": 0
+  },
+  "warnings": [],
+  "syncScript": "after-rollback.sync.sql",
+  "syncError": "",
+  "rollbackScript": "after-rollback.rollback.sql",
+  "rollbackError": "",
+  "summary": [
+    {
+      "Category": "Table",
+      "Source": 4,
+      "Target": 7,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 3,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "Column",
+      "Source": 15,
+      "Target": 49,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 1,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "View",
+      "Source": 1,
+      "Target": 1,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "Stored procedure",
+      "Source": 4,
+      "Target": 4,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "Function",
+      "Source": 1,
+      "Target": 1,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    }
+  ],
+  "diffs": [
+    {
+      "Category": "Table",
+      "Object": "dbo.AllTypes",
+      "Status": "OnlyInTarget",
+      "Detail": "",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": null,
+      "TargetKey": "dbo.AllTypes"
+    },
+    {
+      "Category": "Table",
+      "Object": "dbo.Audit",
+      "Status": "OnlyInTarget",
+      "Detail": "",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": null,
+      "TargetKey": "dbo.Audit"
+    },
+    {
+      "Category": "Table",
+      "Object": "dbo.Shipments",
+      "Status": "OnlyInTarget",
+      "Detail": "",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": null,
+      "TargetKey": "dbo.Shipments"
+    },
+    {
+      "Category": "Column",
+      "Object": "dbo.Customers.Phone",
+      "Status": "OnlyInTarget",
+      "Detail": "Type: dbo.tPhone; Nullable: NULL; Collation: Thai_CI_AS",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": null,
+      "TargetKey": "dbo.Customers.Phone"
+    }
+  ]
+}

@@ -13,3 +13,17 @@ CREATE PROCEDURE dbo.pLegacyCleanup
 AS
 DELETE FROM dbo.LegacyLog WHERE Id < 0;
 GO
+-- Another procedure under the name the source's pRenamed had before sp_rename, which is still the
+-- name in that procedure's stored text. The sync script must leave this one as it is.
+CREATE PROCEDURE dbo.pOldName
+AS
+SELECT 'target only' AS Keep;
+GO
+-- The same text as the source's pAnsiOff, which was created under ANSI_NULLS OFF there: only the
+-- SET option differs.
+SET ANSI_NULLS ON;
+GO
+CREATE PROCEDURE dbo.pAnsiOff @Name nvarchar(50)
+AS
+SELECT Id FROM dbo.Orders WHERE Name = @Name;
+GO

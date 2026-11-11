@@ -31,12 +31,15 @@
 - `localhost (Windows auth)` มีให้ในตัว
 - profile ของ mssql-mcp ใน `~\.config\mssql-mcp\*.env` ขึ้นมาให้เลือกอัตโนมัติ (อ่านอย่างเดียว ต้องแก้ที่ไฟล์)
 - server ที่เพิ่มจากหน้าเว็บเก็บใน `data\servers\*.json` รหัสผ่านเข้ารหัสด้วย DPAPI: ถอดได้เฉพาะ Windows user นี้บนเครื่องนี้ (ไฟล์ copy ไปเครื่องอื่นใช้ไม่ได้)
+- ลบ server ที่ยังมีงานตั้งเวลาใช้อยู่ไม่ได้ (ระบบบอกชื่องาน) ต้องแก้หรือลบงานนั้นก่อน
+- address แบบ `host\INSTANCE,port`: SQL Server ต่อตาม port โดยไม่ดูชื่อ instance ถ้า instance ที่ตอบไม่ใช่ชื่อที่ระบุ ปุ่มทดสอบจะเตือน และ **การเปรียบเทียบจะล้มเหลวทันที** (ไม่อ่าน schema ผิดเครื่องมาใส่ชื่อ server นี้) ให้ลบ port ออกหรือใส่ port จริงของ instance นั้น
 
 ### ตั้งเวลา
 
 - สร้าง task ชื่อ `\database-diff\job-<id>` ใน Task Scheduler รันเป็น user นี้ **เฉพาะตอนที่ login อยู่** (ไม่ต้องเก็บรหัส Windows และใช้ DPAPI ได้)
 - ไม่ต้องเปิดเว็บค้างไว้ ผลจะเข้าไปอยู่ในหน้าประวัติ
 - ปิดหรือลบงานจากหน้าเว็บ task จะถูกลบตาม
+- ผลของ task (`node app\cli.js run-job <id>`): exit `0` = เทียบครบทุกฐาน, `1` = รันจบแต่มีฐานที่เทียบไม่สำเร็จ (หน้าประวัติขึ้นป้าย "เทียบไม่สำเร็จ N ฐาน" และไม่ขึ้นว่า "เหมือนกัน") หรือรันล้มเหลว, `2` = เริ่มรันไม่ได้ (เช่น profile ของ server ถูกลบ) ซึ่งจะถูกบันทึกเป็น run ที่ล้มเหลวในหน้าประวัติด้วย
 
 ### Sync script
 
@@ -45,11 +48,24 @@
 - คำสั่งที่ลบของ (DROP TABLE / DROP COLUMN / DROP PROCEDURE ...) ถูก **comment ไว้** ท้ายไฟล์
 - `ALTER COLUMN` เปิดใช้งานอยู่: ต้องเช็คเองว่าไม่ทำข้อมูลหาย (type แคบลง หรือเปลี่ยนเป็น NOT NULL)
 - เรียงตามชนิด object ไม่ได้เรียงตาม dependency ถ้าบางส่วนล้มเหลว ให้รันส่วนนั้นซ้ำหลังส่วนอื่น
-- view / SP / function / trigger ใช้ `CREATE OR ALTER` (ต้องเป็น SQL Server 2016 SP1 ขึ้นไป) ยกเว้น object ที่เปลี่ยนชนิด (เช่น scalar function เป็น table-valued) ซึ่ง ALTER ทำไม่ได้: ไฟล์จะมี `DROP` ที่ comment ไว้ให้ แล้วต้องรัน definition จากรายงานเอง
+- ต้นไฟล์มี `USE` ของฐาน target แล้วเช็คว่าเข้าได้จริง ถ้าเข้าไม่ได้ (ต่อผิด server หรือไม่มีสิทธิ์) จะขึ้น error แล้ว `SET NOEXEC ON` หยุดทั้งไฟล์ ไม่มีคำสั่งไหนไปรันในฐานอื่น ท้ายไฟล์มี `SET NOEXEC OFF` คืนค่า session
+- ทั้งไฟล์รันใต้ `SET XACT_ABORT ON` (ถ้ารันแค่บางส่วน ให้รันบรรทัดนี้ด้วย) index / constraint / default ที่ต้อง DROP แล้วสร้างใหม่ทำใน transaction เดียว: ถ้าสร้างไม่ผ่าน (ข้อมูลไม่ตรงเงื่อนไข, key ซ้ำ) ของเดิมยังอยู่
+  - index ที่เขียนคำสั่งสร้างแทนไม่ได้ (columnstore / XML / spatial หรืออ่าน filter ไม่ได้) จะไม่ถูก DROP: มีแต่ comment ให้ทำเอง
+  - constraint ที่ต่างกันแค่เปิด/ปิด ใช้ `CHECK` / `NOCHECK CONSTRAINT` ไม่สร้างใหม่ (มีบรรทัดแบบไม่ตรวจข้อมูลเดิม comment ไว้ให้ เผื่อข้อมูลเดิมไม่ผ่าน)
+  - เปลี่ยน type ของ column ที่มี default: DROP default, `ALTER COLUMN` แล้วใส่ default กลับ ใน transaction เดียว (ถ้า default ฝั่งใดฝั่งหนึ่งอ่านไม่ได้ ทั้งชุดจะถูก comment ไว้)
+- view / SP / function / trigger ใช้ `CREATE OR ALTER` (ต้องเป็น SQL Server 2016 SP1 ขึ้นไป)
+  - ชื่อใน header ถูกเขียนให้ตรงกับชื่อจริงใน catalog เมื่อข้อความเดิมไม่ตรง (object ที่ถูก `sp_rename`, ย้าย schema ด้วย `ALTER SCHEMA ... TRANSFER`, สร้างโดยไม่ระบุ schema หรือ trigger ของตารางที่ถูก rename) ส่วนอื่นของข้อความไม่ถูกแตะ
+  - module ที่สร้างด้วย `ANSI_NULLS` หรือ `QUOTED_IDENTIFIER` เป็น OFF จะถูกสร้างภายใต้ค่าเดียวกัน (มี batch `SET` ก่อนและคืนค่าหลัง) และค่าทั้งสองถูกนำมาเทียบด้วย
+  - object ที่เปลี่ยนชนิด (เช่น scalar function เป็น table-valued) หรือ trigger ที่อยู่คนละตาราง ALTER ทำไม่ได้: ไฟล์มี `DROP` และ `CREATE` ที่ comment ไว้ให้รันเอง
 - ตารางใหม่ถูกสร้างพร้อม primary key แต่ index / FK / check จะถูกสร้างก็ต่อเมื่อเลือกหมวดนั้นด้วย
+- ถ้าไม่ได้เลือกหมวด User-defined type / Sequence แต่ตารางหรือคอลัมน์ใหม่ใช้ type หรือ sequence (ใน default) ที่ target ยังไม่มี script จะสร้างให้ (เฉพาะเมื่อยังไม่มี)
+- table type ถูกสร้างพร้อม IDENTITY, default, computed column, collation ของ column, primary key / unique (รวม `IGNORE_DUP_KEY`) และ check (ไม่อ่าน index ที่ไม่ใช่ constraint และ `MEMORY_OPTIMIZED`) ถ้ามาจาก snapshot เก่าที่มีแต่ column จะมีหมายเหตุบอกในไฟล์
 - default ที่ตั้งชื่อไว้ (`DF_Orders_Amount`) ถูกสร้างด้วยชื่อเดิม ส่วน default ที่ระบบตั้งชื่อเองถูกสร้างแบบไม่มีชื่อ ชื่อของ default ไม่ถูกนำมาเทียบ (ถ้าต่างกันแค่ชื่อจะไม่มีรายงาน) snapshot ที่บันทึกก่อน 2026-10-28 ไม่มีชื่อ default จึงสร้างแบบไม่มีชื่อ
-- computed column ที่ต่างกันแค่ `PERSISTED` ใช้ `ALTER COLUMN ... ADD/DROP PERSISTED` ส่วน computed ที่นิยามต่างกันต้องสร้างใหม่เอง
-- รายการที่ "เทียบไม่ได้" จะไม่ถูกสร้างคำสั่ง แต่จะลิสต์ไว้ในไฟล์
+- computed column ที่ต่างกันแค่ `PERSISTED` ใช้ `ALTER COLUMN ... ADD/DROP PERSISTED` ส่วน computed ที่นิยาม, type หรือ NOT NULL ต่างกัน ALTER ไม่ได้: มีแต่ comment (computed ใหม่ที่เป็น `PERSISTED NOT NULL` ถูกสร้างครบ)
+- column ของ user-defined type ไม่ใส่ `COLLATE` (SQL Server ไม่ยอม) ถ้าต่างกันแค่ collation จะเป็น comment
+- synonym ที่ชี้ไปฐานอื่นหรือ server อื่น (ชื่อ 3-4 ส่วน) ถูก **comment ไว้** เพราะชื่อฐานมักต่างกันในแต่ละ environment
+- ถ้า login ฝั่ง target ไม่มี `VIEW DEFINITION` (ผลเทียบไม่ครบ) script จะระวังของที่อาจมีอยู่แล้วแต่มองไม่เห็น: view / SP / function / trigger ที่ "มีแค่ source" ใช้ `CREATE` ธรรมดา (ถ้ามีอยู่แล้วจะ fail แทนที่จะเขียนทับ) ส่วน index / check / FK ของตารางใหม่ และ check ที่ไม่มีชื่อ ถูก comment พร้อมบอกว่าต้องเช็คอะไรก่อนรัน
+- รายการที่ "เทียบไม่ได้" จะไม่ถูกสร้างคำสั่ง แต่จะลิสต์ไว้ในไฟล์ และ view / SP / function / trigger ที่อ่าน definition ไม่ได้ฝั่งใดฝั่งหนึ่ง จะไม่ถูกเขียนทับหรือ DROP แม้ SET option, ชนิด หรือตารางของ trigger จะต่างกัน (มีแต่ comment)
 - ในหน้า drift ไฟล์เดียวกันนี้คือ "script ย้อนกลับ": ทำให้ฝั่ง "ถึง" กลับไปเป็นแบบ "จาก"
 
 ### Rollback script
@@ -62,7 +78,10 @@
   - table / column / sequence / type / schema ถูก **comment ไว้** ท้ายไฟล์ เพราะลบแล้วข้อมูลที่เขียนเข้ามาหลัง sync หายด้วย
   - constraint ที่ระบบตั้งชื่อเอง (ไม่มีชื่อใน source) ได้ชื่อใหม่ตอน sync จึงลบด้วยชื่อไม่ได้: ไฟล์จะมีหมายเหตุให้หาชื่อแล้วลบเอง
 - object ที่มีแค่ฝั่ง target ไม่อยู่ใน rollback เพราะ sync script ไม่ได้ลบมัน (DROP ถูก comment ไว้) ถ้าไป uncomment แล้วรัน ต้องกู้จาก backup
-- schema ที่ sync script สร้างให้ "เฉพาะเมื่อยังไม่มี" (กรณีไม่ได้เลือกหมวด Schema) ไม่ถูกลบ
+- schema / type / sequence ที่ sync script สร้างให้ "เฉพาะเมื่อยังไม่มี" (กรณีไม่ได้เลือกหมวดนั้น) ไม่ถูกลบ
+- มี `USE` + เช็คฐาน, `SET XACT_ABORT ON` และ transaction ของการ DROP แล้วสร้างใหม่ เหมือน sync script
+- การ **แก้** ที่ sync script comment ไว้ (synonym ข้ามฐานที่เปลี่ยน, trigger คนละตาราง, object เปลี่ยนชนิด, computed column ฯลฯ) เป็น comment ในไฟล์นี้เช่นกัน ส่วน synonym ข้ามฐานที่เป็น **ของใหม่** (sync script comment คำสั่งสร้างไว้) ยังมี `DROP SYNONYM IF EXISTS` ที่รันจริงในไฟล์นี้: ถ้าไม่ได้ไปรันคำสั่งสร้างเอง คำสั่งนี้ไม่ทำอะไร
+- ถ้า target ไม่มี `VIEW DEFINITION` การ DROP procedure / view / function / trigger / synonym จะถูก comment ไว้ท้ายไฟล์ เพราะบางตัวอาจมีอยู่ก่อน sync (ให้ uncomment เฉพาะตัวที่ sync script สร้างจริง)
 - ข้อมูลที่หายไปแล้ว (เช่นจาก ALTER COLUMN ที่แคบลง) rollback กู้คืนไม่ได้ ต้องใช้ backup
 - หน้า drift ไม่มีปุ่ม rollback เพราะ script ของหน้านั้นเป็น script ย้อนกลับอยู่แล้ว
 
@@ -130,6 +149,7 @@ powershell -ExecutionPolicy Bypass -File .\Compare-Database.ps1 -ListDatabases -
 - Column / Index / FK / Check เทียบเฉพาะตารางที่มีทั้งสองฝั่ง (ตารางที่ขาดรายงานครั้งเดียวในหมวด Table)
 - Constraint ที่ระบบตั้งชื่อเอง (`PK__Orders__3214EC07...`) จับคู่ด้วยตาราง + นิยาม ไม่ใช้ชื่อ ถ้านิยามตรงแต่ชื่อต่าง รายงานเป็น `Name: source a, target b`
 - Definition ถูก normalize ก่อนเทียบ: line ending, ช่องว่างท้ายบรรทัด, บรรทัดว่างหัวท้าย, `CREATE OR ALTER` นับเป็น `CREATE` (sync script ยังใช้ข้อความดิบ ไม่ตัดช่องว่างใน string literal)
+- ชื่อ object ใน header ของ definition (และชื่อตารางหลัง `ON` ของ trigger) ไม่ถูกนำมาเทียบ เพราะ `sp_rename` ไม่แก้ข้อความที่เก็บไว้ สองฝั่งจับคู่กันด้วยชื่อใน catalog อยู่แล้ว (trigger ที่อยู่คนละตารางรายงานเป็น `Table: source a, target b`)
 - ชื่อตารางและคอลัมน์จับคู่แบบไม่สนตัวพิมพ์ (ตรงกับ collation แบบ CI) ชื่อที่ต่างแค่ตัวพิมพ์ (`Id` กับ `id`) จึงไม่ถูกรายงาน และรายชื่อคอลัมน์ใน index / FK ก็เทียบแบบไม่สนตัวพิมพ์เช่นกัน
 - ข้าม object ของ SSMS diagram: ดูจาก extended property `microsoft_database_tools_support` ที่ SSMS ใส่ไว้ (ปกติคือ `sysdiagrams`, `sp_*diagram*`, `fn_diagramobjects`) รวมถึงคอลัมน์และ index ของ `sysdiagrams` ด้วย
 
@@ -139,7 +159,7 @@ powershell -ExecutionPolicy Bypass -File .\Compare-Database.ps1 -ListDatabases -
 - **Different** (ต่างกัน): ปุ่ม "Show diff" แสดง diff ของ definition ทีละบรรทัด
 - **Cannot compare** (เทียบไม่ได้): ค่าฝั่งใดฝั่งหนึ่งอ่านไม่ได้ (encrypted, CLR หรือไม่มีสิทธิ์) **ไม่นับเป็นผลต่าง**
 
-Exit code ของ command line: `0` = เหมือนกันและเทียบได้ครบ, `1` = มีผลต่าง หรือเทียบได้ไม่ครบ, `2` = error
+Exit code ของ command line: `0` = เหมือนกันและเทียบได้ครบ, `1` = มีผลต่าง หรือเทียบได้ไม่ครบ, `2` = error (รวมถึง batch ที่มีฐานเทียบไม่สำเร็จอย่างน้อยหนึ่งฐาน และกรณี instance ที่ตอบไม่ตรงกับชื่อใน address)
 
 ## สำคัญ: สิทธิ์ VIEW DEFINITION
 
@@ -147,14 +167,14 @@ Login ทั้งสองฝั่งควรมี `VIEW DEFINITION` ใน�
 1. ซ่อน object ที่ login ไม่มีสิทธิ์อื่นเลย ทำให้ขึ้นเป็น "มีแค่..." ทั้งที่จริงมีอยู่
 2. คืน definition ของ view / SP / default / check เป็น NULL ทำให้ขึ้นเป็น "เทียบไม่ได้"
 
-ระบบตรวจสิทธิ์ให้อัตโนมัติ และขึ้นเตือนในหน้าเว็บ รายงาน และหัว sync script
+ระบบตรวจสิทธิ์ให้อัตโนมัติ และขึ้นเตือนในหน้าเว็บ รายงาน และหัว sync script เมื่อฝั่ง target เป็นแบบนี้ sync / rollback script จะไม่เขียนทับ ไม่เพิ่มของลงใน และไม่ลบ object ที่อาจมีอยู่แล้วแต่มองไม่เห็น (ดูหัวข้อ Sync script และ Rollback script)
 
 ## Test
 
 ```powershell
 npm install
 npm run typecheck
-npm test                     # ราว 30 วินาที
+npm test                     # ราว 1-2 นาที
 npm run test:update-golden   # เขียน golden ใหม่จากผลปัจจุบัน
 ```
 
@@ -163,7 +183,21 @@ npm run test:update-golden   # เขียน golden ใหม่จากผ�
 - ถ้าต่อ server ไม่ได้ test ที่ใช้ฐานจะถูก skip ถ้าตั้ง `DATABASE_DIFF_REQUIRE_DB=1` (สำหรับ CI) จะ fail แทน
 - fixture อยู่ใน `test\fixtures\<ชุด>\`: `common.sql` รันทั้งสองฝั่ง แล้ว `source.sql` / `target.sql` รันเฉพาะฝั่งนั้น เคสทั้งหมดอยู่ใน `test\cases.ts`
 - golden (`test\golden\<เคส>\`) คือผลของ engine (JSON, sync script, rollback script, snapshot) โดยแทนค่าที่เปลี่ยนทุกครั้งด้วย placeholder (เวลา, ชื่อ server, login, ชื่อ constraint ที่ระบบสุ่ม) ถ้าตั้งใจเปลี่ยนผลของ engine ให้รัน `test:update-golden` แล้ว **อ่าน git diff ของ golden ก่อน commit**
-- เคส round-trip (`core`) รัน sync script บน target แล้วเทียบใหม่ จากนั้นรัน rollback script (สองรอบ) แล้วเทียบกับ snapshot เดิม และเช็คว่าข้อมูลยังอยู่
+- เคส round-trip (`core`, `core-ignore-collation`, `core-default` ซึ่งใช้หมวด default) รัน sync script บน target แล้วเทียบใหม่ จากนั้นรัน rollback script (สองรอบ) แล้วเทียบกับ snapshot เดิม และเช็คว่าข้อมูลยังอยู่ ส่วนเคส `edge` (ผลต่างที่ script แก้ให้ไม่ได้) รัน script ทั้งสองแล้วเก็บผลที่เหลือไว้ใน golden
+- ไฟล์ test:
+
+  | ไฟล์ | ทดสอบอะไร |
+  |---|---|
+  | `engine.test.ts` | golden + round-trip ของเคสใน `cases.ts` |
+  | `engine-safety.test.ts` | การแก้ที่ทำไม่ได้ (ข้อมูลไม่ผ่าน constraint, index ที่เขียนแทนไม่ได้) ต้องไม่ทำให้ของเดิมหาย |
+  | `engine-incomplete.test.ts` | target ที่ไม่มี `VIEW DEFINITION`: ไม่เขียนทับ ไม่เพิ่ม ไม่ลบของที่มองไม่เห็น |
+  | `engine-script.test.ts` | ข้อความใน script จาก snapshot ที่เขียนขึ้นเอง (ไม่ใช้ฐาน): collation ของ user-defined type, computed column, default, type / sequence ที่ต้องใช้, synonym ข้ามฐาน ฯลฯ |
+  | `engine-functions.test.ts` | function เดี่ยวของ engine ผ่าน `test\support\Invoke-EngineFunction.ps1` (ไม่ใช้ฐาน) |
+  | `engine-compat.test.ts` | snapshot รูปแบบเก่ายังเทียบได้ |
+  | `engine-cli.test.ts` | พฤติกรรมของ command line (batch, `-ListDatabases`, ชื่อ server ที่ตอบ) |
+  | `app.test.ts` | module ของหน้าเว็บ, `cli.js` และ server จริงบน port ว่าง โดยใช้ data folder ชั่วคราว (ตั้งผ่าน `DATABASE_DIFF_DATA` และ `DATABASE_DIFF_MCP_PROFILES` จึงไม่แตะ `data\` และ profile จริง) |
+  | `golden.test.ts` | การแทนค่าที่เปลี่ยนทุกครั้งใน golden (ชื่อ server ที่ตอบ) |
+  | `ps-ascii.test.ts` | ไฟล์ `.ps1` ต้องเป็น ASCII ล้วน |
 - test ที่มีป้าย `todo` คือ bug ที่รู้แล้วแต่ยังไม่แก้ ไม่ทำให้ชุด test fail
 - ผลของแต่ละรอบอยู่ใน `test\.out\` (ไม่เข้า git) ไว้เปิดดูเมื่อ test fail
 
@@ -175,7 +209,7 @@ npm run test:update-golden   # เขียน golden ใหม่จากผ�
 | `lib\SyncScript.ps1` | สร้าง sync script และ rollback script |
 | `templates\` | template ของรายงาน HTML |
 | `app\` | หน้าเว็บ (Node, ไม่มี dependency) และ `cli.js` / `run-job.ps1` สำหรับงานตั้งเวลา |
-| `test\` | test ของ engine (TypeScript, `node:test`): fixture, golden, helper |
+| `test\` | test ของ engine และหน้าเว็บ (TypeScript, `node:test`): fixture, golden, helper |
 | `scripts\` | script สำหรับพัฒนา (`update-golden.ts`) |
 | `data\` | ประวัติการรัน, snapshot, profile ของ server, งานตั้งเวลา (ไม่เข้า git) |
 | `reports\` | ผลของการรันจาก command line (ไม่เข้า git) |

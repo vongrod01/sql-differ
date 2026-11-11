@@ -2,7 +2,8 @@
 // file is only as right as the output it was taken from.
 import { spawnSync } from 'node:child_process';
 
-const run = spawnSync(process.execPath, ['--import', 'tsx', '--test', 'test/engine.test.ts'], {
+// Every test file: goldens are written by more than one of them.
+const run = spawnSync(process.execPath, ['--import', 'tsx', '--test', 'test/**/*.test.ts'], {
   stdio: 'inherit',
   env: { ...process.env, UPDATE_GOLDEN: '1' },
 });

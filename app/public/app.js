@@ -35,17 +35,20 @@ function onlyIn(kind) {
   return { source: { cls: 'tgt', label: 'มีแค่ source' }, target: { cls: 'src', label: 'มีแค่ target' } };
 }
 
-function countsHtml(c, incomplete, kind) {
+// `errors`: how many databases of a batch could not be compared. Nothing of theirs is in the
+// counts, so the result never reads "identical" then.
+function countsHtml(c, incomplete, kind, errors) {
   if (!c) return '<span class="muted">-</span>';
   const total = c.onlyInSource + c.onlyInTarget + c.different;
   const o = onlyIn(kind);
   const parts = [];
-  if (total === 0 && !c.unverified) parts.push('<span class="tag ok">เหมือนกัน</span>');
+  if (total === 0 && !c.unverified && !errors) parts.push('<span class="tag ok">เหมือนกัน</span>');
   if (c.onlyInSource) parts.push(`<span class="tag ${o.source.cls}">${o.source.label} ${c.onlyInSource}</span>`);
   if (c.onlyInTarget) parts.push(`<span class="tag ${o.target.cls}">${o.target.label} ${c.onlyInTarget}</span>`);
   if (c.different) parts.push(`<span class="tag chg">ต่างกัน ${c.different}</span>`);
   if (c.unverified) parts.push(`<span class="tag">เทียบไม่ได้ ${c.unverified}</span>`);
   if (incomplete) parts.push('<span class="tag err">ผลไม่ครบ</span>');
+  if (errors) parts.push(`<span class="tag err">เทียบไม่สำเร็จ ${Number(errors)} ฐาน</span>`);
   return `<div class="counts">${parts.join('')}</div>`;
 }
 
@@ -460,6 +463,10 @@ async function pageRun(id) {
       <div class="card ${o.target.cls}"><span class="n">${c.onlyInTarget || 0}</span>${o.target.label}</div>
       <div class="card chg"><span class="n">${c.different || 0}</span>ต่างกัน</div>
       <div class="card unk"><span class="n">${c.unverified || 0}</span>เทียบไม่ได้</div></div>`;
+    if (final.errors) {
+      html += `<div class="notice error">เทียบไม่สำเร็จ ${Number(final.errors)} จาก ${(final.databases || []).length} ฐาน ตัวเลขด้านบนนับเฉพาะฐานที่เทียบได้ ` +
+        'ฐานที่เทียบไม่สำเร็จไม่มีรายงานและไม่มี script สาเหตุของแต่ละฐานอยู่ในตารางด้านล่าง</div>';
+    }
     if (final.incomplete) {
       html += '<div class="notice warn">ผลไม่ครบ: login อย่างน้อยหนึ่งฝั่งไม่มีสิทธิ์ VIEW DEFINITION object ที่มองไม่เห็นจะขึ้นเป็น "มีแค่..." และ definition จะขึ้นเป็น "เทียบไม่ได้"</div>';
     }
@@ -532,7 +539,7 @@ async function pageHistory() {
       <td class="mono small">${fmtTime(r.createdAt)}</td>
       <td>${KIND_LABEL[r.spec.kind]}${r.spec.trigger === 'schedule' ? '<div class="muted small">ตั้งเวลา</div>' : ''}</td>
       <td>${runTitle(r)}</td>
-      <td>${r.status === 'done' ? countsHtml(r.counts, r.incomplete, r.spec.kind) : ''}</td>
+      <td>${r.status === 'done' ? countsHtml(r.counts, r.incomplete, r.spec.kind, r.errors) : ''}</td>
       <td>${statusTag(r.status)}</td>
       <td><div class="actions">${r.report ? `<a class="btn" href="/runs/${r.id}/${r.report}" target="_blank" rel="noopener">รายงาน</a>` : ''}
         ${r.status !== 'running' ? `<button class="danger" data-delete="${r.id}">ลบ</button>` : ''}</div></td></tr>`).join('')}
@@ -666,7 +673,7 @@ async function pageSchedules() {
         <td class="small">${specText(j.spec)}</td>
         <td class="small">${scheduleText(j.schedule)}</td>
         <td class="small">${j.enabled ? (j.task.registered ? esc(j.task.nextRun) : '<span class="warn-text">ไม่พบใน Task Scheduler</span>') : '-'}</td>
-        <td>${j.lastRun ? `<a href="#/runs/${j.lastRun.id}">${fmtTime(j.lastRun.createdAt)}</a>${j.lastRun.status === 'done' ? countsHtml(j.lastRun.counts, j.lastRun.incomplete, j.spec.kind) : statusTag(j.lastRun.status)}` : '<span class="muted">ยังไม่เคยรัน</span>'}</td>
+        <td>${j.lastRun ? `<a href="#/runs/${j.lastRun.id}">${fmtTime(j.lastRun.createdAt)}</a>${j.lastRun.status === 'done' ? countsHtml(j.lastRun.counts, j.lastRun.incomplete, j.spec.kind, j.lastRun.errors) : statusTag(j.lastRun.status)}` : '<span class="muted">ยังไม่เคยรัน</span>'}</td>
         <td><div class="actions"><button data-run="${j.id}">รันตอนนี้</button><button data-edit="${j.id}">แก้ไข</button><button class="danger" data-delete="${j.id}">ลบ</button></div></td>
       </tr>`).join('')}</tbody></table></div>`;
     listEl.onclick = async (e) => {

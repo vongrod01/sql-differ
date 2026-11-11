@@ -13,14 +13,27 @@
 -- - Changed objects get their earlier definition back. ALTER COLUMN statements are active:
 --   check them for data loss (narrower types, NOT NULL).
 -- - Objects only in the target are not here: the sync script leaves them (its drops are
---   commented out). Schemas it created only when missing are left in place.
+--   commented out). Schemas, types and sequences it created only when missing are left in place.
 -- - Only a backup brings back dropped data.
 -- - Objects are ordered by kind, not by dependency; rerun a failed part after the rest.
 -- - Uses CREATE OR ALTER and DROP IF EXISTS: SQL Server 2016 SP1 or later on the target.
+-- - It starts with USE of the target database. If that fails (wrong server, no access), nothing
+--   after it is executed, so no statement runs in another database.
+-- - A changed index, constraint or default is dropped and created again in one transaction (a
+--   default also around the type change of its column), under the SET XACT_ABORT ON below
+--   (keep it when running only a part of this file): when a statement in it fails, the drop
+--   is rolled back and the existing one stays.
 USE [ddtest_core_ignore_collation_tgt];
+GO
+IF DB_ID(N'ddtest_core_ignore_collation_tgt') IS NULL OR DB_ID() <> DB_ID(N'ddtest_core_ignore_collation_tgt')
+BEGIN
+    RAISERROR(N'database-diff: cannot use database %s. The rest of this file is not executed.', 16, 1, N'ddtest_core_ignore_collation_tgt');
+    SET NOEXEC ON;
+END
 GO
 SET ANSI_NULLS ON;
 SET QUOTED_IDENTIFIER ON;
+SET XACT_ABORT ON;
 GO
 
 -- ==========================================================================================
@@ -33,9 +46,19 @@ ALTER TABLE [dbo].[Orders] DROP CONSTRAINT IF EXISTS [CK_Orders_Amount];
 GO
 DROP INDEX IF EXISTS [IX_Orders_CreatedAt] ON [dbo].[Orders];
 GO
+DROP TRIGGER IF EXISTS [dbo].[trAudit];
+GO
+DROP PROCEDURE IF EXISTS [dbo].[pAnsiOffNew];
+GO
 DROP PROCEDURE IF EXISTS [dbo].[pNewOrder];
 GO
+DROP PROCEDURE IF EXISTS [dbo].[pQuotedOff];
+GO
+DROP PROCEDURE IF EXISTS [dbo].[pRenamed];
+GO
 DROP VIEW IF EXISTS [rpt].[vDailyTotal];
+GO
+DROP VIEW IF EXISTS [rpt].[vMoved];
 GO
 DROP FUNCTION IF EXISTS [dbo].[fOrdersOf];
 GO
@@ -49,11 +72,17 @@ GO
 -- ==========================================================================================
 -- Columns
 -- ==========================================================================================
+-- dbo.Codes.Code: Nullable: source NULL, target NOT NULL
+-- Fails if an index, constraint or schema-bound object uses this column; check for data loss.
+ALTER TABLE [dbo].[Codes] ALTER COLUMN [Code] [dbo].[tCode] NOT NULL;
+GO
 -- dbo.Orders.Amount: Default: source ((1)), target ((0))
+BEGIN TRANSACTION;
 DECLARE @default sysname, @drop nvarchar(max);
 SELECT @default = dc.name FROM sys.default_constraints dc JOIN sys.columns c ON c.object_id = dc.parent_object_id AND c.column_id = dc.parent_column_id WHERE dc.parent_object_id = OBJECT_ID(N'[dbo].[Orders]') AND c.name = N'Amount';
 IF @default IS NOT NULL BEGIN SET @drop = N'ALTER TABLE [dbo].[Orders] DROP CONSTRAINT ' + QUOTENAME(@default); EXEC (@drop); END
 ALTER TABLE [dbo].[Orders] ADD CONSTRAINT [DF_Orders_Amount] DEFAULT ((0)) FOR [Amount];
+COMMIT TRANSACTION;
 GO
 -- dbo.Orders.AmountWithVat: Persisted: source PERSISTED, target (none)
 ALTER TABLE [dbo].[Orders] ALTER COLUMN [AmountWithVat] DROP PERSISTED;
@@ -62,13 +91,25 @@ GO
 -- Fails if an index, constraint or schema-bound object uses this column; check for data loss.
 ALTER TABLE [dbo].[Orders] ALTER COLUMN [Name] nvarchar(50) COLLATE Thai_CI_AS NULL;
 GO
+-- dbo.Orders.Qty: Type: source bigint, target int
+-- Fails if an index, constraint or schema-bound object uses this column; check for data loss.
+BEGIN TRANSACTION;
+DECLARE @default sysname, @drop nvarchar(max);
+SELECT @default = dc.name FROM sys.default_constraints dc JOIN sys.columns c ON c.object_id = dc.parent_object_id AND c.column_id = dc.parent_column_id WHERE dc.parent_object_id = OBJECT_ID(N'[dbo].[Orders]') AND c.name = N'Qty';
+IF @default IS NOT NULL BEGIN SET @drop = N'ALTER TABLE [dbo].[Orders] DROP CONSTRAINT ' + QUOTENAME(@default); EXEC (@drop); END
+ALTER TABLE [dbo].[Orders] ALTER COLUMN [Qty] int NOT NULL;
+ALTER TABLE [dbo].[Orders] ADD CONSTRAINT [DF_Orders_Qty] DEFAULT ((1)) FOR [Qty];
+COMMIT TRANSACTION;
+GO
 
 -- ==========================================================================================
 -- Indexes, primary keys and unique constraints
 -- ==========================================================================================
 -- dbo.Orders.IX_Orders_CustomerId: Include: source Amount, target (none)
+BEGIN TRANSACTION;
 DROP INDEX [IX_Orders_CustomerId] ON [dbo].[Orders];
 CREATE NONCLUSTERED INDEX [IX_Orders_CustomerId] ON [dbo].[Orders] ([CustomerId]);
+COMMIT TRANSACTION;
 GO
 
 -- ==========================================================================================
@@ -99,6 +140,13 @@ GO
 -- ==========================================================================================
 -- Stored procedures
 -- ==========================================================================================
+-- dbo.pAnsiOff: SetOptions: source ANSI_NULLS OFF, target (none)
+GO
+CREATE OR ALTER PROCEDURE dbo.pAnsiOff @Name nvarchar(50)
+AS
+SELECT Id FROM dbo.Orders WHERE Name = @Name;
+
+GO
 -- dbo.pGetOrder: Definition differs
 GO
 CREATE OR ALTER PROCEDURE dbo.pGetOrder @Id int
@@ -126,7 +174,13 @@ GO
 -- ==========================================================================================
 -- ALTER TABLE [dbo].[Customers] DROP COLUMN [Phone];
 -- DROP TABLE [dbo].[AllTypes];
+-- DROP TABLE [dbo].[Audit];
 -- DROP TABLE [dbo].[Shipments];
 -- DROP SEQUENCE [dbo].[seqShipment];
 -- DROP TYPE [dbo].[tPhone];
+-- DROP TYPE [dbo].[tRows];
 -- DROP SCHEMA [rpt];
+
+-- End of script: ends the NOEXEC that a failed database check at the top turned on.
+SET NOEXEC OFF;
+GO

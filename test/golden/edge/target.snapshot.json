@@ -162,6 +162,46 @@
           "Table": "Items"
         }
       },
+      "dbo.MoveA.Id": {
+        "Definition": null,
+        "Name": "dbo.MoveA.Id",
+        "ObjectName": "",
+        "Parent": "dbo.MoveA",
+        "Props": {
+          "Collation": "",
+          "Computed": "",
+          "Default": "",
+          "Identity": "",
+          "Nullable": "NOT NULL",
+          "Ordinal": "1",
+          "Type": "int"
+        },
+        "Sql": {
+          "Name": "Id",
+          "Schema": "dbo",
+          "Table": "MoveA"
+        }
+      },
+      "dbo.MoveB.Id": {
+        "Definition": null,
+        "Name": "dbo.MoveB.Id",
+        "ObjectName": "",
+        "Parent": "dbo.MoveB",
+        "Props": {
+          "Collation": "",
+          "Computed": "",
+          "Default": "",
+          "Identity": "",
+          "Nullable": "NOT NULL",
+          "Ordinal": "1",
+          "Type": "int"
+        },
+        "Sql": {
+          "Name": "Id",
+          "Schema": "dbo",
+          "Table": "MoveB"
+        }
+      },
       "dbo.Pairs.A": {
         "Definition": null,
         "Name": "dbo.Pairs.A",
@@ -201,6 +241,47 @@
           "Schema": "dbo",
           "Table": "Pairs"
         }
+      },
+      "dbo.Pnn.Qty": {
+        "Definition": null,
+        "Name": "dbo.Pnn.Qty",
+        "ObjectName": "",
+        "Parent": "dbo.Pnn",
+        "Props": {
+          "Collation": "",
+          "Computed": "",
+          "Default": "",
+          "Identity": "",
+          "Nullable": "NOT NULL",
+          "Ordinal": "1",
+          "Type": "int"
+        },
+        "Sql": {
+          "Name": "Qty",
+          "Schema": "dbo",
+          "Table": "Pnn"
+        }
+      },
+      "dbo.Pnn.Twice": {
+        "Definition": null,
+        "Name": "dbo.Pnn.Twice",
+        "ObjectName": "",
+        "Parent": "dbo.Pnn",
+        "Props": {
+          "Collation": "",
+          "Computed": "([Qty]*(2))",
+          "Default": "",
+          "Identity": "",
+          "Nullable": "NULL",
+          "Ordinal": "2",
+          "Persisted": "PERSISTED",
+          "Type": "int"
+        },
+        "Sql": {
+          "Name": "Twice",
+          "Schema": "dbo",
+          "Table": "Pnn"
+        }
       }
     },
     "Database": {
@@ -224,6 +305,7 @@
         "ObjectName": "",
         "Parent": "",
         "Props": {
+          "SetOptions": "",
           "Type": "SQL_SCALAR_FUNCTION"
         },
         "Sql": {
@@ -299,6 +381,7 @@
         "ObjectName": "",
         "Parent": "",
         "Props": {
+          "SetOptions": "",
           "Type": "SQL_STORED_PROCEDURE"
         },
         "Sql": {
@@ -315,6 +398,7 @@
         "ObjectName": "",
         "Parent": "",
         "Props": {
+          "SetOptions": "",
           "Type": "SQL_STORED_PROCEDURE"
         },
         "Sql": {
@@ -331,6 +415,7 @@
         "ObjectName": "",
         "Parent": "",
         "Props": {
+          "SetOptions": "",
           "Type": "SQL_STORED_PROCEDURE"
         },
         "Sql": {
@@ -347,6 +432,7 @@
         "ObjectName": "",
         "Parent": "",
         "Props": {
+          "SetOptions": "",
           "Type": "SQL_STORED_PROCEDURE"
         },
         "Sql": {
@@ -385,6 +471,28 @@
           "Schema": "dbo"
         }
       },
+      "dbo.MoveA": {
+        "Definition": null,
+        "Name": "dbo.MoveA",
+        "ObjectName": "",
+        "Parent": "",
+        "Props": {},
+        "Sql": {
+          "Name": "MoveA",
+          "Schema": "dbo"
+        }
+      },
+      "dbo.MoveB": {
+        "Definition": null,
+        "Name": "dbo.MoveB",
+        "ObjectName": "",
+        "Parent": "",
+        "Props": {},
+        "Sql": {
+          "Name": "MoveB",
+          "Schema": "dbo"
+        }
+      },
       "dbo.Pairs": {
         "Definition": null,
         "Name": "dbo.Pairs",
@@ -395,9 +503,40 @@
           "Name": "Pairs",
           "Schema": "dbo"
         }
+      },
+      "dbo.Pnn": {
+        "Definition": null,
+        "Name": "dbo.Pnn",
+        "ObjectName": "",
+        "Parent": "",
+        "Props": {},
+        "Sql": {
+          "Name": "Pnn",
+          "Schema": "dbo"
+        }
       }
     },
-    "Trigger": {},
+    "Trigger": {
+      "dbo.trMoved": {
+        "Definition": "CREATE TRIGGER dbo.trMoved ON dbo.MoveB AFTER INSERT AS SET NOCOUNT ON;\n",
+        "Name": "dbo.trMoved",
+        "ObjectName": "",
+        "Parent": "",
+        "Props": {
+          "SetOptions": "",
+          "State": "ENABLED",
+          "Table": "dbo.MoveB",
+          "Type": "SQL_TRIGGER"
+        },
+        "Sql": {
+          "Name": "trMoved",
+          "ObjectType": "TR",
+          "ParentObject": "MoveB",
+          "ParentSchema": "dbo",
+          "Schema": "dbo"
+        }
+      }
+    },
     "User-defined type": {
       "dbo.IdList": {
         "Definition": null,
@@ -405,18 +544,79 @@
         "ObjectName": "",
         "Parent": "",
         "Props": {
+          "Collation": "",
+          "Details": "PRIMARY KEY CLUSTERED (Id)",
           "Kind": "table type",
           "Spec": "(Id bigint NOT NULL)"
         },
         "Sql": {
+          "Checks": [],
           "Columns": [
             {
+              "Collation": "",
+              "Computed": "",
+              "Default": "",
+              "Identity": "",
               "Name": "Id",
               "Nullable": "NOT NULL",
+              "Persisted": "",
               "Type": "bigint"
             }
           ],
+          "KeyConstraints": [
+            {
+              "Columns": [
+                {
+                  "Desc": false,
+                  "Name": "Id"
+                }
+              ],
+              "IgnoreDupKey": false,
+              "Kind": "PRIMARY KEY",
+              "Type": "CLUSTERED"
+            }
+          ],
           "Name": "IdList",
+          "Schema": "dbo"
+        }
+      },
+      "dbo.KeyList": {
+        "Definition": null,
+        "Name": "dbo.KeyList",
+        "ObjectName": "",
+        "Parent": "",
+        "Props": {
+          "Collation": "",
+          "Details": "Qty DEFAULT ((2))",
+          "Kind": "table type",
+          "Spec": "(Id int NOT NULL, Qty int NOT NULL)"
+        },
+        "Sql": {
+          "Checks": [],
+          "Columns": [
+            {
+              "Collation": "",
+              "Computed": "",
+              "Default": "",
+              "Identity": "",
+              "Name": "Id",
+              "Nullable": "NOT NULL",
+              "Persisted": "",
+              "Type": "int"
+            },
+            {
+              "Collation": "",
+              "Computed": "",
+              "Default": "((2))",
+              "Identity": "",
+              "Name": "Qty",
+              "Nullable": "NOT NULL",
+              "Persisted": "",
+              "Type": "int"
+            }
+          ],
+          "KeyConstraints": [],
+          "Name": "KeyList",
           "Schema": "dbo"
         }
       }
@@ -427,5 +627,6 @@
   "format": "database-diff-snapshot",
   "login": "<login>",
   "server": "<server>",
+  "serverName": "<servername>",
   "version": 1
 }

@@ -99,7 +99,7 @@ async function list() {
     return {
       ...job,
       task: job.enabled ? await taskInfo(job.id) : { registered: false },
-      lastRun: last ? { id: last.id, createdAt: last.createdAt, status: last.status, counts: last.counts || null, incomplete: Boolean(last.incomplete) } : null,
+      lastRun: last ? { id: last.id, createdAt: last.createdAt, status: last.status, counts: last.counts || null, incomplete: Boolean(last.incomplete), errors: last.errors || 0 } : null,
     };
   }));
 }
@@ -159,4 +159,22 @@ function runNow(id, trigger = 'schedule') {
   return runs.start({ ...job.spec, trigger, jobId: job.id, jobName: job.name });
 }
 
-module.exports = { list, get, save, remove, runNow, taskName };
+// A scheduled run of this job could not start (runNow threw): keep that as a failed run, so the
+// history and schedules pages show it. Returns the run record, or null when there is no such job.
+function recordFailure(id, err) {
+  const job = readAll().find((j) => j.id === id);
+  if (!job) return null;
+  return runs.recordFailure({ ...job.spec, trigger: 'schedule', jobId: job.id, jobName: job.name }, err);
+}
+
+// The jobs that compare with this server, on either side: deleting its profile would make each of
+// them fail at its next run. Ids are matched without regard to case: a profile is a file, and
+// Windows finds "app:Prod" under "app:prod" as well.
+function usingServer(serverId) {
+  const wanted = String(serverId).toLowerCase();
+  return readAll()
+    .filter((j) => j.spec && [j.spec.source, j.spec.target].some((s) => s && String(s.serverId).toLowerCase() === wanted))
+    .map((j) => ({ id: j.id, name: j.name }));
+}
+
+module.exports = { list, get, save, remove, runNow, recordFailure, usingServer, taskName };

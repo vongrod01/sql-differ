@@ -1,0 +1,191 @@
+{
+  "format": "database-diff-result",
+  "version": 1,
+  "generated": "<time>",
+  "source": {
+    "label": "<server> / ddtest_edge_tgt (snapshot <time>)",
+    "serverName": "<servername>",
+    "login": "<login>",
+    "canViewDefinition": true
+  },
+  "target": {
+    "label": "<server> / ddtest_edge_tgt",
+    "serverName": "<servername>",
+    "login": "<login>",
+    "canViewDefinition": true
+  },
+  "categories": [
+    "Database",
+    "Schema",
+    "Table",
+    "Column",
+    "Index",
+    "Foreign key",
+    "Check constraint",
+    "View",
+    "Stored procedure",
+    "Function",
+    "Trigger",
+    "User-defined type",
+    "Sequence",
+    "Synonym"
+  ],
+  "perspective": "timeline",
+  "options": {
+    "ignoreWhitespace": false,
+    "ignoreCase": false,
+    "ignoreCollation": false,
+    "compareColumnOrder": false
+  },
+  "counts": {
+    "onlyInSource": 0,
+    "onlyInTarget": 0,
+    "different": 0,
+    "unverified": 1
+  },
+  "warnings": [],
+  "syncScript": "after-rollback.sync.sql",
+  "syncError": "",
+  "rollbackScript": "after-rollback.rollback.sql",
+  "rollbackError": "",
+  "summary": [
+    {
+      "Category": "Database",
+      "Source": 1,
+      "Target": 1,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "Schema",
+      "Source": 0,
+      "Target": 0,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "Table",
+      "Source": 5,
+      "Target": 5,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "Column",
+      "Source": 13,
+      "Target": 13,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "Index",
+      "Source": 2,
+      "Target": 2,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "Foreign key",
+      "Source": 0,
+      "Target": 0,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "Check constraint",
+      "Source": 1,
+      "Target": 1,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "View",
+      "Source": 0,
+      "Target": 0,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "Stored procedure",
+      "Source": 4,
+      "Target": 4,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 1
+    },
+    {
+      "Category": "Function",
+      "Source": 1,
+      "Target": 1,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "Trigger",
+      "Source": 1,
+      "Target": 1,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "User-defined type",
+      "Source": 2,
+      "Target": 2,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "Sequence",
+      "Source": 0,
+      "Target": 0,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "Synonym",
+      "Source": 1,
+      "Target": 1,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    }
+  ],
+  "diffs": [
+    {
+      "Category": "Stored procedure",
+      "Object": "dbo.pSecret",
+      "Status": "Unverified",
+      "Detail": "Definition: not readable on either side",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.pSecret",
+      "TargetKey": "dbo.pSecret"
+    }
+  ]
+}

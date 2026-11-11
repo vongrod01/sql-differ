@@ -235,8 +235,10 @@ function collectResults(meta, dir) {
 function start(rawSpec) {
   const spec = normalizeSpec(rawSpec);
   const id = newRunId();
-  const dir = store.ensureDir(runDir(id));
+  const dir = runDir(id);
+  // Before the folder exists: a spec that cannot be turned into arguments leaves nothing behind.
   const args = buildArgs(spec, dir);
+  store.ensureDir(dir);
   const meta = { id, createdAt: new Date().toISOString(), status: 'running', ownerPid: process.pid, spec };
   store.writeJson(path.join(dir, 'run.json'), meta);
 
@@ -287,6 +289,58 @@ function start(rawSpec) {
   return { id, done };
 }
 
+// What the pages show of a spec, taken from one that did not pass normalizeSpec: texts only, and
+// a label for each side even when its server profile is gone.
+function displaySpec(rawSpec) {
+  const spec = rawSpec && typeof rawSpec === 'object' ? rawSpec : {};
+  const text = (value) => (typeof value === 'string' || typeof value === 'number' ? String(value) : '');
+  const side = (raw) => {
+    const s = raw && typeof raw === 'object' ? raw : {};
+    const serverId = text(s.serverId);
+    let serverLabel = serverId || '(none)';
+    try {
+      if (serverId) serverLabel = servers.label(serverId);
+    } catch {
+      // The profile does not exist (any more): its id is all there is to show.
+    }
+    return { serverId, serverLabel, database: text(s.database) || null };
+  };
+  const categories = CATEGORIES.filter((c) => Array.isArray(spec.categories) && spec.categories.includes(c));
+  return {
+    kind: ['compare', 'batch', 'drift'].includes(spec.kind) ? spec.kind : 'compare',
+    options: {},
+    categories: categories.length ? categories : DEFAULT_CATEGORIES,
+    trigger: spec.trigger === 'schedule' ? 'schedule' : 'manual',
+    jobId: text(spec.jobId) || null,
+    jobName: text(spec.jobName) || null,
+    source: side(spec.source),
+    target: side(spec.target),
+    allDatabases: Boolean(spec.allDatabases),
+    databases: (Array.isArray(spec.databases) ? spec.databases : []).map(text).filter(Boolean),
+  };
+}
+
+// Records a run that could not start as a failed run, with the reason. For a scheduled job whose
+// spec no longer validates (its server profile was deleted, say): without a record the failure
+// shows only in Task Scheduler, and the history page looks as if the job never ran.
+function recordFailure(rawSpec, err) {
+  const id = newRunId();
+  const dir = store.ensureDir(runDir(id));
+  const now = new Date().toISOString();
+  const meta = {
+    id,
+    createdAt: now,
+    finishedAt: now,
+    status: 'failed',
+    ownerPid: process.pid,
+    spec: displaySpec(rawSpec),
+    resultError: `The run could not start: ${err.message}`,
+  };
+  fs.writeFileSync(path.join(dir, 'run.log'), `Error: ${err.message}\n`, 'utf8');
+  store.writeJson(path.join(dir, 'run.json'), meta);
+  return meta;
+}
+
 // Log text from byte `from` and the offset to continue from. Unless `whole`, it stops after the
 // last newline, so a line (or a UTF-8 character) still being written is left for the next read.
 function readLog(id, from = 0, whole = false) {
@@ -329,6 +383,14 @@ function file(id, name) {
 
 const COMBINED_KEYS = { sync: 'syncScript', rollback: 'rollbackScript' };
 
+// The last lines of a script written by lib/SyncScript.ps1 ($ScriptTrailerComment, then the batch
+// that turns NOEXEC off). Anchored at the end only, so a script without them (run folders from
+// before the engine wrote its own database check) stays as it is. It starts with fixed text: a
+// pattern that starts with "any number of line breaks" is tried from every blank line of a script
+// and reads on from each (seconds for a script with tens of thousands of them, in the request
+// handler). The blank lines around it are taken off with trimEnd(), for the same reason.
+const SCRIPT_TRAILER = /-- End of script: ends the NOEXEC [^\r\n]*\r?\nSET NOEXEC OFF;\r?\nGO$/;
+
 // Only objects only in the source and changed objects become statements; a database with neither
 // has a script of comments (items not compared, commented-out drops). The web page uses the same rule.
 function hasChangesToApply(d) {
@@ -344,6 +406,8 @@ function localStamp(date = new Date()) {
 // something to apply. Each part is preceded by its USE and a check that it took effect: a USE that
 // fails (SSMS connected to another server, no access) only ends its own batch, and the next part
 // would run in the database before it. The check turns on NOEXEC, so nothing after it executes.
+// Scripts carry the same USE and check themselves now; the ones here stay for the run folders
+// whose scripts were written before that.
 function combinedScript(id, kind) {
   const key = COMBINED_KEYS[kind];
   if (!key) throw httpError(404, 'Not found');
@@ -370,7 +434,8 @@ function combinedScript(id, kind) {
       noScript.push(`${d.database} (${d[key]} is missing from the run folder)`);
       continue;
     }
-    parts.push({ database: d.database, text: text.replace(/^\uFEFF/, '').replace(/\s+$/, '') });
+    // A part that turned NOEXEC off at its end would let the parts after a failed check run.
+    parts.push({ database: d.database, text: text.replace(/^\uFEFF/, '').trimEnd().replace(SCRIPT_TRAILER, '').trimEnd() });
   }
 
   const title = kind === 'rollback' ? 'Rollback' : 'Sync';
@@ -380,10 +445,11 @@ function combinedScript(id, kind) {
     comment(`Source server:  ${meta.spec.source.serverLabel || meta.spec.source.serverId}`),
     comment(`Target server:  ${meta.spec.target.serverLabel || meta.spec.target.serverId}`),
     '--',
-    comment(`The ${kind} scripts of ${parts.length} databases, one after another, unchanged. Each part`),
-    comment('starts with USE of its database. If that database cannot be used (SSMS is connected to'),
-    comment('another server, or the login has no access), the rest of this file is not executed, so no'),
-    comment('part runs in the wrong database. An error inside a part does not stop the file.'),
+    comment(`The ${kind} scripts of ${parts.length} databases, one after another. Each part is the script of its`),
+    comment('database without the SET NOEXEC OFF that ends it, and starts with USE of that database. If'),
+    comment('the database cannot be used (SSMS is connected to another server, or the login has no'),
+    comment('access), the rest of this file is not executed, so no part runs in the wrong database. An'),
+    comment('error inside a part does not stop the file.'),
     comment(kind === 'rollback'
       ? 'Run it on the target server only after the combined sync script of the same run.'
       : 'Run it on the TARGET server. REVIEW EVERY PART BEFORE RUNNING and back up the databases first.'),
@@ -425,4 +491,4 @@ function combinedScript(id, kind) {
   return { name: `batch-${id}.${kind}.sql`, text: '\uFEFF' + out.join('\r\n') + '\r\n' };
 }
 
-module.exports = { start, list, readMeta, remove, readLog, subscribe, listSnapshots, file, combinedScript, runDir, normalizeSpec, RUN_ID, CATEGORIES, DEFAULT_CATEGORIES };
+module.exports = { start, recordFailure, list, readMeta, remove, readLog, subscribe, listSnapshots, file, combinedScript, runDir, normalizeSpec, RUN_ID, CATEGORIES, DEFAULT_CATEGORIES };

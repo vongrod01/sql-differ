@@ -136,7 +136,20 @@ const routes = [
   ['GET', /^\/api\/servers$/, () => servers.list()],
   ['POST', /^\/api\/servers$/, (m, body) => servers.save(body)],
   ['POST', /^\/api\/servers\/test$/, (m, body) => servers.testDefinition(body)],
-  ['DELETE', /^\/api\/servers\/([^/]+)$/, (m) => { servers.remove(decodeParam(m[1])); return { ok: true }; }],
+  // The check for jobs is made here, not in servers.js: jobs.js needs runs.js, which needs servers.js.
+  ['DELETE', /^\/api\/servers\/([^/]+)$/, (m) => {
+    const id = decodeParam(m[1]);
+    const used = jobs.usingServer(id);
+    if (used.length) {
+      const names = used.map((j) => `"${j.name}"`).join(', ');
+      const message = used.length === 1
+        ? `This server is used by the scheduled job ${names}. Change or delete that job first.`
+        : `This server is used by the scheduled jobs ${names}. Change or delete those jobs first.`;
+      throw Object.assign(new Error(message), { status: 409 });
+    }
+    servers.remove(id);
+    return { ok: true };
+  }],
   ['GET', /^\/api\/servers\/([^/]+)\/databases$/, (m) => servers.listDatabases(decodeParam(m[1]))],
 
   ['GET', /^\/api\/runs$/, () => runs.list()],

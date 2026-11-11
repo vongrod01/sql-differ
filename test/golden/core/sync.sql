@@ -9,10 +9,23 @@
 -- - ALTER COLUMN statements are active: check them for data loss (narrower types, NOT NULL).
 -- - Objects are ordered by kind, not by dependency; rerun a failed part after the rest.
 -- - Uses CREATE OR ALTER, which needs SQL Server 2016 SP1 or later on the target.
+-- - It starts with USE of the target database. If that fails (wrong server, no access), nothing
+--   after it is executed, so no statement runs in another database.
+-- - A changed index, constraint or default is dropped and created again in one transaction (a
+--   default also around the type change of its column), under the SET XACT_ABORT ON below
+--   (keep it when running only a part of this file): when a statement in it fails, the drop
+--   is rolled back and the existing one stays.
 USE [ddtest_core_tgt];
+GO
+IF DB_ID(N'ddtest_core_tgt') IS NULL OR DB_ID() <> DB_ID(N'ddtest_core_tgt')
+BEGIN
+    RAISERROR(N'database-diff: cannot use database %s. The rest of this file is not executed.', 16, 1, N'ddtest_core_tgt');
+    SET NOEXEC ON;
+END
 GO
 SET ANSI_NULLS ON;
 SET QUOTED_IDENTIFIER ON;
+SET XACT_ABORT ON;
 GO
 
 -- ==========================================================================================
@@ -25,6 +38,18 @@ GO
 -- User-defined types
 -- ==========================================================================================
 CREATE TYPE [dbo].[tPhone] FROM varchar(20) NULL;
+GO
+-- Table type: indexes that are not constraints and MEMORY_OPTIMIZED are not read. Add them here if the source has them.
+CREATE TYPE [dbo].[tRows] AS TABLE (
+    [Id] int IDENTITY(10,5) NOT NULL,
+    [Code] varchar(10) COLLATE Latin1_General_BIN NOT NULL,
+    [Qty] int NOT NULL DEFAULT ((1)),
+    [Twice] AS ([Qty]*(2)) PERSISTED NOT NULL,
+    [Note] nvarchar(20) NULL,
+    PRIMARY KEY CLUSTERED ([Id]) WITH (IGNORE_DUP_KEY = ON),
+    UNIQUE NONCLUSTERED ([Code] DESC, [Qty]),
+    CHECK ([Qty]>(0))
+);
 GO
 
 -- ==========================================================================================
@@ -64,7 +89,14 @@ CREATE TABLE [dbo].[AllTypes] (
     [cVariant] sql_variant NULL,
     [cRowVersion] timestamp NOT NULL,
     [cComputed] AS ([cTiny]*(2)) PERSISTED,
+    [cComputedNN] AS ([Id]+(1)) PERSISTED NOT NULL,
     CONSTRAINT [PK_AllTypes] PRIMARY KEY CLUSTERED ([Id])
+);
+GO
+CREATE TABLE [dbo].[Audit] (
+    [Id] int NOT NULL,
+    [Note] nvarchar(100) NULL,
+    CONSTRAINT [PK_Audit] PRIMARY KEY CLUSTERED ([Id])
 );
 GO
 CREATE TABLE [dbo].[Shipments] (
@@ -72,6 +104,7 @@ CREATE TABLE [dbo].[Shipments] (
     [OrderId] int NOT NULL,
     [Phone] [dbo].[tPhone] NULL,
     [Note] nvarchar(200) NULL,
+    [Seq] bigint NOT NULL CONSTRAINT [DF_Shipments_Seq] DEFAULT (NEXT VALUE FOR [dbo].[seqShipment]),
     CONSTRAINT [PK_Shipments] PRIMARY KEY CLUSTERED ([Id])
 );
 GO
@@ -81,15 +114,21 @@ GO
 -- ==========================================================================================
 ALTER TABLE [dbo].[Customers] ADD [Phone] [dbo].[tPhone] NULL;
 GO
+-- dbo.Codes.Code: Nullable: source NULL, target NOT NULL
+-- Fails if an index, constraint or schema-bound object uses this column; check for data loss.
+ALTER TABLE [dbo].[Codes] ALTER COLUMN [Code] [dbo].[tCode] NULL;
+GO
 -- dbo.Customers.Email: Collation: source SQL_Latin1_General_CP1_CI_AS, target Thai_CI_AS
 -- Fails if an index, constraint or schema-bound object uses this column; check for data loss.
 ALTER TABLE [dbo].[Customers] ALTER COLUMN [Email] varchar(100) COLLATE SQL_Latin1_General_CP1_CI_AS NULL;
 GO
 -- dbo.Orders.Amount: Default: source ((1)), target ((0))
+BEGIN TRANSACTION;
 DECLARE @default sysname, @drop nvarchar(max);
 SELECT @default = dc.name FROM sys.default_constraints dc JOIN sys.columns c ON c.object_id = dc.parent_object_id AND c.column_id = dc.parent_column_id WHERE dc.parent_object_id = OBJECT_ID(N'[dbo].[Orders]') AND c.name = N'Amount';
 IF @default IS NOT NULL BEGIN SET @drop = N'ALTER TABLE [dbo].[Orders] DROP CONSTRAINT ' + QUOTENAME(@default); EXEC (@drop); END
 ALTER TABLE [dbo].[Orders] ADD CONSTRAINT [DF_Orders_Amount] DEFAULT ((1)) FOR [Amount];
+COMMIT TRANSACTION;
 GO
 -- dbo.Orders.AmountWithVat: Persisted: source PERSISTED, target (none)
 ALTER TABLE [dbo].[Orders] ALTER COLUMN [AmountWithVat] ADD PERSISTED;
@@ -98,6 +137,16 @@ GO
 -- Fails if an index, constraint or schema-bound object uses this column; check for data loss.
 ALTER TABLE [dbo].[Orders] ALTER COLUMN [Name] nvarchar(100) COLLATE Thai_CI_AS NOT NULL;
 GO
+-- dbo.Orders.Qty: Type: source bigint, target int
+-- Fails if an index, constraint or schema-bound object uses this column; check for data loss.
+BEGIN TRANSACTION;
+DECLARE @default sysname, @drop nvarchar(max);
+SELECT @default = dc.name FROM sys.default_constraints dc JOIN sys.columns c ON c.object_id = dc.parent_object_id AND c.column_id = dc.parent_column_id WHERE dc.parent_object_id = OBJECT_ID(N'[dbo].[Orders]') AND c.name = N'Qty';
+IF @default IS NOT NULL BEGIN SET @drop = N'ALTER TABLE [dbo].[Orders] DROP CONSTRAINT ' + QUOTENAME(@default); EXEC (@drop); END
+ALTER TABLE [dbo].[Orders] ALTER COLUMN [Qty] bigint NOT NULL;
+ALTER TABLE [dbo].[Orders] ADD CONSTRAINT [DF_Orders_Qty] DEFAULT ((1)) FOR [Qty];
+COMMIT TRANSACTION;
+GO
 
 -- ==========================================================================================
 -- Indexes, primary keys and unique constraints
@@ -105,8 +154,10 @@ GO
 CREATE NONCLUSTERED INDEX [IX_Orders_CreatedAt] ON [dbo].[Orders] ([CreatedAt] DESC);
 GO
 -- dbo.Orders.IX_Orders_CustomerId: Include: source Amount, target (none)
+BEGIN TRANSACTION;
 DROP INDEX [IX_Orders_CustomerId] ON [dbo].[Orders];
 CREATE NONCLUSTERED INDEX [IX_Orders_CustomerId] ON [dbo].[Orders] ([CustomerId]) INCLUDE ([Amount]);
+COMMIT TRANSACTION;
 GO
 
 -- ==========================================================================================
@@ -159,6 +210,13 @@ FROM dbo.Orders
 GROUP BY CAST(CreatedAt AS date);
 
 GO
+-- rpt.vMoved: only in source
+GO
+CREATE OR ALTER VIEW [rpt].[vMoved]
+AS
+SELECT 1 AS One;
+
+GO
 -- dbo.vOrders: Definition differs
 GO
 CREATE OR ALTER VIEW dbo.vOrders
@@ -170,12 +228,61 @@ GO
 -- ==========================================================================================
 -- Stored procedures
 -- ==========================================================================================
+-- dbo.pAnsiOffNew: only in source
+GO
+-- Created under the SET options it has in the source; the batch after it sets the script's own again.
+SET ANSI_NULLS OFF;
+GO
+CREATE OR ALTER PROCEDURE dbo.pAnsiOffNew @Name nvarchar(50)
+AS
+SELECT Id FROM dbo.Orders WHERE Name = @Name;
+
+GO
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+GO
 -- dbo.pNewOrder: only in source
 GO
 CREATE OR ALTER PROCEDURE dbo.pNewOrder @Id int, @CustomerId int, @Name nvarchar(100)
 AS
 INSERT INTO dbo.Orders (Id, CustomerId, Name) VALUES (@Id, @CustomerId, @Name);
 
+GO
+-- dbo.pQuotedOff: only in source
+GO
+-- Created under the SET options it has in the source; the batch after it sets the script's own again.
+SET QUOTED_IDENTIFIER OFF;
+GO
+CREATE OR ALTER PROCEDURE dbo.pQuotedOff
+AS
+SELECT "a double-quoted string" AS Txt;
+
+GO
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+GO
+-- dbo.pRenamed: only in source
+GO
+-- Modules whose stored text does not say what the catalog says: sp_rename and ALTER SCHEMA ...
+-- TRANSFER leave sys.sql_modules as it was written. The sync script must create each one under
+-- its catalog name (pRenamed, rpt.vMoved) and the trigger on the table as it is called now.
+CREATE OR ALTER PROCEDURE [dbo].[pRenamed]
+AS
+SELECT 1 AS One;
+
+GO
+-- dbo.pAnsiOff: SetOptions: source ANSI_NULLS OFF, target (none)
+GO
+-- Created under the SET options it has in the source; the batch after it sets the script's own again.
+SET ANSI_NULLS OFF;
+GO
+CREATE OR ALTER PROCEDURE dbo.pAnsiOff @Name nvarchar(50)
+AS
+SELECT Id FROM dbo.Orders WHERE Name = @Name;
+
+GO
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
 GO
 -- dbo.pGetOrder: Definition differs
 GO
@@ -189,6 +296,15 @@ GO
 -- ==========================================================================================
 -- Triggers
 -- ==========================================================================================
+-- dbo.trAudit: only in source
+GO
+CREATE OR ALTER TRIGGER dbo.trAudit ON [dbo].[Audit] AFTER INSERT
+AS
+SET NOCOUNT ON;
+
+GO
+ENABLE TRIGGER [dbo].[trAudit] ON [dbo].[Audit];
+GO
 -- dbo.trOrders_Insert: State: source DISABLED, target ENABLED
 DISABLE TRIGGER [dbo].[trOrders_Insert] ON [dbo].[Orders];
 GO
@@ -205,5 +321,10 @@ GO
 -- ==========================================================================================
 -- DROP INDEX [IX_Customers_Name] ON [dbo].[Customers];
 -- DROP PROCEDURE [dbo].[pLegacyCleanup];
+-- DROP PROCEDURE [dbo].[pOldName];
 -- ALTER TABLE [dbo].[Orders] DROP COLUMN [LegacyCode];
 -- DROP TABLE [dbo].[LegacyLog];
+
+-- End of script: ends the NOEXEC that a failed database check at the top turned on.
+SET NOEXEC OFF;
+GO

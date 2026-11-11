@@ -1,0 +1,131 @@
+{
+  "format": "database-diff-result",
+  "version": 1,
+  "generated": "<time>",
+  "source": {
+    "label": "<server> / ddtest_core_default_src",
+    "serverName": "<servername>",
+    "login": "<login>",
+    "canViewDefinition": true
+  },
+  "target": {
+    "label": "<server> / ddtest_core_default_tgt",
+    "serverName": "<servername>",
+    "login": "<login>",
+    "canViewDefinition": true
+  },
+  "categories": [
+    "Table",
+    "Column",
+    "View",
+    "Stored procedure",
+    "Function"
+  ],
+  "perspective": "sync",
+  "options": {
+    "ignoreWhitespace": false,
+    "ignoreCase": false,
+    "ignoreCollation": false,
+    "compareColumnOrder": false
+  },
+  "counts": {
+    "onlyInSource": 0,
+    "onlyInTarget": 4,
+    "different": 0,
+    "unverified": 0
+  },
+  "warnings": [],
+  "syncScript": "after-sync.sync.sql",
+  "syncError": "",
+  "rollbackScript": "after-sync.rollback.sql",
+  "rollbackError": "",
+  "summary": [
+    {
+      "Category": "Table",
+      "Source": 6,
+      "Target": 7,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 1,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "Column",
+      "Source": 46,
+      "Target": 49,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 1,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "View",
+      "Source": 3,
+      "Target": 3,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "Stored procedure",
+      "Source": 6,
+      "Target": 8,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 2,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "Function",
+      "Source": 2,
+      "Target": 2,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    }
+  ],
+  "diffs": [
+    {
+      "Category": "Table",
+      "Object": "dbo.LegacyLog",
+      "Status": "OnlyInTarget",
+      "Detail": "",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": null,
+      "TargetKey": "dbo.LegacyLog"
+    },
+    {
+      "Category": "Column",
+      "Object": "dbo.Orders.LegacyCode",
+      "Status": "OnlyInTarget",
+      "Detail": "Type: varchar(10); Nullable: NULL; Collation: Thai_CI_AS",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": null,
+      "TargetKey": "dbo.Orders.LegacyCode"
+    },
+    {
+      "Category": "Stored procedure",
+      "Object": "dbo.pLegacyCleanup",
+      "Status": "OnlyInTarget",
+      "Detail": "Type: SQL_STORED_PROCEDURE",
+      "SourceDefinition": null,
+      "TargetDefinition": "CREATE PROCEDURE dbo.pLegacyCleanup\nAS\nDELETE FROM dbo.LegacyLog WHERE Id < 0;",
+      "SourceKey": null,
+      "TargetKey": "dbo.pLegacyCleanup"
+    },
+    {
+      "Category": "Stored procedure",
+      "Object": "dbo.pOldName",
+      "Status": "OnlyInTarget",
+      "Detail": "Type: SQL_STORED_PROCEDURE",
+      "SourceDefinition": null,
+      "TargetDefinition": "-- Another procedure under the name the source's pRenamed had before sp_rename, which is still the\n-- name in that procedure's stored text. The sync script must leave this one as it is.\nCREATE PROCEDURE dbo.pOldName\nAS\nSELECT 'target only' AS Keep;",
+      "SourceKey": null,
+      "TargetKey": "dbo.pOldName"
+    }
+  ]
+}

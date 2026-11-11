@@ -1,0 +1,281 @@
+{
+  "format": "database-diff-result",
+  "version": 1,
+  "generated": "<time>",
+  "source": {
+    "label": "<server> / ddtest_edge_src",
+    "serverName": "<servername>",
+    "login": "<login>",
+    "canViewDefinition": true
+  },
+  "target": {
+    "label": "<server> / ddtest_edge_tgt",
+    "serverName": "<servername>",
+    "login": "<login>",
+    "canViewDefinition": true
+  },
+  "categories": [
+    "Database",
+    "Schema",
+    "Table",
+    "Column",
+    "Index",
+    "Foreign key",
+    "Check constraint",
+    "View",
+    "Stored procedure",
+    "Function",
+    "Trigger",
+    "User-defined type",
+    "Sequence",
+    "Synonym"
+  ],
+  "perspective": "sync",
+  "options": {
+    "ignoreWhitespace": false,
+    "ignoreCase": false,
+    "ignoreCollation": false,
+    "compareColumnOrder": false
+  },
+  "counts": {
+    "onlyInSource": 0,
+    "onlyInTarget": 0,
+    "different": 9,
+    "unverified": 1
+  },
+  "warnings": [],
+  "syncScript": "after-sync.sync.sql",
+  "syncError": "",
+  "rollbackScript": "after-sync.rollback.sql",
+  "rollbackError": "",
+  "summary": [
+    {
+      "Category": "Database",
+      "Source": 1,
+      "Target": 1,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 1,
+      "Unverified": 0
+    },
+    {
+      "Category": "Schema",
+      "Source": 0,
+      "Target": 0,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "Table",
+      "Source": 5,
+      "Target": 5,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "Column",
+      "Source": 13,
+      "Target": 13,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 2,
+      "Unverified": 0
+    },
+    {
+      "Category": "Index",
+      "Source": 2,
+      "Target": 2,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 1,
+      "Unverified": 0
+    },
+    {
+      "Category": "Foreign key",
+      "Source": 0,
+      "Target": 0,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "Check constraint",
+      "Source": 1,
+      "Target": 1,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "View",
+      "Source": 0,
+      "Target": 0,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "Stored procedure",
+      "Source": 4,
+      "Target": 4,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 1
+    },
+    {
+      "Category": "Function",
+      "Source": 1,
+      "Target": 1,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 1,
+      "Unverified": 0
+    },
+    {
+      "Category": "Trigger",
+      "Source": 1,
+      "Target": 1,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 1,
+      "Unverified": 0
+    },
+    {
+      "Category": "User-defined type",
+      "Source": 2,
+      "Target": 2,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 2,
+      "Unverified": 0
+    },
+    {
+      "Category": "Sequence",
+      "Source": 0,
+      "Target": 0,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "Synonym",
+      "Source": 1,
+      "Target": 1,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 1,
+      "Unverified": 0
+    }
+  ],
+  "diffs": [
+    {
+      "Category": "Database",
+      "Object": "(database)",
+      "Status": "Different",
+      "Detail": "CompatibilityLevel: source 150, target 140",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "(database)",
+      "TargetKey": "(database)"
+    },
+    {
+      "Category": "Column",
+      "Object": "dbo.Items.Total",
+      "Status": "Different",
+      "Detail": "Type: source decimal(21,2), target decimal(23,2)\nComputed: source ([Qty]*[Price]), target (([Qty]*[Price])*(1))",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.Items.Total",
+      "TargetKey": "dbo.Items.Total"
+    },
+    {
+      "Category": "Column",
+      "Object": "dbo.Pnn.Twice",
+      "Status": "Different",
+      "Detail": "Nullable: source NOT NULL, target NULL",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.Pnn.Twice",
+      "TargetKey": "dbo.Pnn.Twice"
+    },
+    {
+      "Category": "Index",
+      "Object": "dbo.Items (primary key)",
+      "Status": "Different",
+      "Detail": "Name: source (system-named), target PK_Items",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.Items|PK",
+      "TargetKey": "dbo.Items|PK"
+    },
+    {
+      "Category": "Stored procedure",
+      "Object": "dbo.pSecret",
+      "Status": "Unverified",
+      "Detail": "Definition: not readable on either side",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.pSecret",
+      "TargetKey": "dbo.pSecret"
+    },
+    {
+      "Category": "Function",
+      "Object": "dbo.fKind",
+      "Status": "Different",
+      "Detail": "Definition differs\nType: source SQL_INLINE_TABLE_VALUED_FUNCTION, target SQL_SCALAR_FUNCTION",
+      "SourceDefinition": "CREATE FUNCTION dbo.fKind () RETURNS TABLE AS RETURN SELECT 1 AS One;",
+      "TargetDefinition": "CREATE FUNCTION dbo.fKind () RETURNS int AS BEGIN RETURN 1; END;",
+      "SourceKey": "dbo.fKind",
+      "TargetKey": "dbo.fKind"
+    },
+    {
+      "Category": "Trigger",
+      "Object": "dbo.trMoved",
+      "Status": "Different",
+      "Detail": "Table: source dbo.MoveA, target dbo.MoveB",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.trMoved",
+      "TargetKey": "dbo.trMoved"
+    },
+    {
+      "Category": "User-defined type",
+      "Object": "dbo.IdList",
+      "Status": "Different",
+      "Detail": "Spec: source (Id int NOT NULL), target (Id bigint NOT NULL)",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.IdList",
+      "TargetKey": "dbo.IdList"
+    },
+    {
+      "Category": "User-defined type",
+      "Object": "dbo.KeyList",
+      "Status": "Different",
+      "Detail": "Details: source Qty DEFAULT ((1)); PRIMARY KEY CLUSTERED (Id), target Qty DEFAULT ((2))",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.KeyList",
+      "TargetKey": "dbo.KeyList"
+    },
+    {
+      "Category": "Synonym",
+      "Object": "dbo.synRemote",
+      "Status": "Different",
+      "Detail": "BaseObject: source [otherdb_dev].[dbo].[Orders], target [otherdb_prod].[dbo].[Orders]",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.synRemote",
+      "TargetKey": "dbo.synRemote"
+    }
+  ]
+}

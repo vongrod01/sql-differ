@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { ROOT } from './engine.js';
+import { ROOT, type Comparison } from './engine.js';
 import { TEST_SERVER, query } from './sql.js';
 
 export const GOLDEN = path.join(ROOT, 'test', 'golden');
@@ -42,7 +42,13 @@ function scrubValue(value: unknown, sortKeys: boolean): unknown {
   if (Array.isArray(value)) return value.map((v) => scrubValue(v, sortKeys));
   if (value !== null && typeof value === 'object') {
     // Keys are scrubbed too: index and constraint keys can hold system-generated names.
-    const entries = Object.entries(value).map(([k, v]) => [scrub(k), scrubValue(v, sortKeys)] as const);
+    // "serverName" is what SERVERPROPERTY('ServerName') answered (on LocalDB the machine name and
+    // a name with a hash that changes at every start of the instance): replaced by its key, not
+    // as text wherever it stands, which would also hit logins, paths and labels with that name.
+    const entries = Object.entries(value).map(([k, v]) => [
+      scrub(k),
+      k === 'serverName' && typeof v === 'string' && v !== '' ? '<servername>' : scrubValue(v, sortKeys),
+    ] as const);
     if (sortKeys) entries.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
     return Object.fromEntries(entries);
   }
@@ -73,4 +79,15 @@ export function matchGolden(caseName: string, fileName: string, actual: string):
   assert.ok(existsSync(file), `missing golden file ${path.relative(ROOT, file)}: run npm run test:update-golden`);
   const expected = readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
   assert.equal(actual, expected, `${path.relative(ROOT, file)} changed (npm run test:update-golden if intended)`);
+}
+
+// The files a comparison writes, against test/golden/<caseName>. Snapshots only when both sides
+// were live databases (a side read from a snapshot file saves none).
+export function matchComparisonGoldens(caseName: string, c: Comparison, { snapshots = true } = {}): void {
+  matchGolden(caseName, 'result.json', scrubJsonFile(c.files.json));
+  matchGolden(caseName, 'sync.sql', scrubFile(c.files.sync));
+  matchGolden(caseName, 'rollback.sql', scrubFile(c.files.rollback));
+  if (!snapshots) return;
+  matchGolden(caseName, 'source.snapshot.json', scrubJsonFile(c.files.sourceSnapshot, { sortKeys: true }));
+  matchGolden(caseName, 'target.snapshot.json', scrubJsonFile(c.files.targetSnapshot, { sortKeys: true }));
 }

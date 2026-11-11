@@ -4,11 +4,13 @@
   "generated": "<time>",
   "source": {
     "label": "<server> / ddtest_edge_loose_src",
+    "serverName": "<servername>",
     "login": "<login>",
     "canViewDefinition": true
   },
   "target": {
     "label": "<server> / ddtest_edge_loose_tgt",
+    "serverName": "<servername>",
     "login": "<login>",
     "canViewDefinition": true
   },
@@ -38,7 +40,7 @@
   "counts": {
     "onlyInSource": 0,
     "onlyInTarget": 0,
-    "different": 11,
+    "different": 14,
     "unverified": 1
   },
   "warnings": [],
@@ -67,8 +69,8 @@
     },
     {
       "Category": "Table",
-      "Source": 2,
-      "Target": 2,
+      "Source": 5,
+      "Target": 5,
       "OnlyInSource": 0,
       "OnlyInTarget": 0,
       "Different": 0,
@@ -76,11 +78,11 @@
     },
     {
       "Category": "Column",
-      "Source": 9,
-      "Target": 9,
+      "Source": 13,
+      "Target": 13,
       "OnlyInSource": 0,
       "OnlyInTarget": 0,
-      "Different": 4,
+      "Different": 5,
       "Unverified": 0
     },
     {
@@ -139,20 +141,20 @@
     },
     {
       "Category": "Trigger",
-      "Source": 0,
-      "Target": 0,
-      "OnlyInSource": 0,
-      "OnlyInTarget": 0,
-      "Different": 0,
-      "Unverified": 0
-    },
-    {
-      "Category": "User-defined type",
       "Source": 1,
       "Target": 1,
       "OnlyInSource": 0,
       "OnlyInTarget": 0,
       "Different": 1,
+      "Unverified": 0
+    },
+    {
+      "Category": "User-defined type",
+      "Source": 2,
+      "Target": 2,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 2,
       "Unverified": 0
     },
     {
@@ -226,6 +228,16 @@
       "TargetKey": "dbo.Pairs.B"
     },
     {
+      "Category": "Column",
+      "Object": "dbo.Pnn.Twice",
+      "Status": "Different",
+      "Detail": "Nullable: source NOT NULL, target NULL",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.Pnn.Twice",
+      "TargetKey": "dbo.Pnn.Twice"
+    },
+    {
       "Category": "Index",
       "Object": "dbo.Items (primary key)",
       "Status": "Different",
@@ -276,6 +288,16 @@
       "TargetKey": "dbo.fKind"
     },
     {
+      "Category": "Trigger",
+      "Object": "dbo.trMoved",
+      "Status": "Different",
+      "Detail": "Table: source dbo.MoveA, target dbo.MoveB",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.trMoved",
+      "TargetKey": "dbo.trMoved"
+    },
+    {
       "Category": "User-defined type",
       "Object": "dbo.IdList",
       "Status": "Different",
@@ -284,6 +306,16 @@
       "TargetDefinition": null,
       "SourceKey": "dbo.IdList",
       "TargetKey": "dbo.IdList"
+    },
+    {
+      "Category": "User-defined type",
+      "Object": "dbo.KeyList",
+      "Status": "Different",
+      "Detail": "Details: source Qty DEFAULT ((1)); PRIMARY KEY CLUSTERED (Id), target Qty DEFAULT ((2))",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.KeyList",
+      "TargetKey": "dbo.KeyList"
     },
     {
       "Category": "Synonym",

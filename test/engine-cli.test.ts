@@ -3,8 +3,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { OUT, runEngine } from './support/engine.js';
-import { DB_PREFIX, TEST_SERVER, recreateDatabase, skipWithoutServer } from './support/sql.js';
+import { OUT, compare, runEngine } from './support/engine.js';
+import { DB_PREFIX, TEST_SERVER, query, recreateDatabase, skipWithoutServer } from './support/sql.js';
 
 const skip = skipWithoutServer();
 const database = `${DB_PREFIX}cli`;
@@ -30,6 +30,28 @@ test('engine: -ListDatabases prints the server facts and databases as JSON', { s
   assert.equal(info.requestedInstance, '');
   assert.equal(info.instanceMismatch, false);
   assert.deepEqual(info.databases.find((d) => d.name === database), { name: database, hasAccess: true, canViewDefinition: true, state: 'ONLINE' });
+});
+
+// The label of a side is the address that was asked for. The result and the snapshots also say
+// which server answered (the engine reads it to check a named instance, see Assert-RequestedInstance).
+test('engine: the result and the snapshots record the server that answered', { skip }, () => {
+  recreateDatabase(database);
+  const answered = query("SELECT CAST(SERVERPROPERTY('ServerName') AS nvarchar(128))").output.trim();
+  assert.ok(answered, 'the test server has a name');
+  const live = compare({ dir: 'cli-identity', name: 'live', source: database, target: database });
+  assert.equal(live.exitCode, 0, live.log);
+  const side = (name: string) => live.result[name] as { label: string; serverName: string };
+  assert.equal(side('source').serverName, answered);
+  assert.equal(side('target').serverName, answered);
+  assert.equal(side('source').label, `${TEST_SERVER} / ${database}`);
+  const snapshot = JSON.parse(readFileSync(live.files.sourceSnapshot, 'utf8')) as { server: string; serverName: string };
+  assert.equal(snapshot.serverName, answered);
+  assert.equal(snapshot.server, TEST_SERVER);
+
+  // A side read from a snapshot keeps the name saved in it.
+  const drift = compare({ dir: 'cli-identity', name: 'drift', sourceSnapshot: live.files.sourceSnapshot, target: database });
+  assert.equal(drift.exitCode, 0, drift.log);
+  assert.equal((drift.result['source'] as { serverName: string }).serverName, answered);
 });
 
 test('engine: batch mode compares each named database and writes index.json', { skip }, () => {

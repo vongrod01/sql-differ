@@ -139,6 +139,27 @@
           "Table": "AllTypes"
         }
       },
+      "dbo.AllTypes.cComputedNN": {
+        "Definition": null,
+        "Name": "dbo.AllTypes.cComputedNN",
+        "ObjectName": "",
+        "Parent": "dbo.AllTypes",
+        "Props": {
+          "Collation": "",
+          "Computed": "([Id]+(1))",
+          "Default": "",
+          "Identity": "",
+          "Nullable": "NOT NULL",
+          "Ordinal": "26",
+          "Persisted": "PERSISTED",
+          "Type": "bigint"
+        },
+        "Sql": {
+          "Name": "cComputedNN",
+          "Schema": "dbo",
+          "Table": "AllTypes"
+        }
+      },
       "dbo.AllTypes.cDate": {
         "Definition": null,
         "Name": "dbo.AllTypes.cDate",
@@ -540,6 +561,86 @@
           "Table": "AllTypes"
         }
       },
+      "dbo.Audit.Id": {
+        "Definition": null,
+        "Name": "dbo.Audit.Id",
+        "ObjectName": "",
+        "Parent": "dbo.Audit",
+        "Props": {
+          "Collation": "",
+          "Computed": "",
+          "Default": "",
+          "Identity": "",
+          "Nullable": "NOT NULL",
+          "Ordinal": "1",
+          "Type": "int"
+        },
+        "Sql": {
+          "Name": "Id",
+          "Schema": "dbo",
+          "Table": "Audit"
+        }
+      },
+      "dbo.Audit.Note": {
+        "Definition": null,
+        "Name": "dbo.Audit.Note",
+        "ObjectName": "",
+        "Parent": "dbo.Audit",
+        "Props": {
+          "Collation": "Thai_CI_AS",
+          "Computed": "",
+          "Default": "",
+          "Identity": "",
+          "Nullable": "NULL",
+          "Ordinal": "2",
+          "Type": "nvarchar(100)"
+        },
+        "Sql": {
+          "Name": "Note",
+          "Schema": "dbo",
+          "Table": "Audit"
+        }
+      },
+      "dbo.Codes.Code": {
+        "Definition": null,
+        "Name": "dbo.Codes.Code",
+        "ObjectName": "",
+        "Parent": "dbo.Codes",
+        "Props": {
+          "Collation": "Thai_CI_AS",
+          "Computed": "",
+          "Default": "",
+          "Identity": "",
+          "Nullable": "NULL",
+          "Ordinal": "2",
+          "Type": "dbo.tCode"
+        },
+        "Sql": {
+          "Name": "Code",
+          "Schema": "dbo",
+          "Table": "Codes"
+        }
+      },
+      "dbo.Codes.Id": {
+        "Definition": null,
+        "Name": "dbo.Codes.Id",
+        "ObjectName": "",
+        "Parent": "dbo.Codes",
+        "Props": {
+          "Collation": "",
+          "Computed": "",
+          "Default": "",
+          "Identity": "",
+          "Nullable": "NOT NULL",
+          "Ordinal": "1",
+          "Type": "int"
+        },
+        "Sql": {
+          "Name": "Id",
+          "Schema": "dbo",
+          "Table": "Codes"
+        }
+      },
       "dbo.Customers.Email": {
         "Definition": null,
         "Name": "dbo.Customers.Email",
@@ -743,6 +844,27 @@
           "Table": "Orders"
         }
       },
+      "dbo.Orders.Qty": {
+        "Definition": null,
+        "Name": "dbo.Orders.Qty",
+        "ObjectName": "",
+        "Parent": "dbo.Orders",
+        "Props": {
+          "Collation": "",
+          "Computed": "",
+          "Default": "((1))",
+          "Identity": "",
+          "Nullable": "NOT NULL",
+          "Ordinal": "7",
+          "Type": "bigint"
+        },
+        "Sql": {
+          "DefaultName": "DF_Orders_Qty",
+          "Name": "Qty",
+          "Schema": "dbo",
+          "Table": "Orders"
+        }
+      },
       "dbo.Shipments.Id": {
         "Definition": null,
         "Name": "dbo.Shipments.Id",
@@ -819,6 +941,27 @@
         },
         "Sql": {
           "Name": "Phone",
+          "Schema": "dbo",
+          "Table": "Shipments"
+        }
+      },
+      "dbo.Shipments.Seq": {
+        "Definition": null,
+        "Name": "dbo.Shipments.Seq",
+        "ObjectName": "",
+        "Parent": "dbo.Shipments",
+        "Props": {
+          "Collation": "",
+          "Computed": "",
+          "Default": "(NEXT VALUE FOR [dbo].[seqShipment])",
+          "Identity": "",
+          "Nullable": "NOT NULL",
+          "Ordinal": "5",
+          "Type": "bigint"
+        },
+        "Sql": {
+          "DefaultName": "DF_Shipments_Seq",
+          "Name": "Seq",
           "Schema": "dbo",
           "Table": "Shipments"
         }
@@ -900,6 +1043,7 @@
         "ObjectName": "",
         "Parent": "",
         "Props": {
+          "SetOptions": "",
           "Type": "SQL_SCALAR_FUNCTION"
         },
         "Sql": {
@@ -916,6 +1060,7 @@
         "ObjectName": "",
         "Parent": "",
         "Props": {
+          "SetOptions": "",
           "Type": "SQL_INLINE_TABLE_VALUED_FUNCTION"
         },
         "Sql": {
@@ -953,6 +1098,60 @@
           "Name": "PK_AllTypes",
           "Schema": "dbo",
           "Table": "AllTypes"
+        }
+      },
+      "dbo.Audit|PK": {
+        "Definition": null,
+        "Name": "dbo.Audit (primary key)",
+        "ObjectName": "PK_Audit",
+        "Parent": "dbo.Audit",
+        "Props": {
+          "Columns": "Id",
+          "Filter": "",
+          "Include": "",
+          "Kind": "PRIMARY KEY",
+          "Name": "PK_Audit",
+          "Type": "CLUSTERED"
+        },
+        "Sql": {
+          "Includes": [],
+          "IsSystemNamed": false,
+          "KeyParts": [
+            {
+              "Desc": false,
+              "Name": "Id"
+            }
+          ],
+          "Name": "PK_Audit",
+          "Schema": "dbo",
+          "Table": "Audit"
+        }
+      },
+      "dbo.Codes|PK": {
+        "Definition": null,
+        "Name": "dbo.Codes (primary key)",
+        "ObjectName": "PK_Codes",
+        "Parent": "dbo.Codes",
+        "Props": {
+          "Columns": "Id",
+          "Filter": "",
+          "Include": "",
+          "Kind": "PRIMARY KEY",
+          "Name": "PK_Codes",
+          "Type": "CLUSTERED"
+        },
+        "Sql": {
+          "Includes": [],
+          "IsSystemNamed": false,
+          "KeyParts": [
+            {
+              "Desc": false,
+              "Name": "Id"
+            }
+          ],
+          "Name": "PK_Codes",
+          "Schema": "dbo",
+          "Table": "Codes"
         }
       },
       "dbo.Customers|PK": {
@@ -1144,12 +1343,47 @@
       }
     },
     "Stored procedure": {
+      "dbo.pAnsiOff": {
+        "Definition": "CREATE PROCEDURE dbo.pAnsiOff @Name nvarchar(50)\nAS\nSELECT Id FROM dbo.Orders WHERE Name = @Name;\n",
+        "Name": "dbo.pAnsiOff",
+        "ObjectName": "",
+        "Parent": "",
+        "Props": {
+          "SetOptions": "ANSI_NULLS OFF",
+          "Type": "SQL_STORED_PROCEDURE"
+        },
+        "Sql": {
+          "Name": "pAnsiOff",
+          "ObjectType": "P",
+          "ParentObject": "",
+          "ParentSchema": "",
+          "Schema": "dbo"
+        }
+      },
+      "dbo.pAnsiOffNew": {
+        "Definition": "CREATE PROCEDURE dbo.pAnsiOffNew @Name nvarchar(50)\nAS\nSELECT Id FROM dbo.Orders WHERE Name = @Name;\n",
+        "Name": "dbo.pAnsiOffNew",
+        "ObjectName": "",
+        "Parent": "",
+        "Props": {
+          "SetOptions": "ANSI_NULLS OFF",
+          "Type": "SQL_STORED_PROCEDURE"
+        },
+        "Sql": {
+          "Name": "pAnsiOffNew",
+          "ObjectType": "P",
+          "ParentObject": "",
+          "ParentSchema": "",
+          "Schema": "dbo"
+        }
+      },
       "dbo.pGetOrder": {
         "Definition": "-- A Thai column alias in a string literal (Bytebase's parser fails on this).\nCREATE PROCEDURE dbo.pGetOrder @Id int\nAS\nSELECT Id, Name AS 'ชื่อรายการ', Amount FROM dbo.Orders WHERE Id = @Id;\n",
         "Name": "dbo.pGetOrder",
         "ObjectName": "",
         "Parent": "",
         "Props": {
+          "SetOptions": "",
           "Type": "SQL_STORED_PROCEDURE"
         },
         "Sql": {
@@ -1166,10 +1400,45 @@
         "ObjectName": "",
         "Parent": "",
         "Props": {
+          "SetOptions": "",
           "Type": "SQL_STORED_PROCEDURE"
         },
         "Sql": {
           "Name": "pNewOrder",
+          "ObjectType": "P",
+          "ParentObject": "",
+          "ParentSchema": "",
+          "Schema": "dbo"
+        }
+      },
+      "dbo.pQuotedOff": {
+        "Definition": "CREATE PROCEDURE dbo.pQuotedOff\nAS\nSELECT \"a double-quoted string\" AS Txt;\n",
+        "Name": "dbo.pQuotedOff",
+        "ObjectName": "",
+        "Parent": "",
+        "Props": {
+          "SetOptions": "QUOTED_IDENTIFIER OFF",
+          "Type": "SQL_STORED_PROCEDURE"
+        },
+        "Sql": {
+          "Name": "pQuotedOff",
+          "ObjectType": "P",
+          "ParentObject": "",
+          "ParentSchema": "",
+          "Schema": "dbo"
+        }
+      },
+      "dbo.pRenamed": {
+        "Definition": "-- Modules whose stored text does not say what the catalog says: sp_rename and ALTER SCHEMA ...\n-- TRANSFER leave sys.sql_modules as it was written. The sync script must create each one under\n-- its catalog name (pRenamed, rpt.vMoved) and the trigger on the table as it is called now.\nCREATE PROCEDURE dbo.pOldName\nAS\nSELECT 1 AS One;\n",
+        "Name": "dbo.pRenamed",
+        "ObjectName": "",
+        "Parent": "",
+        "Props": {
+          "SetOptions": "",
+          "Type": "SQL_STORED_PROCEDURE"
+        },
+        "Sql": {
+          "Name": "pRenamed",
           "ObjectType": "P",
           "ParentObject": "",
           "ParentSchema": "",
@@ -1201,6 +1470,28 @@
         "Props": {},
         "Sql": {
           "Name": "AllTypes",
+          "Schema": "dbo"
+        }
+      },
+      "dbo.Audit": {
+        "Definition": null,
+        "Name": "dbo.Audit",
+        "ObjectName": "",
+        "Parent": "",
+        "Props": {},
+        "Sql": {
+          "Name": "Audit",
+          "Schema": "dbo"
+        }
+      },
+      "dbo.Codes": {
+        "Definition": null,
+        "Name": "dbo.Codes",
+        "ObjectName": "",
+        "Parent": "",
+        "Props": {},
+        "Sql": {
+          "Name": "Codes",
           "Schema": "dbo"
         }
       },
@@ -1239,12 +1530,32 @@
       }
     },
     "Trigger": {
+      "dbo.trAudit": {
+        "Definition": "CREATE TRIGGER dbo.trAudit ON dbo.AuditOld AFTER INSERT\nAS\nSET NOCOUNT ON;\n",
+        "Name": "dbo.trAudit",
+        "ObjectName": "",
+        "Parent": "",
+        "Props": {
+          "SetOptions": "",
+          "State": "ENABLED",
+          "Table": "dbo.Audit",
+          "Type": "SQL_TRIGGER"
+        },
+        "Sql": {
+          "Name": "trAudit",
+          "ObjectType": "TR",
+          "ParentObject": "Audit",
+          "ParentSchema": "dbo",
+          "Schema": "dbo"
+        }
+      },
       "dbo.trOrders_Insert": {
         "Definition": "CREATE TRIGGER dbo.trOrders_Insert ON dbo.Orders AFTER INSERT\nAS\nSET NOCOUNT ON;\n",
         "Name": "dbo.trOrders_Insert",
         "ObjectName": "",
         "Parent": "",
         "Props": {
+          "SetOptions": "",
           "State": "DISABLED",
           "Table": "dbo.Orders",
           "Type": "SQL_TRIGGER"
@@ -1259,6 +1570,20 @@
       }
     },
     "User-defined type": {
+      "dbo.tCode": {
+        "Definition": null,
+        "Name": "dbo.tCode",
+        "ObjectName": "",
+        "Parent": "",
+        "Props": {
+          "Kind": "alias type",
+          "Spec": "varchar(20) NULL"
+        },
+        "Sql": {
+          "Name": "tCode",
+          "Schema": "dbo"
+        }
+      },
       "dbo.tPhone": {
         "Definition": null,
         "Name": "dbo.tPhone",
@@ -1272,6 +1597,105 @@
           "Name": "tPhone",
           "Schema": "dbo"
         }
+      },
+      "dbo.tRows": {
+        "Definition": null,
+        "Name": "dbo.tRows",
+        "ObjectName": "",
+        "Parent": "",
+        "Props": {
+          "Collation": "Code Latin1_General_BIN; Note Thai_CI_AS",
+          "Details": "Id IDENTITY(10,5); Qty DEFAULT ((1)); Twice AS ([Qty]*(2)) PERSISTED; PRIMARY KEY CLUSTERED (Id) WITH (IGNORE_DUP_KEY = ON); UNIQUE NONCLUSTERED (Code DESC, Qty); CHECK ([Qty]>(0))",
+          "Kind": "table type",
+          "Spec": "(Id int NOT NULL, Code varchar(10) NOT NULL, Qty int NOT NULL, Twice int NOT NULL, Note nvarchar(20) NULL)"
+        },
+        "Sql": {
+          "Checks": [
+            "([Qty]>(0))"
+          ],
+          "Columns": [
+            {
+              "Collation": "",
+              "Computed": "",
+              "Default": "",
+              "Identity": "IDENTITY(10,5)",
+              "Name": "Id",
+              "Nullable": "NOT NULL",
+              "Persisted": "",
+              "Type": "int"
+            },
+            {
+              "Collation": "Latin1_General_BIN",
+              "Computed": "",
+              "Default": "",
+              "Identity": "",
+              "Name": "Code",
+              "Nullable": "NOT NULL",
+              "Persisted": "",
+              "Type": "varchar(10)"
+            },
+            {
+              "Collation": "",
+              "Computed": "",
+              "Default": "((1))",
+              "Identity": "",
+              "Name": "Qty",
+              "Nullable": "NOT NULL",
+              "Persisted": "",
+              "Type": "int"
+            },
+            {
+              "Collation": "",
+              "Computed": "([Qty]*(2))",
+              "Default": "",
+              "Identity": "",
+              "Name": "Twice",
+              "Nullable": "NOT NULL",
+              "Persisted": "PERSISTED",
+              "Type": "int"
+            },
+            {
+              "Collation": "Thai_CI_AS",
+              "Computed": "",
+              "Default": "",
+              "Identity": "",
+              "Name": "Note",
+              "Nullable": "NULL",
+              "Persisted": "",
+              "Type": "nvarchar(20)"
+            }
+          ],
+          "KeyConstraints": [
+            {
+              "Columns": [
+                {
+                  "Desc": false,
+                  "Name": "Id"
+                }
+              ],
+              "IgnoreDupKey": true,
+              "Kind": "PRIMARY KEY",
+              "Type": "CLUSTERED"
+            },
+            {
+              "Columns": [
+                {
+                  "Desc": true,
+                  "Name": "Code"
+                },
+                {
+                  "Desc": false,
+                  "Name": "Qty"
+                }
+              ],
+              "IgnoreDupKey": false,
+              "Kind": "UNIQUE",
+              "Type": "NONCLUSTERED"
+            }
+          ],
+          "Name": "tRows",
+          "Schema": "dbo"
+        }
       }
     },
     "View": {
@@ -1281,6 +1705,7 @@
         "ObjectName": "",
         "Parent": "",
         "Props": {
+          "SetOptions": "",
           "Type": "VIEW"
         },
         "Sql": {
@@ -1297,10 +1722,28 @@
         "ObjectName": "",
         "Parent": "",
         "Props": {
+          "SetOptions": "",
           "Type": "VIEW"
         },
         "Sql": {
           "Name": "vDailyTotal",
+          "ObjectType": "V",
+          "ParentObject": "",
+          "ParentSchema": "",
+          "Schema": "rpt"
+        }
+      },
+      "rpt.vMoved": {
+        "Definition": "CREATE VIEW vMoved\nAS\nSELECT 1 AS One;\n",
+        "Name": "rpt.vMoved",
+        "ObjectName": "",
+        "Parent": "",
+        "Props": {
+          "SetOptions": "",
+          "Type": "VIEW"
+        },
+        "Sql": {
+          "Name": "vMoved",
           "ObjectType": "V",
           "ParentObject": "",
           "ParentSchema": "",
@@ -1313,5 +1756,6 @@
   "format": "database-diff-snapshot",
   "login": "<login>",
   "server": "<server>",
+  "serverName": "<servername>",
   "version": 1
 }

@@ -14,8 +14,9 @@ module.exports = {
   TMP: path.join(DATA, 'tmp'),
   JOBS_FILE: path.join(DATA, 'jobs.json'),
   ENGINE: path.join(ROOT, 'Compare-Database.ps1'),
-  // Read-only: connection profiles the mssql-mcp server already uses on this machine.
-  MCP_PROFILES: path.join(os.homedir(), '.config', 'mssql-mcp'),
+  // Read-only: connection profiles the mssql-mcp server already uses on this machine. The
+  // variable is for the tests, which must not read them: it also reaches the processes they start.
+  MCP_PROFILES: process.env.DATABASE_DIFF_MCP_PROFILES || path.join(os.homedir(), '.config', 'mssql-mcp'),
   PUBLIC: path.join(__dirname, '..', 'public'),
   HOST: '127.0.0.1',
   PORT: Number(process.env.PORT) || 4870,

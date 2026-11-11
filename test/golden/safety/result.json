@@ -1,0 +1,281 @@
+{
+  "format": "database-diff-result",
+  "version": 1,
+  "generated": "<time>",
+  "source": {
+    "label": "<server> / ddtest_safety_src",
+    "serverName": "<servername>",
+    "login": "<login>",
+    "canViewDefinition": true
+  },
+  "target": {
+    "label": "<server> / ddtest_safety_tgt",
+    "serverName": "<servername>",
+    "login": "<login>",
+    "canViewDefinition": true
+  },
+  "categories": [
+    "Database",
+    "Schema",
+    "Table",
+    "Column",
+    "Index",
+    "Foreign key",
+    "Check constraint",
+    "View",
+    "Stored procedure",
+    "Function",
+    "Trigger",
+    "User-defined type",
+    "Sequence",
+    "Synonym"
+  ],
+  "perspective": "sync",
+  "options": {
+    "ignoreWhitespace": false,
+    "ignoreCase": false,
+    "ignoreCollation": false,
+    "compareColumnOrder": false
+  },
+  "counts": {
+    "onlyInSource": 1,
+    "onlyInTarget": 0,
+    "different": 9,
+    "unverified": 0
+  },
+  "warnings": [],
+  "syncScript": "before.sync.sql",
+  "syncError": "",
+  "rollbackScript": "before.rollback.sql",
+  "rollbackError": "",
+  "summary": [
+    {
+      "Category": "Database",
+      "Source": 1,
+      "Target": 1,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "Schema",
+      "Source": 0,
+      "Target": 0,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "Table",
+      "Source": 7,
+      "Target": 7,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "Column",
+      "Source": 17,
+      "Target": 17,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 1,
+      "Unverified": 0
+    },
+    {
+      "Category": "Index",
+      "Source": 9,
+      "Target": 9,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 4,
+      "Unverified": 0
+    },
+    {
+      "Category": "Foreign key",
+      "Source": 1,
+      "Target": 1,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 1,
+      "Unverified": 0
+    },
+    {
+      "Category": "Check constraint",
+      "Source": 3,
+      "Target": 3,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 3,
+      "Unverified": 0
+    },
+    {
+      "Category": "View",
+      "Source": 0,
+      "Target": 0,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "Stored procedure",
+      "Source": 1,
+      "Target": 0,
+      "OnlyInSource": 1,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "Function",
+      "Source": 0,
+      "Target": 0,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "Trigger",
+      "Source": 0,
+      "Target": 0,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "User-defined type",
+      "Source": 0,
+      "Target": 0,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "Sequence",
+      "Source": 0,
+      "Target": 0,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "Synonym",
+      "Source": 0,
+      "Target": 0,
+      "OnlyInSource": 0,
+      "OnlyInTarget": 0,
+      "Different": 0,
+      "Unverified": 0
+    }
+  ],
+  "diffs": [
+    {
+      "Category": "Column",
+      "Object": "dbo.Typed.Amount",
+      "Status": "Different",
+      "Detail": "Type: source bigint, target int",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.Typed.Amount",
+      "TargetKey": "dbo.Typed.Amount"
+    },
+    {
+      "Category": "Index",
+      "Object": "dbo.Fact.NCCI_Fact",
+      "Status": "Different",
+      "Detail": "Include: source A, B, Id, target A, Id",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.Fact|NCCI_Fact",
+      "TargetKey": "dbo.Fact|NCCI_Fact"
+    },
+    {
+      "Category": "Index",
+      "Object": "dbo.FactToColumnstore.IX_FactToColumnstore",
+      "Status": "Different",
+      "Detail": "Type: source NONCLUSTERED COLUMNSTORE, target NONCLUSTERED\nColumns: source (none), target Id\nInclude: source A, Id, target (none)",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.FactToColumnstore|IX_FactToColumnstore",
+      "TargetKey": "dbo.FactToColumnstore|IX_FactToColumnstore"
+    },
+    {
+      "Category": "Index",
+      "Object": "dbo.FactToRowstore.IX_FactToRowstore",
+      "Status": "Different",
+      "Detail": "Type: source NONCLUSTERED, target NONCLUSTERED COLUMNSTORE\nColumns: source Id, target (none)\nInclude: source (none), target A, Id",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.FactToRowstore|IX_FactToRowstore",
+      "TargetKey": "dbo.FactToRowstore|IX_FactToRowstore"
+    },
+    {
+      "Category": "Index",
+      "Object": "dbo.Stock.IX_Stock_Code",
+      "Status": "Different",
+      "Detail": "Kind: source UNIQUE INDEX, target INDEX",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.Stock|IX_Stock_Code",
+      "TargetKey": "dbo.Stock|IX_Stock_Code"
+    },
+    {
+      "Category": "Foreign key",
+      "Object": "dbo.Child.FK_Child_Parent",
+      "Status": "Different",
+      "Detail": "State: source DISABLED, target ENABLED",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.Child|FK_Child_Parent",
+      "TargetKey": "dbo.Child|FK_Child_Parent"
+    },
+    {
+      "Category": "Check constraint",
+      "Object": "dbo.Stock (check: ([Size]>(0)))",
+      "Status": "Different",
+      "Detail": "State: source ENABLED, target DISABLED",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.Stock|CK:([Size]>(0))",
+      "TargetKey": "dbo.Stock|CK:([Size]>(0))"
+    },
+    {
+      "Category": "Check constraint",
+      "Object": "dbo.Stock.CK_Changed",
+      "Status": "Different",
+      "Detail": "Expression: source ([Price]>(0)), target ([Price]>=(0))",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.Stock|CK_Changed",
+      "TargetKey": "dbo.Stock|CK_Changed"
+    },
+    {
+      "Category": "Check constraint",
+      "Object": "dbo.Stock.CK_StateOnly",
+      "Status": "Different",
+      "Detail": "State: source ENABLED, target DISABLED",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.Stock|CK_StateOnly",
+      "TargetKey": "dbo.Stock|CK_StateOnly"
+    },
+    {
+      "Category": "Stored procedure",
+      "Object": "dbo.pAfter",
+      "Status": "OnlyInSource",
+      "Detail": "Type: SQL_STORED_PROCEDURE",
+      "SourceDefinition": "-- Comes after everything that fails in the sync script: it is created only when no failed\n-- statement left a transaction open.\nCREATE PROCEDURE dbo.pAfter AS SELECT 1 AS One;",
+      "TargetDefinition": null,
+      "SourceKey": "dbo.pAfter",
+      "TargetKey": null
+    }
+  ]
+}

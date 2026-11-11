@@ -397,7 +397,12 @@ SELECT s.name AS SchemaName, o.name AS ObjectName, RTRIM(o.type) AS ObjectType, 
        ISNULL(OBJECT_NAME(o.parent_object_id), '') AS ParentObject,
        CASE WHEN tr.object_id IS NULL THEN '' WHEN tr.is_disabled = 1 THEN 'DISABLED' ELSE 'ENABLED' END AS TriggerState,
        m.definition AS Definition,
-       CASE WHEN m.definition IS NULL THEN 1 ELSE 0 END AS IsHidden
+       CASE WHEN m.definition IS NULL THEN 1 ELSE 0 END AS IsHidden,
+       CASE WHEN m.object_id IS NULL THEN NULL
+            ELSE CASE WHEN m.uses_ansi_nulls = 0 THEN 'ANSI_NULLS OFF' ELSE '' END
+               + CASE WHEN m.uses_ansi_nulls = 0 AND m.uses_quoted_identifier = 0 THEN ', ' ELSE '' END
+               + CASE WHEN m.uses_quoted_identifier = 0 THEN 'QUOTED_IDENTIFIER OFF' ELSE '' END
+       END AS SetOptions
 FROM sys.objects o
 JOIN sys.schemas s ON s.schema_id = o.schema_id
 LEFT JOIN sys.sql_modules m ON m.object_id = o.object_id
@@ -430,13 +435,48 @@ WHERE ty.is_user_defined = 1 AND ty.is_table_type = 0
 $Sql.TableTypeColumns = @'
 SELECT s.name AS SchemaName, tt.name AS TypeName, c.name AS ColumnName,
        {0} AS DataType,
-       CASE WHEN c.is_nullable = 1 THEN 'NULL' ELSE 'NOT NULL' END AS Nullable
+       CASE WHEN c.is_nullable = 1 THEN 'NULL' ELSE 'NOT NULL' END AS Nullable,
+       CASE WHEN c.is_identity = 1
+            THEN 'IDENTITY(' + CAST(ic.seed_value AS varchar(40)) + ',' + CAST(ic.increment_value AS varchar(40)) + ')'
+            ELSE '' END AS IdentitySpec,
+       CASE WHEN c.is_computed = 1 AND cc.definition IS NULL THEN '(not readable)'
+            ELSE ISNULL(cc.definition, '') END AS ComputedDefinition,
+       CASE WHEN c.is_computed = 1 AND cc.is_persisted = 1 THEN 'PERSISTED' ELSE '' END AS Persisted,
+       CASE WHEN c.default_object_id <> 0 AND dc.definition IS NULL THEN '(not readable)'
+            ELSE ISNULL(dc.definition, '') END AS DefaultDefinition,
+       ISNULL(c.collation_name, '') AS Collation
 FROM sys.table_types tt
 JOIN sys.schemas s ON s.schema_id = tt.schema_id
 JOIN sys.columns c ON c.object_id = tt.type_table_object_id
 JOIN sys.types ty ON ty.user_type_id = c.user_type_id
+LEFT JOIN sys.identity_columns ic ON ic.object_id = c.object_id AND ic.column_id = c.column_id
+LEFT JOIN sys.computed_columns cc ON cc.object_id = c.object_id AND cc.column_id = c.column_id
+LEFT JOIN sys.default_constraints dc ON dc.object_id = c.default_object_id
 ORDER BY s.name, tt.name, c.column_id
 '@ -f $ColumnTypeSql
+
+# The PRIMARY KEY and UNIQUE constraints of table types, one row per key column. An index that is
+# not a constraint (INDEX ... in the type's definition) is not read.
+$Sql.TableTypeKeys = @'
+SELECT s.name AS SchemaName, tt.name AS TypeName, i.index_id AS IndexId,
+       CASE WHEN i.is_primary_key = 1 THEN 'PRIMARY KEY' ELSE 'UNIQUE' END AS Kind,
+       i.type_desc AS IndexType, i.ignore_dup_key AS IgnoreDupKey, c.name AS ColumnName, ic.is_descending_key AS IsDescending
+FROM sys.table_types tt
+JOIN sys.schemas s ON s.schema_id = tt.schema_id
+JOIN sys.indexes i ON i.object_id = tt.type_table_object_id
+JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id
+JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+WHERE (i.is_primary_key = 1 OR i.is_unique_constraint = 1) AND ic.key_ordinal > 0
+ORDER BY s.name, tt.name, i.index_id, ic.key_ordinal
+'@
+
+$Sql.TableTypeChecks = @'
+SELECT s.name AS SchemaName, tt.name AS TypeName, ISNULL(ck.definition, '(not readable)') AS Expression
+FROM sys.table_types tt
+JOIN sys.schemas s ON s.schema_id = tt.schema_id
+JOIN sys.check_constraints ck ON ck.parent_object_id = tt.type_table_object_id
+ORDER BY s.name, tt.name, ck.object_id
+'@
 
 $Sql.Sequences = @'
 SELECT s.name AS SchemaName, sq.name AS SequenceName, TYPE_NAME(sq.user_type_id) AS DataType,
@@ -459,6 +499,12 @@ SELECT CAST(SERVERPROPERTY('ProductVersion') AS nvarchar(128)) AS Version,
        CAST(ISNULL(SERVERPROPERTY('InstanceName'), 'MSSQLSERVER') AS nvarchar(128)) AS InstanceName,
        SUSER_SNAME() AS LoginName,
        HAS_PERMS_BY_NAME(NULL, NULL, 'VIEW ANY DEFINITION') AS ViewAnyDefinition
+'@
+
+# Which instance answered: asked once per endpoint, before anything is read from it.
+$Sql.ServerIdentity = @'
+SELECT CAST(SERVERPROPERTY('ServerName') AS nvarchar(128)) AS ServerName,
+       CAST(ISNULL(SERVERPROPERTY('InstanceName'), 'MSSQLSERVER') AS nvarchar(128)) AS InstanceName
 '@
 
 # Every user database, including those the login cannot open: they must show up as "no access",
@@ -655,10 +701,11 @@ function Get-SchemaSnapshot {
 
     $snap = @{}
     foreach ($category in $CategoryOrder) { $snap[$category] = @{} }
-    $snap['Meta'] = @{ CanViewDefinition = $true; LoginName = '' }
+    # ServerName is filled in by Read-SideSnapshot, which knows the endpoint.
+    $snap['Meta'] = @{ CanViewDefinition = $true; LoginName = ''; ServerName = '' }
 
     foreach ($r in (Invoke-SqlQuery $Connection $Sql.Database)) {
-        $snap['Meta'] = @{ CanViewDefinition = ([int]$r.CanViewDefinition -eq 1); LoginName = [string]$r.LoginName }
+        $snap['Meta'] = @{ CanViewDefinition = ([int]$r.CanViewDefinition -eq 1); LoginName = [string]$r.LoginName; ServerName = '' }
         $props = [ordered]@{ CompatibilityLevel = [string]$r.CompatibilityLevel; Collation = [string]$r.Collation }
         $snap['Database']['(database)'] = New-SchemaItem '(database)' $props
     }
@@ -833,6 +880,11 @@ function Get-SchemaSnapshot {
             $props.Table = [string]$r.ParentName
             $props.State = [string]$r.TriggerState
         }
+        # The ANSI_NULLS and QUOTED_IDENTIFIER a module was created under are stored with it and
+        # used whenever it runs, whatever the caller has set. Empty when both are ON, as nearly
+        # every module has them. Left out for a CLR object (no sys.sql_modules row), and missing
+        # in snapshots taken before 2026-11-11: a prop missing on one side is not compared.
+        if ($r.SetOptions -isnot [System.DBNull]) { $props.SetOptions = [string]$r.SetOptions }
         # The raw text is kept for the sync script (string literals must not change); comparison
         # and the report use the normalized form.
         if ([int]$r.IsHidden) { $definition = $HiddenDefinition }
@@ -853,25 +905,101 @@ function Get-SchemaSnapshot {
         $snap['User-defined type'][$key] = New-SchemaItem $key ([ordered]@{ Kind = 'alias type'; Spec = [string]$r.Spec }) -Sql $sqlParts
     }
 
+    # A table type: Spec is its columns as name, type and nullability (all that was read before
+    # 2026-11-11, and still written the same way, so older snapshots compare as they did). What
+    # else its definition says goes into Details: IDENTITY, defaults, computed columns, primary
+    # key and unique constraints (with IGNORE_DUP_KEY when it is on), checks; and the collations
+    # of its columns into Collation. Not read: indexes that are not constraints, and
+    # MEMORY_OPTIMIZED.
     $tableTypes = @{}
     foreach ($r in (Invoke-SqlQuery $Connection $Sql.TableTypeColumns)) {
         $key = '{0}.{1}' -f $r.SchemaName, $r.TypeName
         if (-not $tableTypes.ContainsKey($key)) {
             $tableTypes[$key] = @{
-                Schema  = [string]$r.SchemaName
-                Name    = [string]$r.TypeName
-                Specs   = New-Object System.Collections.Generic.List[string]
-                Columns = New-Object System.Collections.Generic.List[object]
+                Schema   = [string]$r.SchemaName
+                Name     = [string]$r.TypeName
+                Specs    = New-Object System.Collections.Generic.List[string]
+                Columns  = New-Object System.Collections.Generic.List[object]
+                Details  = New-Object System.Collections.Generic.List[string]
+                Collations = New-Object System.Collections.Generic.List[string]
+                KeyRows  = New-Object System.Collections.Generic.List[object]
+                Checks   = New-Object System.Collections.Generic.List[string]
+                Unreadable = $false
             }
         }
-        $tableTypes[$key].Specs.Add(('{0} {1} {2}' -f $r.ColumnName, $r.DataType, $r.Nullable))
-        $tableTypes[$key].Columns.Add(@{ Name = [string]$r.ColumnName; Type = [string]$r.DataType; Nullable = [string]$r.Nullable })
+        $tt = $tableTypes[$key]
+        $tt.Specs.Add(('{0} {1} {2}' -f $r.ColumnName, $r.DataType, $r.Nullable))
+        $tt.Columns.Add(@{
+            Name = [string]$r.ColumnName; Type = [string]$r.DataType; Nullable = [string]$r.Nullable
+            Identity = [string]$r.IdentitySpec; Computed = [string]$r.ComputedDefinition; Persisted = [string]$r.Persisted; Default = [string]$r.DefaultDefinition
+            Collation = [string]$r.Collation
+        })
+        if ([string]$r.Collation) { $tt.Collations.Add(('{0} {1}' -f $r.ColumnName, $r.Collation)) }
+        if ([string]$r.IdentitySpec) { $tt.Details.Add(('{0} {1}' -f $r.ColumnName, $r.IdentitySpec)) }
+        if ([string]$r.ComputedDefinition) {
+            $computed = '{0} AS {1}' -f $r.ColumnName, $r.ComputedDefinition
+            if ([string]$r.Persisted) { $computed += ' PERSISTED' }
+            $tt.Details.Add($computed)
+        }
+        if ([string]$r.DefaultDefinition) { $tt.Details.Add(('{0} DEFAULT {1}' -f $r.ColumnName, $r.DefaultDefinition)) }
+        if ([string]$r.ComputedDefinition -eq $HiddenValue -or [string]$r.DefaultDefinition -eq $HiddenValue) { $tt.Unreadable = $true }
+    }
+    foreach ($r in (Invoke-SqlQuery $Connection $Sql.TableTypeKeys)) {
+        $tt = $tableTypes[('{0}.{1}' -f $r.SchemaName, $r.TypeName)]
+        if ($null -ne $tt) { $tt.KeyRows.Add($r) }
+    }
+    foreach ($r in (Invoke-SqlQuery $Connection $Sql.TableTypeChecks)) {
+        $tt = $tableTypes[('{0}.{1}' -f $r.SchemaName, $r.TypeName)]
+        if ($null -eq $tt) { continue }
+        $tt.Checks.Add([string]$r.Expression)
+        if ([string]$r.Expression -eq $HiddenValue) { $tt.Unreadable = $true }
     }
     foreach ($key in $tableTypes.get_Keys()) {
         $tt = $tableTypes[$key]
         $spec = '(' + ($tt.Specs -join ', ') + ')'
-        $sqlParts = @{ Schema = $tt.Schema; Name = $tt.Name; Columns = $tt.Columns.ToArray() }
-        $snap['User-defined type'][$key] = New-SchemaItem $key ([ordered]@{ Kind = 'table type'; Spec = $spec }) -Sql $sqlParts
+
+        # Key rows come one per column, in index and key order; group them per constraint.
+        $keys = New-Object System.Collections.Generic.List[object]
+        $current = $null
+        foreach ($r in $tt.KeyRows) {
+            if ($null -eq $current -or $current.IndexId -ne [int]$r.IndexId) {
+                $current = @{
+                    IndexId = [int]$r.IndexId; Kind = [string]$r.Kind; Type = [string]$r.IndexType; IgnoreDupKey = [bool]$r.IgnoreDupKey
+                    Parts = New-Object System.Collections.Generic.List[object]
+                    Names = New-Object System.Collections.Generic.List[string]
+                }
+                $keys.Add($current)
+            }
+            $current.Parts.Add(@{ Name = [string]$r.ColumnName; Desc = [bool]$r.IsDescending })
+            if ($r.IsDescending) { $current.Names.Add([string]$r.ColumnName + ' DESC') } else { $current.Names.Add([string]$r.ColumnName) }
+        }
+        # In a fixed order, whatever order the constraints were written in: the primary key, then
+        # the unique constraints, then the checks, each kind sorted by its text (ordinal, so a
+        # snapshot does not depend on the culture of the machine that took it).
+        $orderedKeys = New-Object 'System.Collections.Generic.SortedDictionary[string,object]' ([System.StringComparer]::Ordinal)
+        foreach ($k in $keys) {
+            $k.Text = '{0} {1} ({2})' -f $k.Kind, $k.Type, ($k.Names -join ', ')
+            # Only when it is on, so the text of every other key is what it was before this was read.
+            if ($k.IgnoreDupKey) { $k.Text += ' WITH (IGNORE_DUP_KEY = ON)' }
+            if ($k.Kind -eq 'PRIMARY KEY') { $rank = '0' } else { $rank = '1' }
+            $orderedKeys[$rank + $k.Text + [char]31 + $k.IndexId] = $k
+        }
+        $keyParts = New-Object System.Collections.Generic.List[object]
+        $keyTexts = New-Object System.Collections.Generic.List[string]
+        foreach ($k in $orderedKeys.get_Values()) {
+            $keyTexts.Add($k.Text)
+            $keyParts.Add(@{ Kind = $k.Kind; Type = $k.Type; IgnoreDupKey = $k.IgnoreDupKey; Columns = $k.Parts.ToArray() })
+        }
+        $tt.Checks.Sort([System.StringComparer]::Ordinal)
+        $checks = $tt.Checks.ToArray()
+        if ($tt.Unreadable) { $details = $HiddenValue }
+        else { $details = (@($tt.Details) + @($keyTexts) + @($checks | ForEach-Object { 'CHECK ' + $_ })) -join '; ' }
+
+        # The collations of its columns are a property of their own, called Collation like a
+        # table column's: -IgnoreCollation leaves out the properties of that name.
+        $sqlParts = @{ Schema = $tt.Schema; Name = $tt.Name; Columns = $tt.Columns.ToArray(); KeyConstraints = $keyParts.ToArray(); Checks = $checks }
+        $props = [ordered]@{ Kind = 'table type'; Spec = $spec; Details = $details; Collation = ($tt.Collations -join '; ') }
+        $snap['User-defined type'][$key] = New-SchemaItem $key $props -Sql $sqlParts
     }
 
     foreach ($r in (Invoke-SqlQuery $Connection $Sql.Sequences)) {
@@ -906,12 +1034,57 @@ function Get-ComparableText([string]$Text) {
     return $Text
 }
 
-# SQL Server stores a module deployed with CREATE OR ALTER as "CREATE   PROCEDURE ..." (the two
-# words become spaces), so the leading CREATE [OR ALTER] is compared as a plain "CREATE ".
-$ModuleHeader = New-Object System.Text.RegularExpressions.Regex('\A((?:\s|--[^\n]*(?:\n|\z)|/\*[\s\S]*?\*/)*)CREATE(?:\s|/\*[\s\S]*?\*/)+(?:OR(?:\s|/\*[\s\S]*?\*/)+ALTER(?:\s|/\*[\s\S]*?\*/)+)?', 'IgnoreCase')
+# The whole header of a module: CREATE [OR ALTER] <kind> [schema.]name and, for a trigger, ON
+# [schema.]table. A name part is [bracketed], "quoted" or bare; whitespace and comments may stand
+# between the tokens and around the dot, and nothing has to stand before a bracket or a quote
+# (CREATE PROCEDURE[dbo].[p]AS ... is valid). Precompiled: it runs on every module.
+# The pieces are atomic, (?>...), and a block comment is matched with its nested comments counted
+# (T-SQL nests them) instead of lazily up to some later "*/": a header that does not fit must fail
+# at once. With a lazy comment, a text of a few thousand block comments and no readable header
+# kept the regex busy for minutes.
+$ModuleComment = '/\*(?>(?:[^/*]+|/(?!\*)|\*(?!/)|(?<c>/\*)|(?<-c>\*/))*)(?(c)(?!))\*/'
+$ModuleGap = '(?:\s|--[^\n]*\n|' + $ModuleComment + ')'
+$ModuleNamePart = '(?>\[(?:[^\]]|\]\])+\]|"(?:[^"]|"")+"|[^\s\[\]"''.,;()/\-]+)'
+$ModuleNameHeader = New-Object System.Text.RegularExpressions.Regex((
+    '\A(?<lead>(?>(?:\s|--[^\n]*(?:\n|\z)|COMMENT)*))' +
+    '(?<create>CREATE)(?<oralter>(?>GAP+)OR(?>GAP+)ALTER)?(?>GAP+)' +
+    '(?<kind>PROCEDURE|PROC|VIEW|FUNCTION|TRIGGER)(?![\w@#$])(?>GAP*)' +
+    '(?<object>(?:(?<schema>PART)(?>GAP*)\.(?>GAP*))?(?<name>PART))' +
+    '(?:(?>GAP*)ON(?![\w@#$])(?>GAP*)(?<parent>(?:(?<pschema>PART)(?>GAP*)\.(?>GAP*))?(?<pname>PART)))?'
+).Replace('COMMENT', $ModuleComment).Replace('GAP', $ModuleGap).Replace('PART', $ModuleNamePart), 'IgnoreCase')
 
+# Only the start of a header, for a definition whose header the pattern above cannot read. SQL
+# Server stores a module deployed with CREATE OR ALTER as "CREATE   PROCEDURE ..." (the two words
+# become spaces), so the leading CREATE [OR ALTER] is compared as a plain "CREATE ". Built from
+# the same atomic pieces, for the same reason: it is tried on every definition the first pattern
+# does not fit, and must give up as fast.
+$ModuleHeader = New-Object System.Text.RegularExpressions.Regex((
+    '\A((?>(?:\s|--[^\n]*(?:\n|\z)|COMMENT)*))CREATE(?>GAP+)(?:OR(?>GAP+)ALTER(?>GAP+))?'
+).Replace('COMMENT', $ModuleComment).Replace('GAP', $ModuleGap), 'IgnoreCase')
+
+# The name written in a module's header is not always its name: sp_rename and ALTER SCHEMA ...
+# TRANSFER leave the stored text as it was, and so does the table a trigger names when that table
+# is renamed. Both sides of a comparison are the same object by catalog name already, so the
+# header name (and a trigger's table, which is compared as the Table property) is left out:
+# without this, a module the sync script created under its catalog name would differ from its
+# source for ever.
 function Get-ComparableDefinition([string]$Text) {
-    return Get-ComparableText ($ModuleHeader.Replace((Get-DisplayDefinition $Text), '${1}CREATE ', 1))
+    $display = Get-DisplayDefinition $Text
+    $m = $ModuleNameHeader.Match($display)
+    if (-not $m.Success) { return Get-ComparableText ($ModuleHeader.Replace($display, '${1}CREATE ', 1)) }
+    $kind = $m.Groups['kind']
+    $object = $m.Groups['object']
+    $builder = New-Object System.Text.StringBuilder
+    [void]$builder.Append($m.Groups['lead'].Value).Append('CREATE ')
+    [void]$builder.Append($display, $kind.Index, $object.Index - $kind.Index).Append('<name>')
+    $end = $object.Index + $object.Length
+    $parent = $m.Groups['parent']
+    if ($parent.Success -and $kind.Value -ieq 'TRIGGER') {
+        [void]$builder.Append($display, $end, $parent.Index - $end).Append('<name>')
+        $end = $parent.Index + $parent.Length
+    }
+    [void]$builder.Append($display, $end, $display.Length - $end)
+    return Get-ComparableText $builder.ToString()
 }
 
 function Test-SameText([string]$A, [string]$B) {
@@ -1233,6 +1406,7 @@ function Export-SchemaSnapshot([string]$Path, $Snap, [string]$ServerLabel, [stri
         version           = 1
         captured          = (Get-Date -Format 's')
         server            = $ServerLabel
+        serverName        = [string]$Snap['Meta'].ServerName
         database          = $Database
         login             = $Snap['Meta'].LoginName
         canViewDefinition = [bool]$Snap['Meta'].CanViewDefinition
@@ -1285,7 +1459,8 @@ function Import-SchemaSnapshot([string]$Path) {
         }
         $snap[$category] = $set
     }
-    $snap['Meta'] = @{ CanViewDefinition = [bool]$doc['canViewDefinition']; LoginName = [string]$doc['login'] }
+    # serverName: snapshots saved before 2026-11-11 do not have it.
+    $snap['Meta'] = @{ CanViewDefinition = [bool]$doc['canViewDefinition']; LoginName = [string]$doc['login']; ServerName = [string]$doc['serverName'] }
     return @{
         Snap     = $snap
         Server   = [string]$doc['server']
@@ -1307,11 +1482,13 @@ function Write-JsonReport([string]$Path, $Result, $SourceSnap, $TargetSnap) {
         generated = (Get-Date -Format 's')
         source    = [ordered]@{
             label             = $Result.SourceLabel
+            serverName        = [string]$SourceSnap['Meta'].ServerName
             login             = $SourceSnap['Meta'].LoginName
             canViewDefinition = [bool]$SourceSnap['Meta'].CanViewDefinition
         }
         target    = [ordered]@{
             label             = $Result.TargetLabel
+            serverName        = [string]$TargetSnap['Meta'].ServerName
             login             = $TargetSnap['Meta'].LoginName
             canViewDefinition = [bool]$TargetSnap['Meta'].CanViewDefinition
         }
@@ -1399,6 +1576,33 @@ function New-Side {
     @{ Endpoint = $Endpoint; Database = $Database; SnapshotFile = $SnapshotFile; SaveSnapshot = $SaveSnapshot; Label = $label }
 }
 
+# The instance named in an address that also has a port ("host\NAME,1433"). SqlClient ignores the
+# name when a port is given and connects to whatever listens on that port, which can be another
+# instance on the same host. Without a port the name is resolved by SQL Browser, so it cannot miss.
+function Get-RequestedInstance([string]$Server) {
+    if ($Server -match '^\s*(?:tcp:)?[^\\,]+\\([^\\,]+?)\s*,\s*\d+\s*$') { return $Matches[1] }
+    return ''
+}
+
+# The server and instance that answered on an endpoint. Asked once and kept on the endpoint: a
+# batch opens one connection per database.
+function Get-ServerIdentity([hashtable]$Endpoint, $Connection) {
+    if (-not $Endpoint.ContainsKey('Identity')) {
+        $r = @(Invoke-SqlQuery $Connection $Sql.ServerIdentity)[0]
+        $Endpoint['Identity'] = @{ ServerName = [string]$r.ServerName; InstanceName = [string]$r.InstanceName }
+    }
+    return $Endpoint['Identity']
+}
+
+# Stops the run when the address names one instance and another one answered (see
+# Get-RequestedInstance): going on would put another server's schema under this server's name in
+# the reports, snapshots and scripts. $Endpoint is a hashtable, or a dictionary in the tests.
+function Assert-RequestedInstance($Endpoint, [string]$InstanceName, [string]$ServerName) {
+    $requested = Get-RequestedInstance ([string]$Endpoint['Server'])
+    if (-not $requested -or $requested -eq $InstanceName) { return }
+    throw ('The address {0} names instance {1}, but {2} (instance {3}) answered: with a port in the address SQL Server connects by port and ignores the instance name. Remove the port to connect by instance name, or set the port that {1} listens on.' -f $Endpoint['Server'], $requested, $ServerName, $InstanceName)
+}
+
 function Read-SideSnapshot([hashtable]$Side) {
     if ($Side.SnapshotFile) {
         $loaded = Import-SchemaSnapshot $Side.SnapshotFile
@@ -1406,8 +1610,31 @@ function Read-SideSnapshot([hashtable]$Side) {
         $Side.Label = '{0} / {1} (snapshot {2})' -f $loaded.Server, $loaded.Database, $loaded.Captured
         return $loaded.Snap
     }
-    $connection = Open-SqlConnection $Side.Endpoint $Side.Database
-    try { $snap = Get-SchemaSnapshot $connection }
+    try { $connection = Open-SqlConnection $Side.Endpoint $Side.Database }
+    catch {
+        # The database may be missing only because another instance answered (it is on the one
+        # the address names). Then that is the error to report, not "cannot open database": the
+        # server says who it is through master. Whatever goes wrong here, the first error stands.
+        $openError = $_
+        if (Get-RequestedInstance ([string]$Side.Endpoint.Server)) {
+            $identity = $null
+            try {
+                $master = Open-SqlConnection $Side.Endpoint 'master'
+                try { $identity = Get-ServerIdentity $Side.Endpoint $master }
+                finally { $master.Dispose() }
+            }
+            catch { $identity = $null }
+            if ($null -ne $identity) { Assert-RequestedInstance $Side.Endpoint $identity.InstanceName $identity.ServerName }
+        }
+        throw $openError
+    }
+    try {
+        # Before anything is read: a report must not carry the name of a server that was not read.
+        $identity = Get-ServerIdentity $Side.Endpoint $connection
+        Assert-RequestedInstance $Side.Endpoint $identity.InstanceName $identity.ServerName
+        $snap = Get-SchemaSnapshot $connection
+        $snap['Meta'].ServerName = $identity.ServerName
+    }
     finally { $connection.Dispose() }
     if ($Side.SaveSnapshot) { Export-SchemaSnapshot $Side.SaveSnapshot $snap (Get-ServerLabel $Side.Endpoint) $Side.Database }
     return $snap
@@ -1463,11 +1690,16 @@ function Invoke-DatabaseComparison {
 
     Write-HtmlReport $ReportPath $SourceSide.Label $TargetSide.Label $diffs $summary $warnings
 
+    # A target read without VIEW DEFINITION hides objects, so "only in source" can mean "there, but
+    # not visible": the scripts then neither replace nor drop such an object. Taken from the real
+    # target here, once: the rollback script gets the snapshots the other way round.
+    $targetIncomplete = -not $targetSnap['Meta'].CanViewDefinition
+
     # A failing sync or rollback script must not lose the comparison itself; the error is reported instead.
     $syncPath = [System.IO.Path]::ChangeExtension($ReportPath, '.sync.sql')
     $syncError = ''
     try {
-        Write-SyncScript $syncPath $sourceSnap $targetSnap $diffs $SourceSide.Label $TargetSide.Label $TargetDb $warnings
+        Write-SyncScript $syncPath $sourceSnap $targetSnap $diffs $SourceSide.Label $TargetSide.Label $TargetDb $warnings -TargetIncomplete:$targetIncomplete
     }
     catch {
         $syncError = $_.Exception.Message
@@ -1477,7 +1709,7 @@ function Invoke-DatabaseComparison {
     $rollbackPath = [System.IO.Path]::ChangeExtension($ReportPath, '.rollback.sql')
     $rollbackError = ''
     try {
-        Write-RollbackScript $rollbackPath $sourceSnap $targetSnap $diffs $SourceSide.Label $TargetSide.Label $TargetDb $warnings
+        Write-RollbackScript $rollbackPath $sourceSnap $targetSnap $diffs $SourceSide.Label $TargetSide.Label $TargetDb $warnings -TargetIncomplete:$targetIncomplete
     }
     catch {
         $rollbackError = $_.Exception.Message
@@ -1523,6 +1755,9 @@ function Get-ResultColor($Result) {
 function Get-DatabaseList([hashtable]$Endpoint) {
     $connection = Open-SqlConnection $Endpoint 'master'
     try {
+        # A batch asks for this list first, so a wrong instance fails it once, before any database.
+        $identity = Get-ServerIdentity $Endpoint $connection
+        Assert-RequestedInstance $Endpoint $identity.InstanceName $identity.ServerName
         foreach ($r in (Invoke-SqlQuery $connection $Sql.DatabaseList)) {
             [pscustomobject]@{ Name = [string]$r.DatabaseName; HasAccess = ([int]$r.HasAccess -eq 1) }
         }
@@ -1532,15 +1767,9 @@ function Get-DatabaseList([hashtable]$Endpoint) {
     }
 }
 
-# The instance named in an address that also has a port ("host\NAME,1433"). SqlClient ignores the
-# name when a port is given and connects to whatever listens on that port, which can be another
-# instance on the same host. Without a port the name is resolved by SQL Browser, so it cannot miss.
-function Get-RequestedInstance([string]$Server) {
-    if ($Server -match '^\s*(?:tcp:)?[^\\,]+\\([^\\,]+?)\s*,\s*\d+\s*$') { return $Matches[1] }
-    return ''
-}
-
 # Server facts and the database list as JSON on stdout, for the web app (also a connection test).
+# A wrong instance (see Assert-RequestedInstance) is reported here, not thrown: the servers page
+# shows which instance answered so the address can be corrected.
 function Write-DatabaseList([hashtable]$Endpoint) {
     $connection = Open-SqlConnection $Endpoint 'master'
     try {

@@ -3,13 +3,30 @@ CREATE SCHEMA rpt;
 GO
 CREATE TYPE dbo.tPhone FROM varchar(20) NULL;
 GO
--- New tables: one with a foreign key to an existing table and a column of the new type, one with
--- most column types the sync script has to write out.
+-- A table type with more than column names and types: IDENTITY, a default, a computed column, a
+-- primary key (that ignores duplicate keys), a unique constraint, a check, and a column with a
+-- collation of its own next to one with the database's. The sync script must write them all.
+CREATE TYPE dbo.tRows AS TABLE (
+    Id int IDENTITY(10,5) NOT NULL PRIMARY KEY WITH (IGNORE_DUP_KEY = ON),
+    Code varchar(10) COLLATE Latin1_General_BIN NOT NULL,
+    Qty int NOT NULL DEFAULT (1) CHECK (Qty > 0),
+    Twice AS (Qty * 2) PERSISTED NOT NULL,
+    Note nvarchar(20) NULL,
+    UNIQUE (Code DESC, Qty)
+);
+GO
+CREATE SEQUENCE dbo.seqShipment AS bigint START WITH 1000;
+GO
+-- New tables: one with a foreign key to an existing table, a column of the new type and a default
+-- that takes its value from the new sequence (a comparison of tables and columns only still has
+-- to create that type and that sequence), one with most column types the sync script has to
+-- write out.
 CREATE TABLE dbo.Shipments (
     Id int IDENTITY(1,1) NOT NULL CONSTRAINT PK_Shipments PRIMARY KEY,
     OrderId int NOT NULL CONSTRAINT FK_Shipments_Orders REFERENCES dbo.Orders (Id),
     Phone dbo.tPhone NULL,
-    Note nvarchar(200) NULL
+    Note nvarchar(200) NULL,
+    Seq bigint NOT NULL CONSTRAINT DF_Shipments_Seq DEFAULT (NEXT VALUE FOR dbo.seqShipment)
 );
 GO
 CREATE TABLE dbo.AllTypes (
@@ -37,16 +54,24 @@ CREATE TABLE dbo.AllTypes (
     cXml xml NULL,
     cVariant sql_variant NULL,
     cRowVersion rowversion NOT NULL,
-    cComputed AS (cTiny * 2) PERSISTED
+    cComputed AS (cTiny * 2) PERSISTED,
+    cComputedNN AS (Id + 1) PERSISTED NOT NULL
 );
 GO
--- Changed columns: wider and NOT NULL, another collation, another default, a new column.
+-- Changed columns: wider and NOT NULL, another collation, another default, a new column, a column
+-- of an alias type that allows NULL now.
 ALTER TABLE dbo.Orders ALTER COLUMN Name nvarchar(100) NOT NULL;
 ALTER TABLE dbo.Customers ALTER COLUMN Email varchar(100) COLLATE SQL_Latin1_General_CP1_CI_AS NULL;
 ALTER TABLE dbo.Orders DROP CONSTRAINT DF_Orders_Amount;
 ALTER TABLE dbo.Orders ADD CONSTRAINT DF_Orders_Amount DEFAULT (1) FOR Amount;
 ALTER TABLE dbo.Customers ADD Phone dbo.tPhone NULL;
 ALTER TABLE dbo.Orders ALTER COLUMN AmountWithVat ADD PERSISTED;
+ALTER TABLE dbo.Codes ALTER COLUMN Code dbo.tCode NULL;
+-- Another type for a column with a default: the default is in the way (Msg 5074) and has to be
+-- dropped first, here and in the scripts.
+ALTER TABLE dbo.Orders DROP CONSTRAINT DF_Orders_Qty;
+ALTER TABLE dbo.Orders ALTER COLUMN Qty bigint NOT NULL;
+ALTER TABLE dbo.Orders ADD CONSTRAINT DF_Orders_Qty DEFAULT (1) FOR Qty;
 GO
 -- A changed index (INCLUDE), a new index, a new foreign key, new checks (one unnamed).
 DROP INDEX IX_Orders_CustomerId ON dbo.Orders;
@@ -90,8 +115,57 @@ GO
 DISABLE TRIGGER dbo.trOrders_Insert ON dbo.Orders;
 GO
 ALTER SEQUENCE dbo.seqInvoice INCREMENT BY 10;
-CREATE SEQUENCE dbo.seqShipment AS bigint START WITH 1000;
 GO
 DROP SYNONYM dbo.synOrders;
 CREATE SYNONYM dbo.synOrders FOR dbo.vOrders;
+GO
+-- Modules whose stored text does not say what the catalog says: sp_rename and ALTER SCHEMA ...
+-- TRANSFER leave sys.sql_modules as it was written. The sync script must create each one under
+-- its catalog name (pRenamed, rpt.vMoved) and the trigger on the table as it is called now.
+CREATE PROCEDURE dbo.pOldName
+AS
+SELECT 1 AS One;
+GO
+EXEC sp_rename 'dbo.pOldName', 'pRenamed';
+GO
+CREATE VIEW vMoved
+AS
+SELECT 1 AS One;
+GO
+ALTER SCHEMA rpt TRANSFER dbo.vMoved;
+GO
+CREATE TABLE dbo.AuditOld (
+    Id int NOT NULL CONSTRAINT PK_Audit PRIMARY KEY,
+    Note nvarchar(100) NULL
+);
+GO
+CREATE TRIGGER dbo.trAudit ON dbo.AuditOld AFTER INSERT
+AS
+SET NOCOUNT ON;
+GO
+EXEC sp_rename 'dbo.AuditOld', 'Audit';
+GO
+-- Modules created under other SET options than the scripts' own (ANSI_NULLS ON, QUOTED_IDENTIFIER
+-- ON). The options are stored with the module and change how it runs (@Name = NULL finds rows
+-- under ANSI_NULLS OFF; "..." is a string under QUOTED_IDENTIFIER OFF), so the sync script must
+-- create each one under the options it has here. pAnsiOff has the same text in the target, where
+-- it was created under ANSI_NULLS ON.
+SET ANSI_NULLS OFF;
+GO
+CREATE PROCEDURE dbo.pAnsiOffNew @Name nvarchar(50)
+AS
+SELECT Id FROM dbo.Orders WHERE Name = @Name;
+GO
+CREATE PROCEDURE dbo.pAnsiOff @Name nvarchar(50)
+AS
+SELECT Id FROM dbo.Orders WHERE Name = @Name;
+GO
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER OFF;
+GO
+CREATE PROCEDURE dbo.pQuotedOff
+AS
+SELECT "a double-quoted string" AS Txt;
+GO
+SET QUOTED_IDENTIFIER ON;
 GO

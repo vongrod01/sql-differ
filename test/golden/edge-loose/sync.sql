@@ -9,10 +9,23 @@
 -- - ALTER COLUMN statements are active: check them for data loss (narrower types, NOT NULL).
 -- - Objects are ordered by kind, not by dependency; rerun a failed part after the rest.
 -- - Uses CREATE OR ALTER, which needs SQL Server 2016 SP1 or later on the target.
+-- - It starts with USE of the target database. If that fails (wrong server, no access), nothing
+--   after it is executed, so no statement runs in another database.
+-- - A changed index, constraint or default is dropped and created again in one transaction (a
+--   default also around the type change of its column), under the SET XACT_ABORT ON below
+--   (keep it when running only a part of this file): when a statement in it fails, the drop
+--   is rolled back and the existing one stays.
 USE [ddtest_edge_loose_tgt];
+GO
+IF DB_ID(N'ddtest_edge_loose_tgt') IS NULL OR DB_ID() <> DB_ID(N'ddtest_edge_loose_tgt')
+BEGIN
+    RAISERROR(N'database-diff: cannot use database %s. The rest of this file is not executed.', 16, 1, N'ddtest_edge_loose_tgt');
+    SET NOEXEC ON;
+END
 GO
 SET ANSI_NULLS ON;
 SET QUOTED_IDENTIFIER ON;
+SET XACT_ABORT ON;
 GO
 
 -- ==========================================================================================
@@ -20,15 +33,19 @@ GO
 -- ==========================================================================================
 -- Type dbo.IdList differs: Spec: source (Id int NOT NULL), target (Id bigint NOT NULL)
 -- A type cannot be altered: drop the objects that use it, DROP TYPE, CREATE TYPE, then recreate them.
+-- Type dbo.KeyList differs: Details: source Qty DEFAULT ((1)); PRIMARY KEY CLUSTERED (Id), target Qty DEFAULT ((2))
+-- A type cannot be altered: drop the objects that use it, DROP TYPE, CREATE TYPE, then recreate them.
 
 -- ==========================================================================================
 -- Columns
 -- ==========================================================================================
 -- dbo.Items.Status: Default: source (N'รอดำเนินการ'), target (N'เสร็จแล้ว')
+BEGIN TRANSACTION;
 DECLARE @default sysname, @drop nvarchar(max);
 SELECT @default = dc.name FROM sys.default_constraints dc JOIN sys.columns c ON c.object_id = dc.parent_object_id AND c.column_id = dc.parent_column_id WHERE dc.parent_object_id = OBJECT_ID(N'[dbo].[Items]') AND c.name = N'Status';
 IF @default IS NOT NULL BEGIN SET @drop = N'ALTER TABLE [dbo].[Items] DROP CONSTRAINT ' + QUOTENAME(@default); EXEC (@drop); END
 ALTER TABLE [dbo].[Items] ADD DEFAULT (N'รอดำเนินการ') FOR [Status];
+COMMIT TRANSACTION;
 GO
 -- dbo.Items.Total: Type: source decimal(21,2), target decimal(23,2) Computed: source ([Qty]*[Price]), target (([Qty]*[Price])*(1))
 -- IDENTITY or computed definition differs: SQL Server cannot ALTER this; rebuild the column or table manually.
@@ -38,6 +55,12 @@ GO
 GO
 -- dbo.Pairs.B: Ordinal: source 2, target 1
 -- Column order differs: SQL Server cannot move a column without rebuilding the table, so this is not scripted.
+GO
+-- dbo.Pnn.Twice: Nullable: source NOT NULL, target NULL
+-- Not scripted: SQL Server cannot ALTER the type, collation or NULL / NOT NULL of a computed column; they follow from its definition and the columns it uses.
+-- NOT NULL is part of how a persisted computed column is declared: to change it, drop the column and add it again (indexes and constraints that use it first):
+-- ALTER TABLE [dbo].[Pnn] DROP COLUMN [Twice];
+-- ALTER TABLE [dbo].[Pnn] ADD [Twice] AS ([Qty]*(2)) PERSISTED NOT NULL;
 GO
 
 -- ==========================================================================================
@@ -49,31 +72,47 @@ GO
 -- ALTER TABLE [dbo].[Items] ADD PRIMARY KEY CLUSTERED ([Id]);
 GO
 -- dbo.Items.IX_Items_Title: Filter: source ([Title] IS NOT NULL), target (none)
+BEGIN TRANSACTION;
 DROP INDEX [IX_Items_Title] ON [dbo].[Items];
 CREATE NONCLUSTERED INDEX [IX_Items_Title] ON [dbo].[Items] ([Title]) WHERE ([Title] IS NOT NULL);
+COMMIT TRANSACTION;
 GO
 
 -- ==========================================================================================
 -- Check constraints
 -- ==========================================================================================
 -- dbo.Items.CK_Items_Code: State: source ENABLED, target DISABLED
-ALTER TABLE [dbo].[Items] DROP CONSTRAINT [CK_Items_Code];
-ALTER TABLE [dbo].[Items] WITH CHECK ADD CONSTRAINT [CK_Items_Code] CHECK (len([Code])>(0));
+ALTER TABLE [dbo].[Items] WITH CHECK CHECK CONSTRAINT [CK_Items_Code];
+-- Fails (Msg 547) when rows that are there break the constraint, which then stays disabled. To enable it without checking those rows (enabled, not trusted), run instead:
+-- ALTER TABLE [dbo].[Items] CHECK CONSTRAINT [CK_Items_Code];
 GO
 
 -- ==========================================================================================
 -- Functions
 -- ==========================================================================================
 -- dbo.fKind: Definition differs Type: source SQL_INLINE_TABLE_VALUED_FUNCTION, target SQL_SCALAR_FUNCTION
--- The object type changed, which ALTER cannot do. Drop it on the target, then run the source definition from the report:
+-- The object type changed, which ALTER cannot do. To change it, drop the object and create it again by hand:
 -- DROP FUNCTION [dbo].[fKind];
+-- GO
+-- CREATE FUNCTION dbo.fKind () RETURNS TABLE AS RETURN SELECT 1 AS One;
+-- GO
+
+-- ==========================================================================================
+-- Triggers
+-- ==========================================================================================
+-- dbo.trMoved: Table: source dbo.MoveA, target dbo.MoveB
+-- The trigger is on another table on the two sides, and ALTER cannot move a trigger. To change it, drop the trigger and create it again by hand:
+-- DROP TRIGGER [dbo].[trMoved];
+-- GO
+-- CREATE TRIGGER dbo.trMoved ON dbo.MoveA AFTER INSERT AS SET NOCOUNT ON;
+-- GO
 
 -- ==========================================================================================
 -- Synonyms (base objects often name environment-specific databases: check them)
 -- ==========================================================================================
-DROP SYNONYM [dbo].[synRemote];
-CREATE SYNONYM [dbo].[synRemote] FOR [otherdb_dev].[dbo].[Orders];
-GO
+-- Not run: dbo.synRemote is a synonym for an object in another database or on another server (BaseObject: source [otherdb_dev].[dbo].[Orders], target [otherdb_prod].[dbo].[Orders]). Check that name for this environment, then run by hand:
+-- DROP SYNONYM [dbo].[synRemote];
+-- CREATE SYNONYM [dbo].[synRemote] FOR [otherdb_dev].[dbo].[Orders];
 
 -- ==========================================================================================
 -- Database settings (not changed by this script)
@@ -84,3 +123,7 @@ GO
 -- Not compared (1 items): a value is not readable on one side, so nothing is scripted for these
 -- ==========================================================================================
 -- Stored procedure dbo.pSecret: Definition: not readable on either side
+
+-- End of script: ends the NOEXEC that a failed database check at the top turned on.
+SET NOEXEC OFF;
+GO

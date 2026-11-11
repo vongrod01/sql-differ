@@ -4,11 +4,13 @@
   "generated": "<time>",
   "source": {
     "label": "<server> / ddtest_core_src",
+    "serverName": "<servername>",
     "login": "<login>",
     "canViewDefinition": true
   },
   "target": {
     "label": "<server> / ddtest_core_tgt",
+    "serverName": "<servername>",
     "login": "<login>",
     "canViewDefinition": true
   },
@@ -37,7 +39,7 @@
   },
   "counts": {
     "onlyInSource": 0,
-    "onlyInTarget": 4,
+    "onlyInTarget": 5,
     "different": 0,
     "unverified": 0
   },
@@ -67,8 +69,8 @@
     },
     {
       "Category": "Table",
-      "Source": 4,
-      "Target": 5,
+      "Source": 6,
+      "Target": 7,
       "OnlyInSource": 0,
       "OnlyInTarget": 1,
       "Different": 0,
@@ -76,8 +78,8 @@
     },
     {
       "Category": "Column",
-      "Source": 39,
-      "Target": 42,
+      "Source": 46,
+      "Target": 49,
       "OnlyInSource": 0,
       "OnlyInTarget": 1,
       "Different": 0,
@@ -85,8 +87,8 @@
     },
     {
       "Category": "Index",
-      "Source": 6,
-      "Target": 8,
+      "Source": 8,
+      "Target": 10,
       "OnlyInSource": 0,
       "OnlyInTarget": 1,
       "Different": 0,
@@ -112,8 +114,8 @@
     },
     {
       "Category": "View",
-      "Source": 2,
-      "Target": 2,
+      "Source": 3,
+      "Target": 3,
       "OnlyInSource": 0,
       "OnlyInTarget": 0,
       "Different": 0,
@@ -121,10 +123,10 @@
     },
     {
       "Category": "Stored procedure",
-      "Source": 2,
-      "Target": 3,
+      "Source": 6,
+      "Target": 8,
       "OnlyInSource": 0,
-      "OnlyInTarget": 1,
+      "OnlyInTarget": 2,
       "Different": 0,
       "Unverified": 0
     },
@@ -139,8 +141,8 @@
     },
     {
       "Category": "Trigger",
-      "Source": 1,
-      "Target": 1,
+      "Source": 2,
+      "Target": 2,
       "OnlyInSource": 0,
       "OnlyInTarget": 0,
       "Different": 0,
@@ -148,8 +150,8 @@
     },
     {
       "Category": "User-defined type",
-      "Source": 1,
-      "Target": 1,
+      "Source": 3,
+      "Target": 3,
       "OnlyInSource": 0,
       "OnlyInTarget": 0,
       "Different": 0,
@@ -214,6 +216,16 @@
       "TargetDefinition": "CREATE PROCEDURE dbo.pLegacyCleanup\nAS\nDELETE FROM dbo.LegacyLog WHERE Id < 0;",
       "SourceKey": null,
       "TargetKey": "dbo.pLegacyCleanup"
+    },
+    {
+      "Category": "Stored procedure",
+      "Object": "dbo.pOldName",
+      "Status": "OnlyInTarget",
+      "Detail": "Type: SQL_STORED_PROCEDURE",
+      "SourceDefinition": null,
+      "TargetDefinition": "-- Another procedure under the name the source's pRenamed had before sp_rename, which is still the\n-- name in that procedure's stored text. The sync script must leave this one as it is.\nCREATE PROCEDURE dbo.pOldName\nAS\nSELECT 'target only' AS Keep;",
+      "SourceKey": null,
+      "TargetKey": "dbo.pOldName"
     }
   ]
 }

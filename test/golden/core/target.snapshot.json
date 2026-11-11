@@ -4,6 +4,46 @@
   "categories": {
     "Check constraint": {},
     "Column": {
+      "dbo.Codes.Code": {
+        "Definition": null,
+        "Name": "dbo.Codes.Code",
+        "ObjectName": "",
+        "Parent": "dbo.Codes",
+        "Props": {
+          "Collation": "Thai_CI_AS",
+          "Computed": "",
+          "Default": "",
+          "Identity": "",
+          "Nullable": "NOT NULL",
+          "Ordinal": "2",
+          "Type": "dbo.tCode"
+        },
+        "Sql": {
+          "Name": "Code",
+          "Schema": "dbo",
+          "Table": "Codes"
+        }
+      },
+      "dbo.Codes.Id": {
+        "Definition": null,
+        "Name": "dbo.Codes.Id",
+        "ObjectName": "",
+        "Parent": "dbo.Codes",
+        "Props": {
+          "Collation": "",
+          "Computed": "",
+          "Default": "",
+          "Identity": "",
+          "Nullable": "NOT NULL",
+          "Ordinal": "1",
+          "Type": "int"
+        },
+        "Sql": {
+          "Name": "Id",
+          "Schema": "dbo",
+          "Table": "Codes"
+        }
+      },
       "dbo.Customers.Email": {
         "Definition": null,
         "Name": "dbo.Customers.Email",
@@ -218,7 +258,7 @@
           "Default": "",
           "Identity": "",
           "Nullable": "NULL",
-          "Ordinal": "7",
+          "Ordinal": "8",
           "Type": "varchar(10)"
         },
         "Sql": {
@@ -246,6 +286,27 @@
           "Schema": "dbo",
           "Table": "Orders"
         }
+      },
+      "dbo.Orders.Qty": {
+        "Definition": null,
+        "Name": "dbo.Orders.Qty",
+        "ObjectName": "",
+        "Parent": "dbo.Orders",
+        "Props": {
+          "Collation": "",
+          "Computed": "",
+          "Default": "((1))",
+          "Identity": "",
+          "Nullable": "NOT NULL",
+          "Ordinal": "7",
+          "Type": "int"
+        },
+        "Sql": {
+          "DefaultName": "DF_Orders_Qty",
+          "Name": "Qty",
+          "Schema": "dbo",
+          "Table": "Orders"
+        }
       }
     },
     "Database": {
@@ -269,6 +330,7 @@
         "ObjectName": "",
         "Parent": "",
         "Props": {
+          "SetOptions": "",
           "Type": "SQL_SCALAR_FUNCTION"
         },
         "Sql": {
@@ -281,6 +343,33 @@
       }
     },
     "Index": {
+      "dbo.Codes|PK": {
+        "Definition": null,
+        "Name": "dbo.Codes (primary key)",
+        "ObjectName": "PK_Codes",
+        "Parent": "dbo.Codes",
+        "Props": {
+          "Columns": "Id",
+          "Filter": "",
+          "Include": "",
+          "Kind": "PRIMARY KEY",
+          "Name": "PK_Codes",
+          "Type": "CLUSTERED"
+        },
+        "Sql": {
+          "Includes": [],
+          "IsSystemNamed": false,
+          "KeyParts": [
+            {
+              "Desc": false,
+              "Name": "Id"
+            }
+          ],
+          "Name": "PK_Codes",
+          "Schema": "dbo",
+          "Table": "Codes"
+        }
+      },
       "dbo.Customers|IX_Customers_Name": {
         "Definition": null,
         "Name": "dbo.Customers.IX_Customers_Name",
@@ -438,12 +527,30 @@
       }
     },
     "Stored procedure": {
+      "dbo.pAnsiOff": {
+        "Definition": "CREATE PROCEDURE dbo.pAnsiOff @Name nvarchar(50)\nAS\nSELECT Id FROM dbo.Orders WHERE Name = @Name;\n",
+        "Name": "dbo.pAnsiOff",
+        "ObjectName": "",
+        "Parent": "",
+        "Props": {
+          "SetOptions": "",
+          "Type": "SQL_STORED_PROCEDURE"
+        },
+        "Sql": {
+          "Name": "pAnsiOff",
+          "ObjectType": "P",
+          "ParentObject": "",
+          "ParentSchema": "",
+          "Schema": "dbo"
+        }
+      },
       "dbo.pGetOrder": {
         "Definition": "CREATE PROCEDURE dbo.pGetOrder @Id int\nAS\nSELECT Id, Name, Amount FROM dbo.Orders WHERE Id = @Id;\n",
         "Name": "dbo.pGetOrder",
         "ObjectName": "",
         "Parent": "",
         "Props": {
+          "SetOptions": "",
           "Type": "SQL_STORED_PROCEDURE"
         },
         "Sql": {
@@ -460,10 +567,28 @@
         "ObjectName": "",
         "Parent": "",
         "Props": {
+          "SetOptions": "",
           "Type": "SQL_STORED_PROCEDURE"
         },
         "Sql": {
           "Name": "pLegacyCleanup",
+          "ObjectType": "P",
+          "ParentObject": "",
+          "ParentSchema": "",
+          "Schema": "dbo"
+        }
+      },
+      "dbo.pOldName": {
+        "Definition": "-- Another procedure under the name the source's pRenamed had before sp_rename, which is still the\n-- name in that procedure's stored text. The sync script must leave this one as it is.\nCREATE PROCEDURE dbo.pOldName\nAS\nSELECT 'target only' AS Keep;\n",
+        "Name": "dbo.pOldName",
+        "ObjectName": "",
+        "Parent": "",
+        "Props": {
+          "SetOptions": "",
+          "Type": "SQL_STORED_PROCEDURE"
+        },
+        "Sql": {
+          "Name": "pOldName",
           "ObjectType": "P",
           "ParentObject": "",
           "ParentSchema": "",
@@ -487,6 +612,17 @@
       }
     },
     "Table": {
+      "dbo.Codes": {
+        "Definition": null,
+        "Name": "dbo.Codes",
+        "ObjectName": "",
+        "Parent": "",
+        "Props": {},
+        "Sql": {
+          "Name": "Codes",
+          "Schema": "dbo"
+        }
+      },
       "dbo.Customers": {
         "Definition": null,
         "Name": "dbo.Customers",
@@ -528,6 +664,7 @@
         "ObjectName": "",
         "Parent": "",
         "Props": {
+          "SetOptions": "",
           "State": "ENABLED",
           "Table": "dbo.Orders",
           "Type": "SQL_TRIGGER"
@@ -541,7 +678,22 @@
         }
       }
     },
-    "User-defined type": {},
+    "User-defined type": {
+      "dbo.tCode": {
+        "Definition": null,
+        "Name": "dbo.tCode",
+        "ObjectName": "",
+        "Parent": "",
+        "Props": {
+          "Kind": "alias type",
+          "Spec": "varchar(20) NULL"
+        },
+        "Sql": {
+          "Name": "tCode",
+          "Schema": "dbo"
+        }
+      }
+    },
     "View": {
       "dbo.vOrders": {
         "Definition": "CREATE VIEW dbo.vOrders\nAS\nSELECT o.Id, o.Name, o.Amount FROM dbo.Orders AS o;\n",
@@ -549,6 +701,7 @@
         "ObjectName": "",
         "Parent": "",
         "Props": {
+          "SetOptions": "",
           "Type": "VIEW"
         },
         "Sql": {
@@ -565,5 +718,6 @@
   "format": "database-diff-snapshot",
   "login": "<login>",
   "server": "<server>",
+  "serverName": "<servername>",
   "version": 1
 }

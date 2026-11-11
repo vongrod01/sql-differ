@@ -4,11 +4,13 @@
   "generated": "<time>",
   "source": {
     "label": "<server> / ddtest_core_ignore_collation_src",
+    "serverName": "<servername>",
     "login": "<login>",
     "canViewDefinition": true
   },
   "target": {
     "label": "<server> / ddtest_core_ignore_collation_tgt",
+    "serverName": "<servername>",
     "login": "<login>",
     "canViewDefinition": true
   },
@@ -36,9 +38,9 @@
     "compareColumnOrder": false
   },
   "counts": {
-    "onlyInSource": 13,
-    "onlyInTarget": 4,
-    "different": 10,
+    "onlyInSource": 20,
+    "onlyInTarget": 5,
+    "different": 13,
     "unverified": 0
   },
   "warnings": [],
@@ -67,26 +69,26 @@
     },
     {
       "Category": "Table",
-      "Source": 4,
-      "Target": 3,
-      "OnlyInSource": 2,
+      "Source": 6,
+      "Target": 4,
+      "OnlyInSource": 3,
       "OnlyInTarget": 1,
       "Different": 0,
       "Unverified": 0
     },
     {
       "Category": "Column",
-      "Source": 39,
-      "Target": 12,
+      "Source": 46,
+      "Target": 15,
       "OnlyInSource": 1,
       "OnlyInTarget": 1,
-      "Different": 3,
+      "Different": 5,
       "Unverified": 0
     },
     {
       "Category": "Index",
-      "Source": 6,
-      "Target": 5,
+      "Source": 8,
+      "Target": 6,
       "OnlyInSource": 1,
       "OnlyInTarget": 1,
       "Different": 1,
@@ -112,20 +114,20 @@
     },
     {
       "Category": "View",
-      "Source": 2,
+      "Source": 3,
       "Target": 1,
-      "OnlyInSource": 1,
+      "OnlyInSource": 2,
       "OnlyInTarget": 0,
       "Different": 1,
       "Unverified": 0
     },
     {
       "Category": "Stored procedure",
-      "Source": 2,
-      "Target": 2,
-      "OnlyInSource": 1,
-      "OnlyInTarget": 1,
-      "Different": 1,
+      "Source": 6,
+      "Target": 4,
+      "OnlyInSource": 4,
+      "OnlyInTarget": 2,
+      "Different": 2,
       "Unverified": 0
     },
     {
@@ -139,18 +141,18 @@
     },
     {
       "Category": "Trigger",
-      "Source": 1,
+      "Source": 2,
       "Target": 1,
-      "OnlyInSource": 0,
+      "OnlyInSource": 1,
       "OnlyInTarget": 0,
       "Different": 1,
       "Unverified": 0
     },
     {
       "Category": "User-defined type",
-      "Source": 1,
-      "Target": 0,
-      "OnlyInSource": 1,
+      "Source": 3,
+      "Target": 1,
+      "OnlyInSource": 2,
       "OnlyInTarget": 0,
       "Different": 0,
       "Unverified": 0
@@ -197,6 +199,16 @@
     },
     {
       "Category": "Table",
+      "Object": "dbo.Audit",
+      "Status": "OnlyInSource",
+      "Detail": "",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.Audit",
+      "TargetKey": null
+    },
+    {
+      "Category": "Table",
       "Object": "dbo.LegacyLog",
       "Status": "OnlyInTarget",
       "Detail": "",
@@ -214,6 +226,16 @@
       "TargetDefinition": null,
       "SourceKey": "dbo.Shipments",
       "TargetKey": null
+    },
+    {
+      "Category": "Column",
+      "Object": "dbo.Codes.Code",
+      "Status": "Different",
+      "Detail": "Nullable: source NULL, target NOT NULL",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.Codes.Code",
+      "TargetKey": "dbo.Codes.Code"
     },
     {
       "Category": "Column",
@@ -264,6 +286,16 @@
       "TargetDefinition": null,
       "SourceKey": "dbo.Orders.Name",
       "TargetKey": "dbo.Orders.Name"
+    },
+    {
+      "Category": "Column",
+      "Object": "dbo.Orders.Qty",
+      "Status": "Different",
+      "Detail": "Type: source bigint, target int",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.Orders.Qty",
+      "TargetKey": "dbo.Orders.Qty"
     },
     {
       "Category": "Index",
@@ -346,6 +378,36 @@
       "TargetKey": null
     },
     {
+      "Category": "View",
+      "Object": "rpt.vMoved",
+      "Status": "OnlyInSource",
+      "Detail": "Type: VIEW",
+      "SourceDefinition": "CREATE VIEW vMoved\nAS\nSELECT 1 AS One;",
+      "TargetDefinition": null,
+      "SourceKey": "rpt.vMoved",
+      "TargetKey": null
+    },
+    {
+      "Category": "Stored procedure",
+      "Object": "dbo.pAnsiOff",
+      "Status": "Different",
+      "Detail": "SetOptions: source ANSI_NULLS OFF, target (none)",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.pAnsiOff",
+      "TargetKey": "dbo.pAnsiOff"
+    },
+    {
+      "Category": "Stored procedure",
+      "Object": "dbo.pAnsiOffNew",
+      "Status": "OnlyInSource",
+      "Detail": "Type: SQL_STORED_PROCEDURE; SetOptions: ANSI_NULLS OFF",
+      "SourceDefinition": "CREATE PROCEDURE dbo.pAnsiOffNew @Name nvarchar(50)\nAS\nSELECT Id FROM dbo.Orders WHERE Name = @Name;",
+      "TargetDefinition": null,
+      "SourceKey": "dbo.pAnsiOffNew",
+      "TargetKey": null
+    },
+    {
       "Category": "Stored procedure",
       "Object": "dbo.pGetOrder",
       "Status": "Different",
@@ -376,6 +438,36 @@
       "TargetKey": null
     },
     {
+      "Category": "Stored procedure",
+      "Object": "dbo.pOldName",
+      "Status": "OnlyInTarget",
+      "Detail": "Type: SQL_STORED_PROCEDURE",
+      "SourceDefinition": null,
+      "TargetDefinition": "-- Another procedure under the name the source's pRenamed had before sp_rename, which is still the\n-- name in that procedure's stored text. The sync script must leave this one as it is.\nCREATE PROCEDURE dbo.pOldName\nAS\nSELECT 'target only' AS Keep;",
+      "SourceKey": null,
+      "TargetKey": "dbo.pOldName"
+    },
+    {
+      "Category": "Stored procedure",
+      "Object": "dbo.pQuotedOff",
+      "Status": "OnlyInSource",
+      "Detail": "Type: SQL_STORED_PROCEDURE; SetOptions: QUOTED_IDENTIFIER OFF",
+      "SourceDefinition": "CREATE PROCEDURE dbo.pQuotedOff\nAS\nSELECT \"a double-quoted string\" AS Txt;",
+      "TargetDefinition": null,
+      "SourceKey": "dbo.pQuotedOff",
+      "TargetKey": null
+    },
+    {
+      "Category": "Stored procedure",
+      "Object": "dbo.pRenamed",
+      "Status": "OnlyInSource",
+      "Detail": "Type: SQL_STORED_PROCEDURE",
+      "SourceDefinition": "-- Modules whose stored text does not say what the catalog says: sp_rename and ALTER SCHEMA ...\n-- TRANSFER leave sys.sql_modules as it was written. The sync script must create each one under\n-- its catalog name (pRenamed, rpt.vMoved) and the trigger on the table as it is called now.\nCREATE PROCEDURE dbo.pOldName\nAS\nSELECT 1 AS One;",
+      "TargetDefinition": null,
+      "SourceKey": "dbo.pRenamed",
+      "TargetKey": null
+    },
+    {
       "Category": "Function",
       "Object": "dbo.fOrdersOf",
       "Status": "OnlyInSource",
@@ -397,6 +489,16 @@
     },
     {
       "Category": "Trigger",
+      "Object": "dbo.trAudit",
+      "Status": "OnlyInSource",
+      "Detail": "Type: SQL_TRIGGER; Table: dbo.Audit; State: ENABLED",
+      "SourceDefinition": "CREATE TRIGGER dbo.trAudit ON dbo.AuditOld AFTER INSERT\nAS\nSET NOCOUNT ON;",
+      "TargetDefinition": null,
+      "SourceKey": "dbo.trAudit",
+      "TargetKey": null
+    },
+    {
+      "Category": "Trigger",
       "Object": "dbo.trOrders_Insert",
       "Status": "Different",
       "Detail": "State: source DISABLED, target ENABLED",
@@ -413,6 +515,16 @@
       "SourceDefinition": null,
       "TargetDefinition": null,
       "SourceKey": "dbo.tPhone",
+      "TargetKey": null
+    },
+    {
+      "Category": "User-defined type",
+      "Object": "dbo.tRows",
+      "Status": "OnlyInSource",
+      "Detail": "Kind: table type; Spec: (Id int NOT NULL, Code varchar(10) NOT NULL, Qty int NOT NULL, Twice int NOT NULL, Note nvarchar(20) NULL); Details: Id IDENTITY(10,5); Qty DEFAULT ((1)); Twice AS ([Qty]*(2)) PERSISTED; PRIMARY KEY CLUSTERED (Id) WITH (IGNORE_DUP_KEY = ON); UNIQUE NONCLUSTERED (Code DESC, Qty); CHECK ([Qty]>(0))",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.tRows",
       "TargetKey": null
     },
     {

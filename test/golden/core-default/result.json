@@ -1,0 +1,341 @@
+{
+  "format": "database-diff-result",
+  "version": 1,
+  "generated": "<time>",
+  "source": {
+    "label": "<server> / ddtest_core_default_src",
+    "serverName": "<servername>",
+    "login": "<login>",
+    "canViewDefinition": true
+  },
+  "target": {
+    "label": "<server> / ddtest_core_default_tgt",
+    "serverName": "<servername>",
+    "login": "<login>",
+    "canViewDefinition": true
+  },
+  "categories": [
+    "Table",
+    "Column",
+    "View",
+    "Stored procedure",
+    "Function"
+  ],
+  "perspective": "sync",
+  "options": {
+    "ignoreWhitespace": false,
+    "ignoreCase": false,
+    "ignoreCollation": false,
+    "compareColumnOrder": false
+  },
+  "counts": {
+    "onlyInSource": 11,
+    "onlyInTarget": 4,
+    "different": 10,
+    "unverified": 0
+  },
+  "warnings": [],
+  "syncScript": "before.sync.sql",
+  "syncError": "",
+  "rollbackScript": "before.rollback.sql",
+  "rollbackError": "",
+  "summary": [
+    {
+      "Category": "Table",
+      "Source": 6,
+      "Target": 4,
+      "OnlyInSource": 3,
+      "OnlyInTarget": 1,
+      "Different": 0,
+      "Unverified": 0
+    },
+    {
+      "Category": "Column",
+      "Source": 46,
+      "Target": 15,
+      "OnlyInSource": 1,
+      "OnlyInTarget": 1,
+      "Different": 6,
+      "Unverified": 0
+    },
+    {
+      "Category": "View",
+      "Source": 3,
+      "Target": 1,
+      "OnlyInSource": 2,
+      "OnlyInTarget": 0,
+      "Different": 1,
+      "Unverified": 0
+    },
+    {
+      "Category": "Stored procedure",
+      "Source": 6,
+      "Target": 4,
+      "OnlyInSource": 4,
+      "OnlyInTarget": 2,
+      "Different": 2,
+      "Unverified": 0
+    },
+    {
+      "Category": "Function",
+      "Source": 2,
+      "Target": 1,
+      "OnlyInSource": 1,
+      "OnlyInTarget": 0,
+      "Different": 1,
+      "Unverified": 0
+    }
+  ],
+  "diffs": [
+    {
+      "Category": "Table",
+      "Object": "dbo.AllTypes",
+      "Status": "OnlyInSource",
+      "Detail": "",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.AllTypes",
+      "TargetKey": null
+    },
+    {
+      "Category": "Table",
+      "Object": "dbo.Audit",
+      "Status": "OnlyInSource",
+      "Detail": "",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.Audit",
+      "TargetKey": null
+    },
+    {
+      "Category": "Table",
+      "Object": "dbo.LegacyLog",
+      "Status": "OnlyInTarget",
+      "Detail": "",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": null,
+      "TargetKey": "dbo.LegacyLog"
+    },
+    {
+      "Category": "Table",
+      "Object": "dbo.Shipments",
+      "Status": "OnlyInSource",
+      "Detail": "",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.Shipments",
+      "TargetKey": null
+    },
+    {
+      "Category": "Column",
+      "Object": "dbo.Codes.Code",
+      "Status": "Different",
+      "Detail": "Nullable: source NULL, target NOT NULL",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.Codes.Code",
+      "TargetKey": "dbo.Codes.Code"
+    },
+    {
+      "Category": "Column",
+      "Object": "dbo.Customers.Email",
+      "Status": "Different",
+      "Detail": "Collation: source SQL_Latin1_General_CP1_CI_AS, target Thai_CI_AS",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.Customers.Email",
+      "TargetKey": "dbo.Customers.Email"
+    },
+    {
+      "Category": "Column",
+      "Object": "dbo.Customers.Phone",
+      "Status": "OnlyInSource",
+      "Detail": "Type: dbo.tPhone; Nullable: NULL; Collation: Thai_CI_AS",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.Customers.Phone",
+      "TargetKey": null
+    },
+    {
+      "Category": "Column",
+      "Object": "dbo.Orders.Amount",
+      "Status": "Different",
+      "Detail": "Default: source ((1)), target ((0))",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.Orders.Amount",
+      "TargetKey": "dbo.Orders.Amount"
+    },
+    {
+      "Category": "Column",
+      "Object": "dbo.Orders.AmountWithVat",
+      "Status": "Different",
+      "Detail": "Persisted: source PERSISTED, target (none)",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.Orders.AmountWithVat",
+      "TargetKey": "dbo.Orders.AmountWithVat"
+    },
+    {
+      "Category": "Column",
+      "Object": "dbo.Orders.LegacyCode",
+      "Status": "OnlyInTarget",
+      "Detail": "Type: varchar(10); Nullable: NULL; Collation: Thai_CI_AS",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": null,
+      "TargetKey": "dbo.Orders.LegacyCode"
+    },
+    {
+      "Category": "Column",
+      "Object": "dbo.Orders.Name",
+      "Status": "Different",
+      "Detail": "Type: source nvarchar(100), target nvarchar(50)\nNullable: source NOT NULL, target NULL",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.Orders.Name",
+      "TargetKey": "dbo.Orders.Name"
+    },
+    {
+      "Category": "Column",
+      "Object": "dbo.Orders.Qty",
+      "Status": "Different",
+      "Detail": "Type: source bigint, target int",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.Orders.Qty",
+      "TargetKey": "dbo.Orders.Qty"
+    },
+    {
+      "Category": "View",
+      "Object": "dbo.vOrders",
+      "Status": "Different",
+      "Detail": "Definition differs",
+      "SourceDefinition": "CREATE VIEW dbo.vOrders\nAS\nSELECT o.Id, o.CustomerId, o.Name, o.Amount FROM dbo.Orders AS o;",
+      "TargetDefinition": "CREATE VIEW dbo.vOrders\nAS\nSELECT o.Id, o.Name, o.Amount FROM dbo.Orders AS o;",
+      "SourceKey": "dbo.vOrders",
+      "TargetKey": "dbo.vOrders"
+    },
+    {
+      "Category": "View",
+      "Object": "rpt.vDailyTotal",
+      "Status": "OnlyInSource",
+      "Detail": "Type: VIEW",
+      "SourceDefinition": "CREATE VIEW rpt.vDailyTotal\nAS\nSELECT CAST(CreatedAt AS date) AS OrderDate, SUM(Amount) AS Total\nFROM dbo.Orders\nGROUP BY CAST(CreatedAt AS date);",
+      "TargetDefinition": null,
+      "SourceKey": "rpt.vDailyTotal",
+      "TargetKey": null
+    },
+    {
+      "Category": "View",
+      "Object": "rpt.vMoved",
+      "Status": "OnlyInSource",
+      "Detail": "Type: VIEW",
+      "SourceDefinition": "CREATE VIEW vMoved\nAS\nSELECT 1 AS One;",
+      "TargetDefinition": null,
+      "SourceKey": "rpt.vMoved",
+      "TargetKey": null
+    },
+    {
+      "Category": "Stored procedure",
+      "Object": "dbo.pAnsiOff",
+      "Status": "Different",
+      "Detail": "SetOptions: source ANSI_NULLS OFF, target (none)",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.pAnsiOff",
+      "TargetKey": "dbo.pAnsiOff"
+    },
+    {
+      "Category": "Stored procedure",
+      "Object": "dbo.pAnsiOffNew",
+      "Status": "OnlyInSource",
+      "Detail": "Type: SQL_STORED_PROCEDURE; SetOptions: ANSI_NULLS OFF",
+      "SourceDefinition": "CREATE PROCEDURE dbo.pAnsiOffNew @Name nvarchar(50)\nAS\nSELECT Id FROM dbo.Orders WHERE Name = @Name;",
+      "TargetDefinition": null,
+      "SourceKey": "dbo.pAnsiOffNew",
+      "TargetKey": null
+    },
+    {
+      "Category": "Stored procedure",
+      "Object": "dbo.pGetOrder",
+      "Status": "Different",
+      "Detail": "Definition differs",
+      "SourceDefinition": "-- A Thai column alias in a string literal (Bytebase's parser fails on this).\nCREATE PROCEDURE dbo.pGetOrder @Id int\nAS\nSELECT Id, Name AS 'ชื่อรายการ', Amount FROM dbo.Orders WHERE Id = @Id;",
+      "TargetDefinition": "CREATE PROCEDURE dbo.pGetOrder @Id int\nAS\nSELECT Id, Name, Amount FROM dbo.Orders WHERE Id = @Id;",
+      "SourceKey": "dbo.pGetOrder",
+      "TargetKey": "dbo.pGetOrder"
+    },
+    {
+      "Category": "Stored procedure",
+      "Object": "dbo.pLegacyCleanup",
+      "Status": "OnlyInTarget",
+      "Detail": "Type: SQL_STORED_PROCEDURE",
+      "SourceDefinition": null,
+      "TargetDefinition": "CREATE PROCEDURE dbo.pLegacyCleanup\nAS\nDELETE FROM dbo.LegacyLog WHERE Id < 0;",
+      "SourceKey": null,
+      "TargetKey": "dbo.pLegacyCleanup"
+    },
+    {
+      "Category": "Stored procedure",
+      "Object": "dbo.pNewOrder",
+      "Status": "OnlyInSource",
+      "Detail": "Type: SQL_STORED_PROCEDURE",
+      "SourceDefinition": "CREATE PROCEDURE dbo.pNewOrder @Id int, @CustomerId int, @Name nvarchar(100)\nAS\nINSERT INTO dbo.Orders (Id, CustomerId, Name) VALUES (@Id, @CustomerId, @Name);",
+      "TargetDefinition": null,
+      "SourceKey": "dbo.pNewOrder",
+      "TargetKey": null
+    },
+    {
+      "Category": "Stored procedure",
+      "Object": "dbo.pOldName",
+      "Status": "OnlyInTarget",
+      "Detail": "Type: SQL_STORED_PROCEDURE",
+      "SourceDefinition": null,
+      "TargetDefinition": "-- Another procedure under the name the source's pRenamed had before sp_rename, which is still the\n-- name in that procedure's stored text. The sync script must leave this one as it is.\nCREATE PROCEDURE dbo.pOldName\nAS\nSELECT 'target only' AS Keep;",
+      "SourceKey": null,
+      "TargetKey": "dbo.pOldName"
+    },
+    {
+      "Category": "Stored procedure",
+      "Object": "dbo.pQuotedOff",
+      "Status": "OnlyInSource",
+      "Detail": "Type: SQL_STORED_PROCEDURE; SetOptions: QUOTED_IDENTIFIER OFF",
+      "SourceDefinition": "CREATE PROCEDURE dbo.pQuotedOff\nAS\nSELECT \"a double-quoted string\" AS Txt;",
+      "TargetDefinition": null,
+      "SourceKey": "dbo.pQuotedOff",
+      "TargetKey": null
+    },
+    {
+      "Category": "Stored procedure",
+      "Object": "dbo.pRenamed",
+      "Status": "OnlyInSource",
+      "Detail": "Type: SQL_STORED_PROCEDURE",
+      "SourceDefinition": "-- Modules whose stored text does not say what the catalog says: sp_rename and ALTER SCHEMA ...\n-- TRANSFER leave sys.sql_modules as it was written. The sync script must create each one under\n-- its catalog name (pRenamed, rpt.vMoved) and the trigger on the table as it is called now.\nCREATE PROCEDURE dbo.pOldName\nAS\nSELECT 1 AS One;",
+      "TargetDefinition": null,
+      "SourceKey": "dbo.pRenamed",
+      "TargetKey": null
+    },
+    {
+      "Category": "Function",
+      "Object": "dbo.fOrdersOf",
+      "Status": "OnlyInSource",
+      "Detail": "Type: SQL_INLINE_TABLE_VALUED_FUNCTION",
+      "SourceDefinition": "CREATE FUNCTION dbo.fOrdersOf (@CustomerId int)\nRETURNS TABLE\nAS\nRETURN SELECT Id, Name, Amount FROM dbo.Orders WHERE CustomerId = @CustomerId;",
+      "TargetDefinition": null,
+      "SourceKey": "dbo.fOrdersOf",
+      "TargetKey": null
+    },
+    {
+      "Category": "Function",
+      "Object": "dbo.fOrderTotal",
+      "Status": "Different",
+      "Detail": "Definition differs",
+      "SourceDefinition": "CREATE FUNCTION dbo.fOrderTotal (@CustomerId int)\nRETURNS decimal(18,2)\nAS\nBEGIN\n    RETURN ISNULL((SELECT SUM(Amount) FROM dbo.Orders WHERE CustomerId = @CustomerId), 0);\nEND;",
+      "TargetDefinition": "CREATE FUNCTION dbo.fOrderTotal (@CustomerId int)\nRETURNS decimal(18,2)\nAS\nBEGIN\n    RETURN (SELECT SUM(Amount) FROM dbo.Orders WHERE CustomerId = @CustomerId);\nEND;",
+      "SourceKey": "dbo.fOrderTotal",
+      "TargetKey": "dbo.fOrderTotal"
+    }
+  ]
+}

@@ -11,10 +11,19 @@ CREATE TABLE dbo.Orders (
     Name nvarchar(50) NULL,
     Amount decimal(10,2) NOT NULL CONSTRAINT DF_Orders_Amount DEFAULT (0),
     CreatedAt datetime2(3) NOT NULL CONSTRAINT DF_Orders_CreatedAt DEFAULT (sysdatetime()),
-    AmountWithVat AS (Amount * 1.07)
+    AmountWithVat AS (Amount * 1.07),
+    Qty int NOT NULL CONSTRAINT DF_Orders_Qty DEFAULT (1)
 );
 GO
 CREATE INDEX IX_Orders_CustomerId ON dbo.Orders (CustomerId);
+GO
+-- A column of an alias type: COLLATE cannot be written for it (Msg 452).
+CREATE TYPE dbo.tCode FROM varchar(20) NULL;
+GO
+CREATE TABLE dbo.Codes (
+    Id int NOT NULL CONSTRAINT PK_Codes PRIMARY KEY,
+    Code dbo.tCode NOT NULL
+);
 GO
 CREATE VIEW dbo.vOrders
 AS
@@ -42,4 +51,5 @@ GO
 -- Data that must survive sync + rollback.
 INSERT INTO dbo.Customers (Name, Email) VALUES (N'ลูกค้า ทดสอบ', 'test@example.com');
 INSERT INTO dbo.Orders (Id, CustomerId, Name, Amount) VALUES (1, 1, N'first', 5.00);
+INSERT INTO dbo.Codes (Id, Code) VALUES (1, 'A1');
 GO
