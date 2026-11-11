@@ -29,6 +29,38 @@ function moduleSetOptions(database: string): string[] {
   return run.output.trim().split(/\r?\n/);
 }
 
+// The indexes of the views of a database: view.index, its type and how many columns it names.
+function viewIndexes(database: string): string[] {
+  const run = query([
+    "SELECT CONCAT(v.name, '.', i.name, ' ', i.type_desc COLLATE DATABASE_DEFAULT, ' (',",
+    '(SELECT COUNT(*) FROM sys.index_columns ic WHERE ic.object_id = i.object_id AND ic.index_id = i.index_id), \')\')',
+    'FROM sys.indexes i JOIN sys.views v ON v.object_id = i.object_id WHERE i.type > 0',
+  ].join(' '), database);
+  assert.ok(run.ok, run.output);
+  return run.output.trim().split(/\r?\n/).sort();
+}
+
+// As the core fixture's target.sql creates them.
+const TARGET_VIEW_INDEXES = [
+  'vSalesByRegion.CIX_vSalesByRegion CLUSTERED (1)',
+  'vSalesByRegion.IX_vSalesByRegion_Total NONCLUSTERED (1)',
+  'vSalesTotals.CIX_vSalesTotals CLUSTERED (1)',
+];
+
+// The database triggers (ON DATABASE) of a database: name, state and the events each fires on.
+function databaseTriggers(database: string): string[] {
+  const run = query([
+    "SELECT CONCAT(t.name, ' ', CASE WHEN t.is_disabled = 1 THEN 'DISABLED' ELSE 'ENABLED' END, ' ',",
+    "(SELECT STRING_AGG(te.type_desc COLLATE DATABASE_DEFAULT, ',') WITHIN GROUP (ORDER BY te.type_desc) FROM sys.trigger_events te WHERE te.object_id = t.object_id))",
+    'FROM sys.triggers t WHERE t.parent_class = 0',
+  ].join(' '), database);
+  assert.ok(run.ok, run.output);
+  return run.output.trim().split(/\r?\n/).sort();
+}
+
+// As the core fixture's common.sql and target.sql create them.
+const TARGET_DATABASE_TRIGGERS = ['trDdlChanged ENABLED CREATE_SYNONYM', 'trDdlLegacy ENABLED DROP_SYNONYM', 'trDdlState ENABLED CREATE_SYNONYM'];
+
 function categoriesOf(c: Comparison, status: string): string[] {
   const diffs = c.result['diffs'] as { Category: string; Status: string }[];
   return [...new Set(diffs.filter((d) => d.Status === status).map((d) => d.Category))].sort();
@@ -132,6 +164,38 @@ for (const c of CASES) {
       assert.equal(run.output.trim(), `pRenamed:created pOldName:kept rpt.vMoved:created dbo.vMoved:absent trAudit on:${c.categories ? '' : 'Audit'}`);
     });
 
+    // ALTER VIEW drops every index of the view, and CREATE OR ALTER VIEW is an ALTER when the view
+    // is there. The sync script alters vSalesTotals: without creating its indexes again, the
+    // target would lose the clustered index it had and never get the new one.
+    await t.test('sync leaves the views with the indexes they have in the source', () => {
+      assert.deepEqual(viewIndexes(target), c.categories ? [
+        // Indexes are not compared here: only the views the script wrote get theirs.
+        'vSalesBig.CIX_vSalesBig CLUSTERED (1)',
+        'vSalesByRegion.CIX_vSalesByRegion CLUSTERED (1)',
+        'vSalesByRegion.IX_vSalesByRegion_Total NONCLUSTERED (1)',
+        'vSalesTotals.CIX_vSalesTotals CLUSTERED (1)',
+        'vSalesTotals.IX_vSalesTotals_Region NONCLUSTERED (1)',
+      ] : [
+        'vSalesBig.CIX_vSalesBig CLUSTERED (1)',
+        'vSalesByRegion.CIX_vSalesByRegion CLUSTERED (1)',
+        'vSalesByRegion.IX_vSalesByRegion_Cnt NONCLUSTERED (1)',
+        'vSalesByRegion.IX_vSalesByRegion_Total NONCLUSTERED (2)',
+        'vSalesTotals.CIX_vSalesTotals CLUSTERED (1)',
+        'vSalesTotals.IX_vSalesTotals_Region NONCLUSTERED (1)',
+      ]);
+    });
+
+    // Database triggers: one altered, one disabled, one created, and the target's own one left.
+    // (Not when triggers are not compared: then the target's stay as they are.)
+    await t.test('sync makes the database triggers as they are in the source', () => {
+      assert.deepEqual(databaseTriggers(target), c.categories ? TARGET_DATABASE_TRIGGERS : [
+        'trDdlChanged ENABLED CREATE_SYNONYM,DROP_SYNONYM',
+        'trDdlLegacy ENABLED DROP_SYNONYM',
+        'trDdlNew ENABLED DROP_SYNONYM',
+        'trDdlState DISABLED CREATE_SYNONYM',
+      ]);
+    });
+
     // A new table or column can need a type or a sequence that the target does not have. When
     // types and sequences are not among the compared categories (the default), nothing else
     // creates them, and CREATE TABLE fails (Msg 2715: cannot find data type dbo.tPhone).
@@ -140,6 +204,16 @@ for (const c of CASES) {
       assert.ok(run.ok, run.output);
       assert.equal(run.output.trim(), 'tPhone:created seqShipment:created Shipments.Seq:(NEXT VALUE FOR [dbo].[seqShipment])');
     });
+
+    // "AS decimal" alone is decimal(18,0): the limits of seqBig, a decimal(28,0), do not fit it
+    // (Msg 11708). Only when sequences are compared: no new table or column uses this one.
+    if (!c.categories) {
+      await t.test('sync creates a decimal sequence with its precision', () => {
+        const run = query("SELECT CONCAT(TYPE_NAME(user_type_id), '(', precision, ',', scale, ') up to ', CAST(maximum_value AS varchar(50))) FROM sys.sequences WHERE name = N'seqBig'", target);
+        assert.ok(run.ok, run.output);
+        assert.equal(run.output.trim(), 'decimal(28,0) up to 9999999999999999999999999999');
+      });
+    }
 
     // A table type is more than its column names and types (all the engine read before 2026-11-11).
     if (!c.categories) {
@@ -211,6 +285,15 @@ for (const c of CASES) {
     await t.test('rollback script can run again', () => {
       const run = runScriptFile(before.files.rollback);
       assert.ok(run.ok, run.output);
+    });
+
+    // The rollback alters vSalesTotals back, which drops its indexes once more.
+    await t.test('rollback puts back the indexes of the views', () => {
+      assert.deepEqual(viewIndexes(target), TARGET_VIEW_INDEXES);
+    });
+
+    await t.test('rollback puts back the database triggers', () => {
+      assert.deepEqual(databaseTriggers(target), TARGET_DATABASE_TRIGGERS);
     });
 
     await t.test('rollback puts back the SET options of a changed module', () => {

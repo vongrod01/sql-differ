@@ -7,7 +7,16 @@
 -- - Nothing in this file has been executed by database-diff.
 -- - Statements that drop tables, columns or other objects are commented out at the end.
 -- - ALTER COLUMN statements are active: check them for data loss (narrower types, NOT NULL).
+--   Except the change of a column that a computed column uses: SQL Server refuses it (Msg
+--   5074), so it is written as a group of comments to run by hand (those computed columns
+--   dropped, the change, the columns added again).
 -- - Objects are ordered by kind, not by dependency; rerun a failed part after the rest.
+-- - A view this script alters gets the indexes the source has on it created again right after
+--   it (ALTER VIEW drops every index of a view). The indexes of the other views come after
+--   the views.
+-- - Database triggers (ON DATABASE) come last. The ones this script creates or changes stay
+--   disabled until all of them are in place, and the ones the source has enabled are enabled at
+--   the very end: an enabled one fires on the statements after it and may refuse them.
 -- - Uses CREATE OR ALTER, which needs SQL Server 2016 SP1 or later on the target.
 -- - It starts with USE of the target database. If that fails (wrong server, no access), nothing
 --   after it is executed, so no statement runs in another database.
@@ -160,6 +169,16 @@ GO
 -- ==========================================================================================
 -- Views
 -- ==========================================================================================
+-- dbo.vSalesBig: only in source
+GO
+CREATE OR ALTER VIEW dbo.vSalesBig WITH SCHEMABINDING
+AS
+SELECT Id, Amount FROM dbo.Sales WHERE Amount > 1000;
+
+GO
+-- The indexes dbo.vSalesBig has in the source:
+CREATE UNIQUE CLUSTERED INDEX [CIX_vSalesBig] ON [dbo].[vSalesBig] ([Id]);
+GO
 -- rpt.vDailyTotal: only in source
 GO
 CREATE OR ALTER VIEW rpt.vDailyTotal
@@ -182,6 +201,23 @@ CREATE OR ALTER VIEW dbo.vOrders
 AS
 SELECT o.Id, o.CustomerId, o.Name, o.Amount FROM dbo.Orders AS o;
 
+GO
+-- dbo.vSalesTotals: Definition differs
+GO
+-- Indexed views. ALTER VIEW (and so CREATE OR ALTER VIEW) drops every index of the view, without
+-- a word: a script that alters a view has to create its indexes again, the clustered one first.
+-- vSalesTotals: another definition, the same clustered index as the target and a new nonclustered
+-- one. vSalesByRegion: the view is the same; one index has another column list and one is new.
+-- vSalesBig: a new view with its clustered index.
+CREATE OR ALTER VIEW dbo.vSalesTotals WITH SCHEMABINDING
+AS
+SELECT Id, Region, Amount FROM dbo.Sales WHERE Amount >= 0;
+
+GO
+-- ALTER VIEW drops every index of a view. The indexes dbo.vSalesTotals has in the source are created again:
+CREATE UNIQUE CLUSTERED INDEX [CIX_vSalesTotals] ON [dbo].[vSalesTotals] ([Id]);
+GO
+CREATE NONCLUSTERED INDEX [IX_vSalesTotals_Region] ON [dbo].[vSalesTotals] ([Region]);
 GO
 
 -- ==========================================================================================

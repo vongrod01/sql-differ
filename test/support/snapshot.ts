@@ -72,9 +72,13 @@ export class SnapshotBuilder {
     return this.add('User-defined type', `dbo.${name}`, item(`dbo.${name}`, props, sql));
   }
 
-  sequence(name: string, schema = 'dbo'): this {
-    const props = { DataType: 'bigint', Start: '1', Increment: '1', Min: '1', Max: '1000', Cycle: 'NO CYCLE', Cache: 'CACHE' };
-    return this.add('Sequence', `${schema}.${name}`, item(`${schema}.${name}`, props, { Schema: schema, Name: name }));
+  // props: what differs from a bigint sequence from 1 to 1000. A decimal or numeric one says
+  // DataType and Precision (a snapshot from before 2026-11-11 has no Precision).
+  sequence(name: string, schema = 'dbo', props: Record<string, string> = {}): this {
+    const all: Record<string, string> = { DataType: props['DataType'] ?? 'bigint' };
+    if (props['Precision']) all['Precision'] = props['Precision'];
+    Object.assign(all, { Start: '1', Increment: '1', Min: '1', Max: '1000', Cycle: 'NO CYCLE', Cache: 'CACHE' }, props);
+    return this.add('Sequence', `${schema}.${name}`, item(`${schema}.${name}`, all, { Schema: schema, Name: name }));
   }
 
   synonym(name: string, baseObject: string): this {
@@ -98,6 +102,48 @@ export class SnapshotBuilder {
     value.ObjectName = name;
     return this.add('Check constraint', `dbo.${table}|${name}`, value);
   }
+
+  // An index of a view (the view itself: module('View', ...)). The first index of a view is its
+  // unique clustered one; nonclustered ones stand on it. A column is 'Name' or 'Name DESC'.
+  viewIndex(view: string, name: string, columns: string[], options: { clustered?: boolean; unique?: boolean; include?: string[]; type?: string } = {}): this {
+    const clustered = options.clustered ?? false;
+    const unique = options.unique ?? clustered;
+    const include = options.include ?? [];
+    const type = options.type ?? '';
+    const parent = `dbo.${view}`;
+    const props = {
+      Kind: unique ? 'UNIQUE INDEX' : 'INDEX', Type: type || (clustered ? 'CLUSTERED' : 'NONCLUSTERED'),
+      Columns: columns.join(', '), Include: [...include].sort().join(', '), Filter: '',
+    };
+    const keyParts = columns.map((c) => ({ Name: c.replace(/ DESC$/, ''), Desc: c.endsWith(' DESC') }));
+    const value = item(`${parent}.${name}`, props, { Schema: 'dbo', Table: view, Name: name, IsSystemNamed: false, KeyParts: keyParts, Includes: include }, parent);
+    value.ObjectName = name;
+    return this.add('Index', `${parent}|${name}`, value);
+  }
+
+  // A database trigger (CREATE TRIGGER ... ON DATABASE), as the engine keeps one: in the Trigger
+  // category, without a schema, under a key of its own.
+  databaseTrigger(name: string, definition: string, state = 'ENABLED', setOptions = ''): this {
+    const sql = { Schema: '', Name: name, ObjectType: 'TR', ParentSchema: '', ParentObject: '', Scope: 'DATABASE' };
+    const props = { Type: 'SQL_TRIGGER', Table: 'DATABASE', State: state, SetOptions: setOptions };
+    return this.add('Trigger', `(database trigger)|${name}`, item(`${name} (database trigger)`, props, sql, '', definition));
+  }
+
+  // What the file says of itself. Version 1: saved before the engine read the indexes of views
+  // and database triggers (a file like that holds none).
+  version = 2;
+  canViewDefinition = true;
+
+  savedAsVersion(version: number): this {
+    this.version = version;
+    return this;
+  }
+
+  // Read by a login without VIEW DEFINITION.
+  readWithoutViewDefinition(): this {
+    this.canViewDefinition = false;
+    return this;
+  }
 }
 
 export function snapshot(): SnapshotBuilder {
@@ -109,7 +155,11 @@ export interface Scripts {
   rollback: string;
   // Object -> Detail of the differences found.
   details: Record<string, string>;
+  // Object -> Status (OnlyInSource, OnlyInTarget, Different, Unverified).
+  statuses: Record<string, string>;
   exitCode: number | null;
+  // What the engine printed.
+  log: string;
 }
 
 // Compares two hand-made snapshots (source: the model, target: what the scripts change) and returns
@@ -120,16 +170,23 @@ export function scriptsFor(name: string, source: SnapshotBuilder, target: Snapsh
   const write = (side: string, builder: SnapshotBuilder): string => {
     const file = path.join(dir, `${name}.${side}.input.json`);
     writeFileSync(file, JSON.stringify({
-      format: 'database-diff-snapshot', version: 1, captured: '2026-01-01T00:00:00', server: `${side}-server`, database: `${side}_db`,
-      login: 'tester', canViewDefinition: true, categories: builder.categories,
+      format: 'database-diff-snapshot', version: builder.version, captured: '2026-01-01T00:00:00', server: `${side}-server`, database: `${side}_db`,
+      login: 'tester', canViewDefinition: builder.canViewDefinition, categories: builder.categories,
     }), 'utf8');
     return file;
   };
   const c = compare({ dir: 'script', name, sourceSnapshot: write('source', source), targetSnapshot: write('target', target), options, categories });
   if (c.result['syncError'] || c.result['rollbackError']) throw new Error(`script generation failed for ${name}:\n${c.log}`);
   const read = (file: string): string => readFileSync(file, 'utf8').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
-  const diffs = c.result['diffs'] as { Object: string; Detail: string }[];
-  return { sync: read(c.files.sync), rollback: read(c.files.rollback), details: Object.fromEntries(diffs.map((d) => [d.Object, d.Detail])), exitCode: c.exitCode };
+  const diffs = c.result['diffs'] as { Object: string; Detail: string; Status: string }[];
+  return {
+    sync: read(c.files.sync),
+    rollback: read(c.files.rollback),
+    details: Object.fromEntries(diffs.map((d) => [d.Object, d.Detail])),
+    statuses: Object.fromEntries(diffs.map((d) => [d.Object, d.Status])),
+    exitCode: c.exitCode,
+    log: c.log,
+  };
 }
 
 // The statements of a script: its lines without comments, blank lines, GO and the frame every

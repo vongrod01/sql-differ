@@ -12,6 +12,7 @@ const database = `${DB_PREFIX}compat`;
 const same = { onlyInSource: 0, onlyInTarget: 0, different: 0, unverified: 0 };
 
 interface SnapshotItem {
+  Parent?: string;
   Props?: Record<string, string>;
   Sql?: Record<string, unknown>;
 }
@@ -23,7 +24,7 @@ test('engine: a snapshot from before the engine read Persisted, default names, S
   // The database against itself saves its live snapshot; take out what older engines did not write.
   const live = compare({ dir: 'compat', name: 'live', source: database, target: database });
   assert.deepEqual(counts(live), same, live.log);
-  const snapshot = JSON.parse(readFileSync(live.files.sourceSnapshot, 'utf8')) as { categories: Record<string, Record<string, SnapshotItem>> };
+  const snapshot = JSON.parse(readFileSync(live.files.sourceSnapshot, 'utf8')) as { version: number; categories: Record<string, Record<string, SnapshotItem>> };
   const removed: string[] = [];
   for (const [key, item] of Object.entries(snapshot.categories['Column'] ?? {})) {
     if (item.Props && 'Persisted' in item.Props) { delete item.Props['Persisted']; removed.push(`${key} Persisted`); }
@@ -40,6 +41,12 @@ test('engine: a snapshot from before the engine read Persisted, default names, S
     if (item.Props && 'Details' in item.Props) { removed.push(`${key} Details=${item.Props['Details']}`); delete item.Props['Details']; }
     if (item.Props && 'Collation' in item.Props) { removed.push(`${key} Collation=${item.Props['Collation']}`); delete item.Props['Collation']; }
   }
+  // And the precision of a decimal or numeric sequence.
+  for (const [key, item] of Object.entries(snapshot.categories['Sequence'] ?? {})) {
+    if (item.Props && 'Precision' in item.Props) { removed.push(`${key} Precision=${item.Props['Precision']}`); delete item.Props['Precision']; }
+  }
+  assert.ok(removed.includes('dbo.seqBig Precision=28'), removed.join('\n'));
+  assert.ok(!removed.some((r) => r.startsWith('dbo.seqInvoice Precision')), 'an int sequence has no Precision');
   assert.ok(removed.some((r) => r.startsWith('dbo.tRows Details=Id IDENTITY(10,5); ')), removed.join('\n'));
   assert.ok(removed.includes('dbo.tRows Collation=Code Latin1_General_BIN; Note Thai_CI_AS'), removed.join('\n'));
   // Two persisted computed columns and four named defaults in the core source.
@@ -48,6 +55,28 @@ test('engine: a snapshot from before the engine read Persisted, default names, S
   for (const item of ['dbo.pAnsiOff SetOptions=ANSI_NULLS OFF', 'dbo.pQuotedOff SetOptions=QUOTED_IDENTIFIER OFF', 'dbo.pGetOrder SetOptions=', 'dbo.vOrders SetOptions=', 'dbo.trAudit SetOptions=']) {
     assert.ok(removed.includes(item), `${item} expected in:\n${removed.join('\n')}`);
   }
+  // A file of version 1: saved before the engine read the indexes of views and database triggers.
+  // It holds none of them, whatever the database has (this one has indexed views), and that
+  // must not read as a difference against the live database.
+  assert.equal(snapshot.version, 2, 'a snapshot saved now is version 2');
+  snapshot.version = 1;
+  const views = snapshot.categories['View'] ?? {};
+  const indexes = snapshot.categories['Index'] ?? {};
+  for (const [key, item] of Object.entries(indexes)) {
+    if (item.Parent !== undefined && item.Parent in views) { removed.push(`${key} (index of a view)`); delete indexes[key]; }
+  }
+  for (const item of ['dbo.vSalesBig|CIX_vSalesBig (index of a view)', 'dbo.vSalesByRegion|IX_vSalesByRegion_Total (index of a view)']) {
+    assert.ok(removed.includes(item), `${item} expected in:\n${removed.join('\n')}`);
+  }
+  assert.ok(Object.keys(indexes).includes('dbo.Sales|PK'), 'the indexes of tables stay');
+  const triggers = snapshot.categories['Trigger'] ?? {};
+  for (const [key, item] of Object.entries(triggers)) {
+    if (item.Sql?.['Scope'] === 'DATABASE') { removed.push(`${key} (database trigger)`); delete triggers[key]; }
+  }
+  for (const item of ['(database trigger)|trDdlNew (database trigger)', '(database trigger)|trDdlState (database trigger)']) {
+    assert.ok(removed.includes(item), `${item} expected in:\n${removed.join('\n')}`);
+  }
+  assert.ok(Object.keys(triggers).includes('dbo.trAudit'), 'the triggers of tables stay');
   const oldSnapshot = path.join(path.dirname(live.files.sourceSnapshot), 'old-format.snapshot.json');
   writeFileSync(oldSnapshot, JSON.stringify(snapshot), 'utf8');
 

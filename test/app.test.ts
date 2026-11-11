@@ -8,10 +8,10 @@ import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { createServer } from 'node:net';
 import path from 'node:path';
 import vm from 'node:vm';
 import { OUT, ROOT, childEnv, compare } from './support/engine.js';
+import { freePort, withServer } from './support/server.js';
 import { DB_PREFIX, TEST_SERVER, USER_OBJECT_COUNT, dropDatabase, query, recreateDatabase, runScriptFile, skipWithoutServer } from './support/sql.js';
 
 const DATA = path.join(OUT, 'app-data');
@@ -270,7 +270,7 @@ test('app: the combined script stops at the first database that cannot be used',
   // renamed to a database that does not exist. Part 2: a script for a database that does.
   const engine = compare({ dir: 'app-combined', name: 'part', source: here, target: here, categories: 'Table' });
   const first = readFileSync(engine.files.sync, 'utf8').split(here).join(gone);
-  const second = '﻿CREATE TABLE dbo.CombinedMarker (Id int NOT NULL);\r\nGO\r\n';
+  const second = '\uFEFFCREATE TABLE dbo.CombinedMarker (Id int NOT NULL);\r\nGO\r\n';
   const id = '20260101-000000-abcd';
   const dir = path.join(config.RUNS, id);
   mkdirSync(dir, { recursive: true });
@@ -365,7 +365,7 @@ function browserFunctions(names: string[]): Record<string, (...args: unknown[]) 
 }
 
 test('app: a run with failed databases never reads as identical', () => {
-  const { countsHtml } = browserFunctions(['onlyIn', 'countsHtml']);
+  const { countsHtml } = browserFunctions(['kindWords', 'countsHtml']);
   assert.ok(countsHtml);
   const tags = (html: string, cls: string): number => html.split(`class="tag ${cls}"`).length - 1;
   const zero = { onlyInSource: 0, onlyInTarget: 0, different: 0, unverified: 0 };
@@ -388,6 +388,43 @@ test('app: a run with failed databases never reads as identical', () => {
   assert.equal(tags(both, 'err'), 1, both);
   // Incomplete (no VIEW DEFINITION) is its own tag, next to the error tag.
   assert.equal(tags(countsHtml(zero, true, 'batch', 1), 'err'), 2);
+});
+
+// The words for the four kinds of difference (kindWords in app/public/app.js) are the ones of the
+// HTML report: what happens to the target for a comparison, time words for a drift run.
+test('app: counts are worded as in the report, and a drift run uses time words', () => {
+  const { countsHtml, kindWords } = browserFunctions(['kindWords', 'countsHtml']);
+  assert.ok(countsHtml && kindWords);
+  const counts = { onlyInSource: 1, onlyInTarget: 2, different: 3, unverified: 4 };
+  const text = (html: string): string[] => [...html.matchAll(/<span class="tag ?([a-z]*)">([^<]*)<\/span>/g)].map((m) => `${m[1]}: ${m[2]}`);
+
+  // Only in the source: to add (green). Only in the target: extra (red).
+  for (const kind of ['compare', 'batch']) {
+    assert.deepEqual(text(countsHtml(counts, false, kind)), ['tgt: ต้องเพิ่ม 1', 'src: มีเกิน 2', 'chg: ต้องแก้ 3', ': ตรวจไม่ได้ 4'], kind);
+  }
+  assert.deepEqual(text(countsHtml({ ...counts, onlyInSource: 0, onlyInTarget: 0, different: 0, unverified: 0 }, false, 'compare')), ['ok: ตรงกัน']);
+  // Drift reads from the older point to the later one: the colours flip with the words.
+  assert.deepEqual(text(countsHtml(counts, false, 'drift')), ['src: หายไป 1', 'tgt: เพิ่มขึ้นมา 2', 'chg: ถูกแก้ 3', ': ตรวจไม่ได้ 4']);
+  assert.deepEqual(text(countsHtml({ ...counts, onlyInSource: 0, onlyInTarget: 0, different: 0, unverified: 0 }, false, 'drift')), ['ok: เหมือนเดิม']);
+
+  // The same words and explanations as the report of one database (templates/report.html).
+  const template = readFileSync(path.join(ROOT, 'templates', 'report.html'), 'utf8');
+  const words = (kind: string) => JSON.parse(JSON.stringify(kindWords(kind))) as Record<string, { cls: string; label: string; hint: string }>;
+  for (const kind of ['compare', 'drift']) {
+    const w = words(kind);
+    for (const key of ['source', 'target', 'different', 'unverified']) {
+      const word = w[key];
+      assert.ok(word, key);
+      assert.ok(template.includes(`t: '${word.label}'`), `the report has the word ${word.label}`);
+      assert.match(word.hint, /[ก-๛]/);
+    }
+  }
+  // What a sync does with each kind is said in the same sentences as in the report.
+  for (const key of ['source', 'target', 'different']) assert.ok(template.includes(`d: '${words('compare')[key]?.hint ?? ''}'`), key);
+  for (const hint of [words('drift')['source']?.hint, words('drift')['target']?.hint]) assert.doesNotMatch(hint ?? 'sync', /sync|ต้นแบบ|ปลายทาง/);
+  // The old words are gone from the page script.
+  const page = readFileSync(path.join(ROOT, 'app', 'public', 'app.js'), 'utf8');
+  for (const old of ['มีแค่ source', 'มีแค่ target', 'มีแค่ "จาก"', 'มีแค่ "ถึง"', 'เทียบไม่ได้ $', 'ต่างกัน $']) assert.ok(!page.includes(old), old);
 });
 
 // A scheduled job whose spec no longer validates (the profile of its server was deleted, say) used
@@ -467,17 +504,6 @@ test('app: jobs.usingServer names the jobs that use a server on either side', ()
   assert.deepEqual(jobs.usingServer('app:one'), []);
 });
 
-function freePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const probe = createServer();
-    probe.once('error', reject);
-    probe.listen(0, '127.0.0.1', () => {
-      const address = probe.address();
-      probe.close(() => (address && typeof address === 'object' ? resolve(address.port) : reject(new Error('no port'))));
-    });
-  });
-}
-
 // Deleting the profile of a server would make every job that uses it fail at its next run.
 test('app: a server that scheduled jobs use cannot be deleted', async () => {
   writeProfile('used', 'used.invalid');
@@ -528,4 +554,113 @@ test('app: a server that scheduled jobs use cannot be deleted', async () => {
   } finally {
     server.kill();
   }
+});
+
+// The app shows server names, schema definitions and scripts, and its buttons start runs and
+// delete history. Inside a frame of another site a page like that can be clicked through without
+// the user seeing it (clickjacking), so no response of the app may be framed: not a page, not an
+// API answer, not a report, not an error.
+test('app: every response forbids being shown in a frame', async () => {
+  const id = '20260101-000000-f4a3';
+  const dir = path.join(config.RUNS, id);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(path.join(dir, 'run.json'), JSON.stringify({
+    id, createdAt: new Date().toISOString(), finishedAt: new Date().toISOString(), status: 'done', ownerPid: 0,
+    spec: { kind: 'compare', source: { serverLabel: 'a', database: 'a' }, target: { serverLabel: 'b', database: 'b' } },
+  }), 'utf8');
+  writeFileSync(path.join(dir, 'report.html'), '<!doctype html><title>report</title>', 'utf8');
+  writeFileSync(path.join(dir, 'run.log'), 'one line\n', 'utf8');
+
+  const api = { 'x-database-diff': '1' };
+  const requests: [what: string, url: string, headers: Record<string, string>, status: number][] = [
+    ['the page', '/', {}, 200],
+    ['a script of the page', '/app.js', {}, 200],
+    ['an API answer', '/api/jobs', api, 200],
+    ['an API route that does not exist', '/api/nothing', api, 404],
+    ['an API request without the header', '/api/jobs', {}, 403],
+    ['an API error', '/api/runs/not-a-run-id', api, 400],
+    ['a file that does not exist', '/nothing.html', {}, 404],
+    ['a report of a run', `/runs/${id}/report.html`, {}, 200],
+    ['a run file that does not exist', `/runs/${id}/nothing.html`, {}, 404],
+    ['a combined script that does not exist', `/runs/${id}/combined/sync.sql`, {}, 404],
+    ['the event stream of a run', `/api/runs/${id}/events`, {}, 200],
+  ];
+  try {
+    await withServer(async (base) => {
+      for (const [what, url, headers, status] of requests) {
+        const res = await fetch(base + url, { headers });
+        await res.arrayBuffer();
+        assert.equal(res.status, status, what);
+        assert.equal(res.headers.get('x-frame-options'), 'DENY', `${what}: X-Frame-Options`);
+        assert.equal(res.headers.get('content-security-policy'), "frame-ancestors 'none'", `${what}: Content-Security-Policy`);
+      }
+    });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// The line under the history list (storageText in app/public/app.js): how much history there is,
+// and when it is deleted. What /api/storage answers is in test/retention.test.ts.
+test('app: the history page says how much history there is and when it is deleted', () => {
+  const { storageText, fmtBytes } = browserFunctions(['fmtBytes', 'storageText']);
+  assert.ok(storageText && fmtBytes);
+  assert.deepEqual([0, 512, 1024, 1536, 5 * 1024 * 1024, 3.25 * 1024 ** 3].map((n) => fmtBytes(n)), ['0 B', '512 B', '1.0 KB', '1.5 KB', '5.0 MB', '3.3 GB']);
+  const size = { bytes: 5 * 1024 * 1024, runs: 42, keep: 20 };
+  const kept = storageText({ ...size, days: 90, invalid: '' });
+  assert.match(kept, /42 /);
+  assert.match(kept, /5\.0 MB/);
+  assert.match(kept, /90 /);
+  assert.match(kept, /20 /);
+  // Off: no number of days, and the reason. A value that is not a number is shown as it was typed.
+  const off = storageText({ ...size, days: 0, invalid: '' });
+  assert.match(off, /DATABASE_DIFF_RETENTION_DAYS=0/);
+  assert.ok(!off.includes('90'), off);
+  const invalid = storageText({ ...size, days: 0, invalid: '<b>ninety</b>' });
+  assert.match(invalid, /DATABASE_DIFF_RETENTION_DAYS "<b>ninety<\/b>"/);
+  assert.ok(!invalid.includes('=0'), invalid);
+});
+
+// The notices about the scripts on the page of a finished run (scriptNotes in app/public/app.js).
+// What a script does differently on a target read without VIEW DEFINITION is only worth saying
+// when the comparison was such a one.
+test('app: the notes about the scripts mention VIEW DEFINITION only for an incomplete comparison', () => {
+  const { scriptNotes } = browserFunctions(['scriptNotes']);
+  assert.ok(scriptNotes);
+  const notices = (html: string): number => html.split('<div class="notice').length - 1;
+  const mentions = (html: string, text: string): number => html.split(text).length - 1;
+  const single = { syncScript: 'report.sync.sql', rollbackScript: 'report.rollback.sql', incomplete: false };
+
+  const complete = scriptNotes(single, false, false, false);
+  assert.equal(notices(complete), 2, complete);
+  assert.match(complete, /<b>Sync script<\/b>/);
+  assert.match(complete, /<b>Rollback script<\/b>/);
+  // What every script does: USE first, replacements in one transaction, drops as comments.
+  for (const word of ['USE', 'transaction', 'DROP', 'SSMS']) assert.ok(complete.includes(word), `${word} in: ${complete}`);
+  assert.equal(mentions(complete, 'VIEW DEFINITION'), 0, complete);
+
+  const incomplete = scriptNotes({ ...single, incomplete: true }, false, false, false);
+  assert.equal(notices(incomplete), 3, incomplete);
+  assert.equal(mentions(incomplete, 'VIEW DEFINITION'), 1, incomplete);
+  assert.equal(mentions(incomplete, 'class="notice warn"'), 1, incomplete);
+  assert.match(incomplete, /CREATE/);
+
+  // A drift run: its script is the way back, and it has no rollback script.
+  const drift = scriptNotes({ ...single, rollbackScript: 'ignored.sql' }, true, false, false);
+  assert.equal(notices(drift), 1, drift);
+  assert.equal(mentions(drift, 'Rollback script'), 0, drift);
+  assert.equal(mentions(drift, 'Sync script'), 0, drift);
+
+  // A batch: the scripts are those of its databases, and there may be combined ones.
+  const batch = { databases: [{ database: 'a' }, { database: 'b', syncScript: 'b.sync.sql', rollbackScript: 'b.rollback.sql' }], incomplete: true };
+  const combined = scriptNotes(batch, false, true, true);
+  assert.equal(notices(combined), 4, combined);
+  assert.equal(mentions(combined, 'VIEW DEFINITION'), 1, combined);
+  assert.equal(mentions(combined, '<b>Rollback script ทั้งหมด</b>'), 1, combined);
+  assert.equal(mentions(scriptNotes(batch, false, true, false), 'Rollback script ทั้งหมด'), 0);
+
+  // No script at all (generation failed, or a batch where every database failed): nothing to say,
+  // also about VIEW DEFINITION, which has its own notice on the page.
+  assert.equal(scriptNotes({ incomplete: true }, false, false, false), '');
+  assert.equal(scriptNotes({ databases: [{ database: 'a', error: 'no access' }], incomplete: true }, false, false, false), '');
 });

@@ -195,7 +195,7 @@ async function listDatabasesWithProfile(profileArgs) {
   const { stdout, stderr } = await runPowerShell(['-File', config.ENGINE, '-ListDatabases', ...profileArgs]);
   let result;
   try {
-    result = JSON.parse(stdout.replace(/^﻿/, ''));
+    result = JSON.parse(stdout.replace(/^\uFEFF/, ''));
   } catch {
     throw new Error(`Unexpected engine output: ${(stdout || stderr).trim().slice(0, 500)}`);
   }

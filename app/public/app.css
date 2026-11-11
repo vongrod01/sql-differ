@@ -57,6 +57,7 @@ h1 { font-size: 22px; margin: 0 0 4px; }
 h2 { font-size: 17px; margin: 24px 0 10px; }
 .muted { color: var(--muted); }
 .small { font-size: 14px; }
+#storage { margin: 12px 2px 0; }
 .mono { font-family: Consolas, "Cascadia Mono", "Leelawadee UI", monospace; }
 
 .topbar { background: var(--panel); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 5; }
@@ -134,9 +135,12 @@ tr.clickable:hover td { background: var(--head); }
 .tag.run { color: var(--accent); background: var(--head); }
 
 .counts { display: flex; flex-wrap: wrap; gap: 6px; }
-.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 16px 0; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin: 16px 0; }
 .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; }
 .card .n { display: block; font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+/* The word of a kind of difference, and one line on what it means (kindWords in app.js). */
+.card .t { display: block; font-weight: 600; }
+.card .d { display: block; font-size: 14px; color: var(--muted); }
 .card.src .n { color: var(--src); } .card.tgt .n { color: var(--tgt); } .card.chg .n { color: var(--chg); } .card.unk .n { color: var(--unk); }
 
 .notice { border-radius: 10px; padding: 10px 14px; margin: 12px 0; border: 1px solid var(--border); background: var(--panel); word-break: break-word; }

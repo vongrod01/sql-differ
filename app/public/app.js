@@ -25,14 +25,28 @@ function fmtTime(iso) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-// Compare runs read as changes to the target (it becomes like the source): "only in source" is
-// something to add (green), "only in target" something to remove (red). Drift reads from the older
-// side to the later one, so the colours and words flip.
-function onlyIn(kind) {
+// The four kinds of difference in words: the same words, colours and explanations as the HTML
+// report (templates/report.html). Compare runs read as changes to the target, which becomes like
+// the source model: what is only in the source is something to add (green), what is only in the
+// target is extra (red; a sync never deletes it). Drift reads from the older point ("จาก") to the
+// later one ("ถึง"): time words, and the colours flip.
+function kindWords(kind) {
   if (kind === 'drift') {
-    return { source: { cls: 'src', label: 'มีแค่ "จาก"' }, target: { cls: 'tgt', label: 'มีแค่ "ถึง"' } };
+    return {
+      source: { cls: 'src', label: 'หายไป', hint: 'เคยมีในจุด "จาก" แต่จุด "ถึง" ไม่มีแล้ว' },
+      target: { cls: 'tgt', label: 'เพิ่มขึ้นมา', hint: 'จุด "จาก" ยังไม่มี เพิ่งมีในจุด "ถึง"' },
+      different: { cls: 'chg', label: 'ถูกแก้', hint: 'มีทั้งสองจุด แต่ไม่เหมือนเดิม' },
+      unverified: { cls: 'unk', label: 'ตรวจไม่ได้', hint: 'อ่านค่าไม่ได้ (ไม่มีสิทธิ์ หรือถูกเข้ารหัส) จึงบอกไม่ได้ว่าเปลี่ยนหรือไม่' },
+      same: 'เหมือนเดิม',
+    };
   }
-  return { source: { cls: 'tgt', label: 'มีแค่ source' }, target: { cls: 'src', label: 'มีแค่ target' } };
+  return {
+    source: { cls: 'tgt', label: 'ต้องเพิ่ม', hint: 'ต้นแบบมี แต่ปลายทางยังไม่มี sync จะสร้างให้' },
+    target: { cls: 'src', label: 'มีเกิน', hint: 'ปลายทางมีแต่ต้นแบบไม่มี sync ไม่ลบให้ แค่เขียนคำสั่งลบไว้เป็นหมายเหตุ' },
+    different: { cls: 'chg', label: 'ต้องแก้', hint: 'มีทั้งคู่แต่ไม่เหมือนกัน sync จะแก้ปลายทางให้ตรงต้นแบบ ยกเว้นส่วนที่ไฟล์ sync เขียนไว้เป็นหมายเหตุให้ทำเอง' },
+    unverified: { cls: 'unk', label: 'ตรวจไม่ได้', hint: 'อ่านค่าไม่ได้ (ไม่มีสิทธิ์ หรือถูกเข้ารหัส) จึงเทียบไม่ได้ และไม่เขียนคำสั่งให้' },
+    same: 'ตรงกัน',
+  };
 }
 
 // `errors`: how many databases of a batch could not be compared. Nothing of theirs is in the
@@ -40,13 +54,13 @@ function onlyIn(kind) {
 function countsHtml(c, incomplete, kind, errors) {
   if (!c) return '<span class="muted">-</span>';
   const total = c.onlyInSource + c.onlyInTarget + c.different;
-  const o = onlyIn(kind);
+  const w = kindWords(kind);
   const parts = [];
-  if (total === 0 && !c.unverified && !errors) parts.push('<span class="tag ok">เหมือนกัน</span>');
-  if (c.onlyInSource) parts.push(`<span class="tag ${o.source.cls}">${o.source.label} ${c.onlyInSource}</span>`);
-  if (c.onlyInTarget) parts.push(`<span class="tag ${o.target.cls}">${o.target.label} ${c.onlyInTarget}</span>`);
-  if (c.different) parts.push(`<span class="tag chg">ต่างกัน ${c.different}</span>`);
-  if (c.unverified) parts.push(`<span class="tag">เทียบไม่ได้ ${c.unverified}</span>`);
+  if (total === 0 && !c.unverified && !errors) parts.push(`<span class="tag ok">${w.same}</span>`);
+  if (c.onlyInSource) parts.push(`<span class="tag ${w.source.cls}">${w.source.label} ${c.onlyInSource}</span>`);
+  if (c.onlyInTarget) parts.push(`<span class="tag ${w.target.cls}">${w.target.label} ${c.onlyInTarget}</span>`);
+  if (c.different) parts.push(`<span class="tag chg">${w.different.label} ${c.different}</span>`);
+  if (c.unverified) parts.push(`<span class="tag">${w.unverified.label} ${c.unverified}</span>`);
   if (incomplete) parts.push('<span class="tag err">ผลไม่ครบ</span>');
   if (errors) parts.push(`<span class="tag err">เทียบไม่สำเร็จ ${Number(errors)} ฐาน</span>`);
   return `<div class="counts">${parts.join('')}</div>`;
@@ -56,6 +70,25 @@ function statusTag(status) {
   if (status === 'running') return '<span class="tag run"><span class="spinner"></span> กำลังรัน</span>';
   if (status === 'done') return '<span class="tag ok">เสร็จ</span>';
   return '<span class="tag err">ล้มเหลว</span>';
+}
+
+// 1536 -> "1.5 KB".
+function fmtBytes(bytes) {
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let value = Number(bytes) || 0;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit++; }
+  return `${unit === 0 ? value : value.toFixed(1)} ${units[unit]}`;
+}
+
+// The line under the history list: how much history there is, and when runs are deleted
+// automatically (s: the answer of /api/storage). Plain text, set with textContent.
+function storageText(s) {
+  const size = `ประวัติ ${Number(s.runs)} รายการ ใช้พื้นที่ ${fmtBytes(s.bytes)}`;
+  if (s.invalid) return `${size} · ไม่ลบอัตโนมัติ เพราะค่า DATABASE_DIFF_RETENTION_DAYS "${s.invalid}" ไม่ใช่จำนวนวัน`;
+  if (!s.days) return `${size} · ไม่ลบอัตโนมัติ (DATABASE_DIFF_RETENTION_DAYS=0)`;
+  // Counted back from the newest run, not from today: see prune in app/lib/retention.js.
+  return `${size} · ลบอัตโนมัติเมื่อเก่ากว่า ${Number(s.days)} วัน นับถอยจากการรันครั้งล่าสุด แต่เก็บ ${Number(s.keep)} รายการล่าสุดไว้เสมอ`;
 }
 
 const KIND_LABEL = { compare: 'ฐานเดียว', batch: 'หลายฐาน', drift: 'Drift' };
@@ -178,7 +211,7 @@ async function specForm(root, initial, opts = {}) {
       <label><input type="radio" name="kind" value="compare"${spec.kind !== 'batch' ? ' checked' : ''}>ฐานเดียว</label>
       <label><input type="radio" name="kind" value="batch"${spec.kind === 'batch' ? ' checked' : ''}>หลายฐาน (batch)</label>
     </div>
-    <div class="grid2">${side('source', 'Source (ต้นแบบ)')}${side('target', 'Target (ฝั่งที่เอามาเทียบ)')}</div>
+    <div class="grid2">${side('source', 'ต้นแบบ: ตัวที่ถูกต้อง (source)')}${side('target', 'ปลายทาง: ตัวที่จะถูกปรับ (target)')}</div>
     <div class="panel batch-only">
       <div class="side-title">ฐานที่จะเทียบ</div>
       <label class="check"><input type="radio" name="dbmode" value="all"${spec.allDatabases ? ' checked' : ''}>ทุกฐานที่ชื่อตรงกันทั้งสองฝั่ง (รวมฐานที่จะเพิ่มทีหลังด้วย)</label>
@@ -408,6 +441,42 @@ async function pageCompare() {
 
 let activeStream = null;
 
+// What the run page says about the scripts of a finished run, as notices. final: the run record;
+// drift: a drift run (its sync script is the way back, and it has no rollback script);
+// combinedSync / combinedRollback: the batch has a combined script of that kind.
+function scriptNotes(final, drift, combinedSync, combinedRollback) {
+  const databases = final.databases || [];
+  const hasSync = Boolean(final.syncScript) || databases.some((d) => d.syncScript);
+  const hasRollback = !drift && (Boolean(final.rollbackScript) || databases.some((d) => d.rollbackScript));
+  // The same three facts for every script the engine writes.
+  const how = 'ระบบไม่รัน script ให้ ต้อง review แล้วรันเองใน SSMS ' +
+    'script เริ่มด้วย USE ของฐานปลายทาง ถ้าเข้าฐานนั้นไม่ได้จะไม่รันคำสั่งใดเลย ' +
+    'index, constraint และ default ที่เปลี่ยนจะถูกแทนที่ใน transaction เดียว ส่วนคำสั่ง DROP ถูก comment ไว้ท้ายไฟล์';
+  let html = '';
+  if (hasSync) {
+    html += drift
+      ? `<div class="notice"><b>Script ย้อนกลับ</b> รันบนฝั่ง "ถึง" เพื่อให้ schema กลับไปเป็นแบบ "จาก" ${how}</div>`
+      : `<div class="notice"><b>Sync script</b> รันบน target เพื่อให้ schema ตรงกับ source ${how}</div>`;
+  }
+  if (hasRollback) {
+    html += '<div class="notice"><b>Rollback script</b> รันบน target หลังรัน sync script เพื่อย้อน schema กลับเป็นแบบตอนเปรียบเทียบ ' +
+      '(ใช้ได้เมื่อหลังเปรียบเทียบ target ถูกแก้โดย sync script เท่านั้น) ของที่ sync script สร้างจะถูก DROP ' +
+      'ยกเว้น table และ column ที่ถูก comment ไว้ท้ายไฟล์ เพราะลบแล้วข้อมูลหาย</div>';
+  }
+  // Only for a comparison that could not see everything: the scripts are more careful then.
+  if (hasSync && final.incomplete) {
+    html += '<div class="notice warn">ถ้าฝั่งที่ไม่มีสิทธิ์ VIEW DEFINITION คือ target: object ที่มีแค่ใน source จะถูกเขียนเป็น CREATE ธรรมดา ' +
+      '(ถ้ามีอยู่แล้วจะ error ไม่เขียนทับ) และบางคำสั่งใน sync script กับคำสั่ง DROP ใน rollback script จะถูก comment ไว้ให้ตรวจก่อนรัน</div>';
+  }
+  if (combinedSync) {
+    html += '<div class="notice"><b>Sync script ทั้งหมด</b> รวม sync script ของทุก database ที่มีของต้องสร้างหรือแก้ไว้ในไฟล์เดียว ' +
+      'เปิดใน SSMS ที่ต่อกับ server target แล้วรันทีเดียวได้ แต่ละส่วนเริ่มด้วย USE ของ database นั้น ' +
+      'ถ้าเข้า database ไหนไม่ได้ script จะหยุดทั้งไฟล์ database ที่ไม่มีอะไรต้องแก้ไม่ได้ใส่ไว้ (รายชื่ออยู่ที่หัวไฟล์)' +
+      (combinedRollback ? ' ส่วน <b>Rollback script ทั้งหมด</b> ใช้ย้อนหลังรัน Sync script ทั้งหมดแล้ว' : '') + '</div>';
+  }
+  return html;
+}
+
 async function pageRun(id) {
   $app.innerHTML = '<div class="empty"><span class="spinner"></span></div>';
   let meta;
@@ -457,36 +526,21 @@ async function pageRun(id) {
       (combinedSync ? linkButtons(`/runs/${final.id}/combined/sync.sql`, 'Sync script ทั้งหมด', 'ดาวน์โหลด sync ทั้งหมด .sql') : '') +
       (combinedRollback ? linkButtons(`/runs/${final.id}/combined/rollback.sql`, 'Rollback script ทั้งหมด', 'ดาวน์โหลด rollback ทั้งหมด .sql') : '');
     const c = final.counts || {};
-    const o = onlyIn(final.spec.kind);
-    let html = `<div class="cards">
-      <div class="card ${o.source.cls}"><span class="n">${c.onlyInSource || 0}</span>${o.source.label}</div>
-      <div class="card ${o.target.cls}"><span class="n">${c.onlyInTarget || 0}</span>${o.target.label}</div>
-      <div class="card chg"><span class="n">${c.different || 0}</span>ต่างกัน</div>
-      <div class="card unk"><span class="n">${c.unverified || 0}</span>เทียบไม่ได้</div></div>`;
+    const w = kindWords(final.spec.kind);
+    // One card per kind: the count, its word, and what the word means.
+    const card = (k, n) => `<div class="card ${k.cls}"><span class="n">${n || 0}</span><span class="t">${k.label}</span><span class="d">${k.hint}</span></div>`;
+    let html = `<div class="cards">${card(w.source, c.onlyInSource)}${card(w.target, c.onlyInTarget)}${card(w.different, c.different)}${card(w.unverified, c.unverified)}</div>`;
     if (final.errors) {
       html += `<div class="notice error">เทียบไม่สำเร็จ ${Number(final.errors)} จาก ${(final.databases || []).length} ฐาน ตัวเลขด้านบนนับเฉพาะฐานที่เทียบได้ ` +
         'ฐานที่เทียบไม่สำเร็จไม่มีรายงานและไม่มี script สาเหตุของแต่ละฐานอยู่ในตารางด้านล่าง</div>';
     }
     if (final.incomplete) {
-      html += '<div class="notice warn">ผลไม่ครบ: login อย่างน้อยหนึ่งฝั่งไม่มีสิทธิ์ VIEW DEFINITION object ที่มองไม่เห็นจะขึ้นเป็น "มีแค่..." และ definition จะขึ้นเป็น "เทียบไม่ได้"</div>';
+      html += `<div class="notice warn">ผลไม่ครบ: login อย่างน้อยหนึ่งฝั่งไม่มีสิทธิ์ VIEW DEFINITION ของที่ login มองไม่เห็นจะขึ้นเป็น "${w.source.label}" หรือ "${w.target.label}" ` +
+        `ทั้งที่อาจมีอยู่จริง และโค้ดที่อ่านไม่ได้จะขึ้นเป็น "${w.unverified.label}"</div>`;
     }
     if (final.syncError) html += `<div class="notice error">สร้าง sync script ไม่สำเร็จ: ${esc(final.syncError)}</div>`;
     if (!drift && final.rollbackError) html += `<div class="notice error">สร้าง rollback script ไม่สำเร็จ: ${esc(final.rollbackError)}</div>`;
-    if (final.syncScript || (final.databases && final.databases.some((d) => d.syncScript))) {
-      html += drift
-        ? '<div class="notice">Script ย้อนกลับ: ถ้ารันบนฝั่ง "ถึง" จะทำให้ schema กลับไปเป็นแบบ "จาก" ระบบไม่รัน script ให้ ต้อง review และรันเองใน SSMS</div>'
-        : '<div class="notice">Sync script: ถ้ารันบนฝั่ง target จะทำให้ schema ตรงกับ source ระบบไม่รัน script ให้ ต้อง review และรันเองใน SSMS คำสั่งที่ลบของ (DROP) ถูก comment ไว้ท้ายไฟล์</div>';
-    }
-    if (!drift && (final.rollbackScript || (final.databases && final.databases.some((d) => d.rollbackScript)))) {
-      html += '<div class="notice">Rollback script: รันบน target หลังรัน sync script แล้ว เพื่อย้อน schema กลับเป็นแบบตอนเปรียบเทียบ (ใช้ได้เมื่อหลังเปรียบเทียบ target ถูกแก้โดย sync script เท่านั้น) ' +
-        'ของที่ sync script สร้างใหม่: procedure, view, function, trigger, index และ constraint จะถูก DROP ส่วน table และ column ถูก comment ไว้ท้ายไฟล์ เพราะลบแล้วข้อมูลหาย</div>';
-    }
-    if (combinedSync) {
-      html += '<div class="notice">Sync script ทั้งหมด: รวม sync script ของทุก database ที่มีของต้องสร้างหรือแก้ไว้ในไฟล์เดียว เปิดใน SSMS ที่ต่อกับ server target แล้วรันทีเดียวได้ ' +
-        'ก่อนแต่ละส่วนมี USE ของ database นั้น ถ้าเข้า database ไหนไม่ได้ (เช่นต่อผิด server) script จะหยุดทั้งไฟล์ ไม่รันใส่ database ผิดตัว ' +
-        'database ที่ไม่มีอะไรต้องแก้ไม่ได้ใส่ไว้ รายชื่ออยู่ที่หัวไฟล์' +
-        (combinedRollback ? ' ส่วน Rollback script ทั้งหมด ใช้ย้อนหลังรัน Sync script ทั้งหมดแล้ว' : '') + '</div>';
-    }
+    html += scriptNotes(final, drift, combinedSync, combinedRollback);
     if (final.databases) {
       html += `<div class="table-wrap"><table><thead><tr><th>Database</th><th>ผลลัพธ์</th><th></th></tr></thead><tbody>${final.databases.map((d) => `
         <tr><td>${esc(d.database)}</td>
@@ -495,8 +549,8 @@ async function pageRun(id) {
           ${d.syncScript ? `<a href="/runs/${final.id}/${encodeURIComponent(d.syncScript)}" target="_blank" rel="noopener">sync script</a>` : ''}
           ${d.rollbackScript ? `<a href="/runs/${final.id}/${encodeURIComponent(d.rollbackScript)}" target="_blank" rel="noopener">rollback script</a>` : ''}</div></td></tr>`).join('')}
       </tbody></table></div>`;
-      if (final.onlyOnSource && final.onlyOnSource.length) html += `<p class="muted small">ฐานที่มีแค่ฝั่ง source: ${esc(final.onlyOnSource.join(', '))}</p>`;
-      if (final.onlyOnTarget && final.onlyOnTarget.length) html += `<p class="muted small">ฐานที่มีแค่ฝั่ง target: ${esc(final.onlyOnTarget.join(', '))}</p>`;
+      if (final.onlyOnSource && final.onlyOnSource.length) html += `<p class="muted small">ฐานที่มีแค่บน server ต้นแบบ (source): ${esc(final.onlyOnSource.join(', '))}</p>`;
+      if (final.onlyOnTarget && final.onlyOnTarget.length) html += `<p class="muted small">ฐานที่มีแค่บน server ปลายทาง (target): ${esc(final.onlyOnTarget.join(', '))}</p>`;
       if (final.noAccess && final.noAccess.length) {
         const names = final.noAccess.map((d) => `${d.database} (${[d.source ? '' : 'source', d.target ? '' : 'target'].filter(Boolean).join(', ')})`);
         html += `<div class="notice warn">มีทั้งสองฝั่งแต่ login เข้าไม่ได้ ${final.noAccess.length} ฐาน จึงไม่ได้เทียบ: ${esc(names.join(', '))}</div>`;
@@ -521,8 +575,14 @@ async function pageRun(id) {
 }
 
 async function pageHistory() {
-  $app.innerHTML = '<div class="page-head"><h1>ประวัติการเปรียบเทียบ</h1></div><div id="list"><div class="empty"><span class="spinner"></span></div></div>';
+  $app.innerHTML = '<div class="page-head"><h1>ประวัติการเปรียบเทียบ</h1></div><div id="list"><div class="empty"><span class="spinner"></span></div></div><p id="storage" class="muted small"></p>';
   const target = document.getElementById('list');
+  // Asked for on its own: measuring the run folders can take a moment, and the list must not
+  // wait for it. Nothing is shown when it fails, or when another page has been opened meanwhile.
+  api('GET', '/api/storage').then((s) => {
+    const line = document.getElementById('storage');
+    if (line) line.textContent = storageText(s);
+  }).catch(() => {});
   let list;
   try {
     list = await api('GET', '/api/runs');
@@ -606,7 +666,7 @@ async function pageDrift() {
       <thead><tr><th>จาก</th><th>ถึง</th><th>เวลาที่เก็บ snapshot</th><th></th></tr></thead><tbody>
       <tr><td></td><td><input type="radio" name="to" value="live" checked aria-label="ถึง ปัจจุบัน"></td><td colspan="2"><b>ปัจจุบัน (อ่านจากฐานจริงตอนนี้)</b></td></tr>
       ${rows}</tbody></table></div>
-      <div class="hint">"จาก" คือจุดเริ่ม "ถึง" คือจุดที่จะเทียบ: ผลจะแสดงสิ่งที่ถูกเพิ่ม/ลบ/แก้ ระหว่างสองจุด</div>`;
+      <div class="hint">"จาก" คือจุดเริ่ม "ถึง" คือจุดที่จะเทียบ: ผลจะแสดงสิ่งที่เพิ่มขึ้นมา หายไป หรือถูกแก้ ระหว่างสองจุด</div>`;
   };
   document.getElementById('group').addEventListener('change', renderPoints);
   renderPoints();

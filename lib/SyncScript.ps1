@@ -50,6 +50,8 @@ function Get-ColumnDefinition($Item, [string]$TargetCollation) {
         }
         return $sql
     }
+    # The type is a user-defined one the login could not see (see $Sql.Columns): no definition.
+    if ($p['Type'] -eq $HiddenValue) { return $null }
     $parts = @($name, (Format-ColumnType $p['Type']))
     if (-not $IgnoreCollation -and $p['Collation'] -and $p['Collation'] -ne $TargetCollation -and -not (Test-UserDefinedType $p['Type'])) { $parts += 'COLLATE ' + $p['Collation'] }
     if ($p['Identity']) { $parts += $p['Identity'] }
@@ -64,6 +66,13 @@ function Get-DefaultConstraintPrefix($Column) {
     $name = [string](Get-SqlPart $Column 'DefaultName')
     if (-not $name) { return '' }
     return 'CONSTRAINT ' + (Get-QuotedName $name) + ' '
+}
+
+# Why Get-ColumnDefinition has no definition for a column: its computed definition, or the name of
+# its type, is not readable.
+function Get-UnreadableColumnText($Item, [string]$Name) {
+    if ([string]$Item.Props['Computed']) { return "computed column $Name is not readable" }
+    return "the type of column $Name is not readable (a user-defined type the login has no permission on)"
 }
 
 function Get-ConstraintPrefix($Item) {
@@ -196,12 +205,25 @@ function ConvertTo-ModuleScript($Item, [string]$Key, [bool]$CreateOnly) {
     $isTrigger = $m.Groups['kind'].Value -ieq 'TRIGGER'
     $object = $m.Groups['object']
     $parent = $m.Groups['parent']
-    if ($isTrigger -and -not $parent.Success) { return @{ Comment = '-- Not scripted: the table of the trigger could not be read from its definition; copy it from the report.' } }
+    $databaseScope = Test-DatabaseScope $Item
+    if ($isTrigger -and -not $parent.Success -and -not $databaseScope) { return @{ Comment = '-- Not scripted: the table of the trigger could not be read from its definition; copy it from the report.' } }
 
     # What to write in place of each name token; $null keeps the token as it was written.
     $objectName = $null
     $parentName = $null
-    if ($null -ne $Item.Sql) {
+    if ($databaseScope) {
+        # A database trigger. Its header must say ON DATABASE, the keyword: [DATABASE] or
+        # "DATABASE" is a table of that name, and ON ALL SERVER another kind of trigger. The
+        # keyword stays as it was written. The name has no schema (Msg 1094 when one is
+        # written), and gets its catalog spelling when the header has another.
+        $name = [string](Get-SqlPart $Item 'Name')
+        if (-not $name) { return @{ Comment = '-- Not scripted: the name of the object is missing from this snapshot; rerun the comparison.' } }
+        if (-not $isTrigger -or -not $parent.Success -or $m.Groups['pschema'].Success -or $m.Groups['pname'].Value -ine 'DATABASE') {
+            return @{ Comment = '-- Not scripted: the definition of this database trigger does not read CREATE TRIGGER ... ON DATABASE; copy it from the report.' }
+        }
+        if ($m.Groups['schema'].Success -or (Get-UnquotedName $m.Groups['name'].Value) -cne $name) { $objectName = Get-QuotedName $name }
+    }
+    elseif ($null -ne $Item.Sql) {
         # Name parts that are there but empty (a snapshot file that was edited, or of another
         # format) cannot name the object: writing [].[], or leaving the table a trigger's text
         # happens to name, would create something else.
@@ -333,13 +355,84 @@ function Get-CreateSequenceSql($Item) {
     $p = $Item.Props
     $cache = ([string]$p['Cache']).Replace(' (default)', '')
     $name = Get-QuotedPair (Get-SqlPart $Item 'Schema') (Get-SqlPart $Item 'Name')
-    return 'CREATE SEQUENCE {0} AS {1} START WITH {2} INCREMENT BY {3} MINVALUE {4} MAXVALUE {5} {6} {7};' -f $name, $p['DataType'], $p['Start'], $p['Increment'], $p['Min'], $p['Max'], $p['Cycle'], $cache
+    # decimal and numeric: the precision is part of the type, and the scale of a sequence is 0.
+    # Without it the type is decimal(18,0), which the limits of a wider sequence do not fit (Msg
+    # 11708). A snapshot taken before 2026-11-11 does not have it: the type is written as it was.
+    $type = [string]$p['DataType']
+    $precision = [string]$p['Precision']
+    if ($precision) { $type = '{0}({1},0)' -f $type, $precision }
+    return 'CREATE SEQUENCE {0} AS {1} START WITH {2} INCREMENT BY {3} MINVALUE {4} MAXVALUE {5} {6} {7};' -f $name, $type, $p['Start'], $p['Increment'], $p['Min'], $p['Max'], $p['Cycle'], $cache
 }
 
 # A sequence named in a default, as SQL Server stores it: (NEXT VALUE FOR [schema].[name]), or
 # [name] alone when it was written without a schema. A name of three parts (another database) does
 # not match. Precompiled: it runs on the default of every new and changed column.
 $SequenceInDefault = New-Object System.Text.RegularExpressions.Regex('NEXT\s+VALUE\s+FOR\s+(?:(?<schema>(?>\[(?:[^\]]|\]\])+\]))\s*\.\s*)?(?<name>(?>\[(?:[^\]]|\]\])+\]))(?!\s*\.)', 'IgnoreCase')
+
+# A column name inside the definition of a computed column, as SQL Server stores it: always in
+# [brackets], whatever the column is called and however it was written, with a ] of the name
+# doubled. Precompiled: it runs on the computed columns of the table of every column that gets an
+# ALTER COLUMN.
+$BracketedName = New-Object System.Text.RegularExpressions.Regex('\[((?:[^\]]|\]\])+)\]')
+
+# The computed columns of a snapshot by table: table key -> list of @{ Key = column key; Item }.
+# Table keys are matched ignoring case, as everywhere. Built once per script, so that looking
+# for the computed columns of a table does not walk every column of the database each time. The
+# columns of a table are listed in column order (a snapshot holds them in no order at all), so a
+# script comes out the same at every run.
+function Get-ComputedColumnsByTable($Snap) {
+    $ordered = New-Object 'System.Collections.Generic.SortedDictionary[string,object]' ([System.StringComparer]::Ordinal)
+    foreach ($key in @($Snap['Column'].get_Keys())) {
+        $item = $Snap['Column'][$key]
+        if (-not [string]$item.Props['Computed']) { continue }
+        $ordinal = 0
+        [void][int]::TryParse([string]$item.Props['Ordinal'], [ref]$ordinal)
+        $ordered[('{0:D10}{1}{2}' -f $ordinal, [char]31, $key)] = @{ Key = [string]$key; Item = $item }
+    }
+    $byTable = New-Object System.Collections.Hashtable ([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($entry in $ordered.get_Values()) {
+        $table = [string]$entry.Item.Parent
+        if (-not $byTable.ContainsKey($table)) { $byTable[$table] = New-Object System.Collections.Generic.List[object] }
+        $byTable[$table].Add($entry)
+    }
+    return $byTable
+}
+
+# The computed columns of a table that use a column: those whose definition names it, as entries
+# of Get-ComputedColumnsByTable. A definition that is not readable (no VIEW DEFINITION) is not
+# counted: what it uses cannot be known. A name in brackets that is something else than a column
+# (a function, text in a string) counts too, which only makes the script more careful.
+function Get-ComputedDependents($ByTable, [string]$TableKey, [string]$Column) {
+    $entries = $ByTable[$TableKey]
+    if ($null -eq $entries) { return }
+    foreach ($entry in $entries) {
+        $definition = [string]$entry.Item.Props['Computed']
+        if ($definition -eq $HiddenValue) { continue }
+        foreach ($m in $BracketedName.Matches($definition)) {
+            if ([string]::Equals($m.Groups[1].Value.Replace(']]', ']'), $Column, [System.StringComparison]::OrdinalIgnoreCase)) { $entry; break }
+        }
+    }
+}
+
+# The indexes of the views of a snapshot by view: view key -> list of @{ Key = index key; Item }.
+# The clustered index of a view comes first (its other indexes cannot exist without it), then
+# the rest by key, so a script comes out the same at every run.
+function Get-IndexesByView($Snap) {
+    $ordered = New-Object 'System.Collections.Generic.SortedDictionary[string,object]' ([System.StringComparer]::Ordinal)
+    foreach ($key in @($Snap['Index'].get_Keys())) {
+        $item = $Snap['Index'][$key]
+        if (-not $Snap['View'].ContainsKey([string]$item.Parent)) { continue }
+        if ([string]$item.Props['Type'] -eq 'CLUSTERED') { $rank = '0' } else { $rank = '1' }
+        $ordered[$rank + [string]$key] = @{ Key = [string]$key; Item = $item }
+    }
+    $byView = New-Object System.Collections.Hashtable ([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($entry in $ordered.get_Values()) {
+        $view = [string]$entry.Item.Parent
+        if (-not $byView.ContainsKey($view)) { $byView[$view] = New-Object System.Collections.Generic.List[object] }
+        $byView[$view].Add($entry)
+    }
+    return $byView
+}
 
 # The SET statements for a module that has other options than the script's own (ANSI_NULLS ON,
 # QUOTED_IDENTIFIER ON, set once at the top): its SetOptions property names the ones that are OFF.
@@ -352,6 +445,38 @@ function Get-ModuleSetLines([string]$SetOptions) {
 }
 
 $DropKeywords = @{ 'P' = 'PROCEDURE'; 'PC' = 'PROCEDURE'; 'V' = 'VIEW'; 'FN' = 'FUNCTION'; 'IF' = 'FUNCTION'; 'TF' = 'FUNCTION'; 'FS' = 'FUNCTION'; 'FT' = 'FUNCTION'; 'TR' = 'TRIGGER' }
+
+# The name of a module as a statement writes it: [schema].[name], and [name] alone for a database
+# trigger, which has no schema (Msg 1094 when one is written).
+function Get-ModuleName($Item) {
+    if (Test-DatabaseScope $Item) { return Get-QuotedName ([string](Get-SqlPart $Item 'Name')) }
+    return Get-QuotedPair (Get-SqlPart $Item 'Schema') (Get-SqlPart $Item 'Name')
+}
+
+# What a trigger is on, as DISABLE TRIGGER ... ON and ENABLE TRIGGER ... ON write it: its table,
+# or the keyword DATABASE.
+function Get-TriggerTarget($Item) {
+    if (Test-DatabaseScope $Item) { return 'DATABASE' }
+    return Get-QuotedPair (Get-SqlPart $Item 'ParentSchema') (Get-SqlPart $Item 'ParentObject')
+}
+
+# DROP <kind> [IF EXISTS] <name>; with ON DATABASE for a database trigger: without it the
+# statement looks for a table's trigger of that name.
+function Get-DropModuleSql($Item, [switch]$IfExists) {
+    if ($IfExists) { $exists = 'IF EXISTS ' } else { $exists = '' }
+    $sql = 'DROP {0} {1}{2}' -f $DropKeywords[[string](Get-SqlPart $Item 'ObjectType')], $exists, (Get-ModuleName $Item)
+    if (Test-DatabaseScope $Item) { $sql += ' ON DATABASE' }
+    return $sql + ';'
+}
+
+# DISABLE TRIGGER or ENABLE TRIGGER ($Action) for a database trigger, only when the trigger is
+# there: on one that is missing the statement fails with Msg 1088 (a script that stopped part
+# way, or runs a second time, meets that). Neither statement is a DDL event, so no database
+# trigger can refuse it, which CREATE, ALTER and DROP TRIGGER are.
+function Get-DatabaseTriggerStateSql($Item, [string]$Action) {
+    $name = [string](Get-SqlPart $Item 'Name')
+    return 'IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = {0}) {1} TRIGGER {2} ON DATABASE;' -f (Get-SqlLiteral $name), $Action, (Get-QuotedName $name)
+}
 
 # The comment above the SET NOEXEC OFF that ends every script. app/lib/runs.js (SCRIPT_TRAILER)
 # matches this text: change both together.
@@ -390,6 +515,19 @@ function Write-SyncScript {
     $note = { param($text) $out.Add('-- ' + (Get-CommentText $text)) }
     $section = { param($title) $out.Add(''); $out.Add('-- ' + ('=' * 90)); $out.Add("-- $title"); $out.Add('-- ' + ('=' * 90)) }
     $go = { $out.Add('GO') }
+    # Statements to run by hand: each becomes a "-- " comment, and a line that is a comment
+    # already stays as it is.
+    $commented = {
+        param($lines)
+        foreach ($line in @($lines)) { if ([string]$line -match '^\s*--') { & $add $line } else { & $note $line } }
+    }
+    # Statements that are right only under a condition the script cannot check itself.
+    $commentedWith = {
+        param($condition, $lines)
+        foreach ($line in @($lines)) {
+            if ([string]$line -match '^\s*--') { & $add $line } else { & $note "Run this only if ${condition}: $line" }
+        }
+    }
 
     $byCategory = @{}
     foreach ($d in $Diffs) {
@@ -406,7 +544,7 @@ function Write-SyncScript {
     # ---- header ----
     # Line comments rather than /* */: a label holding "*/" cannot end a line comment.
     if ($Rollback) {
-        & $note "Rollback script generated by database-diff on $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+        & $note "Rollback script generated by database-diff on $(Get-Timestamp 'yyyy-MM-dd HH:mm:ss')"
         & $note "Source (the sync script's model):  $SourceLabel"
         & $note "Target (will be changed back):     $TargetLabel"
         & $add @(
@@ -415,12 +553,20 @@ function Write-SyncScript {
             '-- schema back as it was read during the comparison. REVIEW IT BEFORE RUNNING.'
             '-- - Nothing in this file has been executed by database-diff.'
             '-- - It assumes the target changed only through the sync script since the comparison.'
+            '-- - Database triggers (ON DATABASE) come first: the ones the sync script created or changed are'
+            '--   disabled, dropped or put back, and only then enabled as they were before. An enabled one'
+            '--   fires on the statements after it and may refuse them.'
             '-- - Procedures, views, functions, triggers, synonyms, indexes and constraints the sync script'
-            '--   created are dropped first, with IF EXISTS so a sync script that stopped part way is fine.'
+            '--   created are dropped next, with IF EXISTS so a sync script that stopped part way is fine.'
             '-- - Tables, columns, sequences, types and schemas it created are commented out at the end:'
             '--   dropping them loses the data written since.'
             '-- - Changed objects get their earlier definition back. ALTER COLUMN statements are active:'
-            '--   check them for data loss (narrower types, NOT NULL).'
+            '--   check them for data loss (narrower types, NOT NULL). Except the change of a column that a'
+            '--   computed column uses: SQL Server refuses it (Msg 5074), so it is written as a group of'
+            '--   comments to run by hand (those computed columns dropped, the change, the columns added'
+            '--   again).'
+            '-- - A view that is altered back gets the indexes it had created again right after it (ALTER'
+            '--   VIEW drops every index of a view). The indexes of the other views come after the views.'
             '-- - Objects only in the target are not here: the sync script leaves them (its drops are'
             '--   commented out). Schemas, types and sequences it created only when missing are left in place.'
             '-- - Only a backup brings back dropped data.'
@@ -435,7 +581,7 @@ function Write-SyncScript {
         )
     }
     else {
-        & $note "Sync script generated by database-diff on $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+        & $note "Sync script generated by database-diff on $(Get-Timestamp 'yyyy-MM-dd HH:mm:ss')"
         & $note "Source (the model):        $SourceLabel"
         & $note "Target (will be changed):  $TargetLabel"
         & $add @(
@@ -445,7 +591,16 @@ function Write-SyncScript {
             '-- - Nothing in this file has been executed by database-diff.'
             '-- - Statements that drop tables, columns or other objects are commented out at the end.'
             '-- - ALTER COLUMN statements are active: check them for data loss (narrower types, NOT NULL).'
+            '--   Except the change of a column that a computed column uses: SQL Server refuses it (Msg'
+            '--   5074), so it is written as a group of comments to run by hand (those computed columns'
+            '--   dropped, the change, the columns added again).'
             '-- - Objects are ordered by kind, not by dependency; rerun a failed part after the rest.'
+            '-- - A view this script alters gets the indexes the source has on it created again right after'
+            '--   it (ALTER VIEW drops every index of a view). The indexes of the other views come after'
+            '--   the views.'
+            '-- - Database triggers (ON DATABASE) come last. The ones this script creates or changes stay'
+            '--   disabled until all of them are in place, and the ones the source has enabled are enabled at'
+            '--   the very end: an enabled one fires on the statements after it and may refuse them.'
             '-- - Uses CREATE OR ALTER, which needs SQL Server 2016 SP1 or later on the target.'
             '-- - It starts with USE of the target database. If that fails (wrong server, no access), nothing'
             '--   after it is executed, so no statement runs in another database.'
@@ -502,8 +657,269 @@ function Write-SyncScript {
     # Modules and synonyms are kept apart from indexes and constraints: when the target was read
     # without VIEW DEFINITION, one of them may have been there before the sync script (hidden from
     # the comparison, so its plain CREATE failed), and a rollback must not drop it.
+    # An index of a view is an item of the Index category whose parent is a view. Those are kept
+    # apart from the indexes of tables all through this script: they can only be written after
+    # the views, and altering a view drops them (see $writeIndexesOfView).
+    $sourceViewIndexes = Get-IndexesByView $SourceSnap
+    $targetViewIndexes = Get-IndexesByView $TargetSnap
+    $isViewIndex = {
+        param($d)
+        if ($d.Category -ne 'Index') { return $false }
+        if ($null -ne $d.SourceKey) { $item = & $src $d } else { $item = & $tgt $d }
+        if ($null -eq $item) { return $false }
+        return $SourceSnap['View'].ContainsKey([string]$item.Parent) -or $TargetSnap['View'].ContainsKey([string]$item.Parent)
+    }
+    # The views whose indexes this script creates together with the view itself.
+    $rebuiltViews = New-Object System.Collections.Hashtable ([System.StringComparer]::OrdinalIgnoreCase)
+
+    # ---- the writers of programmable objects (called further down, and first of all for the
+    # database triggers of a rollback) ----
+    # The indexes of a view, written right after the batch that created or altered it. ALTER VIEW
+    # drops every index the view has, and CREATE OR ALTER VIEW is an ALTER when the view is
+    # there: no message, the view just stops being an indexed view. So whenever this script
+    # writes a view, it creates the indexes the model has on it, the clustered one first, whether
+    # indexes are among the compared categories or not. $d: the difference record of the view.
+    $writeIndexesOfView = {
+        param($d, [bool]$createOnly)
+        $rebuiltViews[[string]$d.SourceKey] = $true
+        $model = $sourceViewIndexes[[string]$d.SourceKey]
+        $existing = $targetViewIndexes[[string]$d.TargetKey]
+        $hasModel = $null -ne $model -and $model.Count -gt 0
+        $hasExisting = $null -ne $existing -and $existing.Count -gt 0
+        # A model read from a snapshot file of version 1: what indexes the view had is not known.
+        $modelKnown = [int]$SourceSnap['Meta'].Version -ge 2
+        if ($Rollback) { $where = 'had before the sync script' } else { $where = 'has in the source' }
+        if ($hasModel) {
+            if ($d.Status -eq 'OnlyInSource') { & $note "The indexes $($d.Object) $where`:" }
+            else { & $note "ALTER VIEW drops every index of a view. The indexes $($d.Object) $where are created again:" }
+            foreach ($entry in $model) {
+                if (& $missingParts $entry.Item) { $lines = @($oldSnapshotNote) } else { $lines = @(Get-CreateIndexSql $entry.Item) }
+                if ($createOnly) {
+                    # The CREATE VIEW fails when a view of that name is there already (hidden from
+                    # the comparison), and these would land on that view.
+                    & $commentedWith "the CREATE VIEW of $($d.Object) above succeeded" $lines
+                }
+                else { & $add $lines; & $go }
+            }
+        }
+        if (-not $hasExisting) { return }
+        if (-not $modelKnown) {
+            $names = @($existing | ForEach-Object { [string](Get-SqlPart $_.Item 'Name') }) -join ', '
+            & $note "WARNING: the ALTER VIEW above drops the indexes of $($d.Object) ($names), and this script cannot create them again: the side the view is taken from is a snapshot saved before the engine read the indexes of views. Create them again by hand. As they were:"
+            foreach ($entry in $existing) {
+                if (-not (& $missingParts $entry.Item)) { & $commented (Get-CreateIndexSql $entry.Item) }
+            }
+        }
+        elseif (-not $Rollback) {
+            # In a rollback these are the indexes the sync script created: gone, as they should be.
+            $modelKeys = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+            foreach ($entry in $model) { [void]$modelKeys.Add($entry.Key) }
+            foreach ($entry in $existing) {
+                if ($modelKeys.Contains($entry.Key)) { continue }
+                & $note "Not created again: index $(Get-SqlPart $entry.Item 'Name') of $($d.Object) is only in the target, and the ALTER VIEW above drops it. The rollback script creates it again."
+            }
+        }
+    }
+
+    # One section of modules. Database triggers are items of the Trigger category, written in a
+    # section of their own ($databaseScope): never with the triggers of tables.
+    #
+    # An enabled database trigger fires on every DDL statement after it and may refuse it
+    # (RAISERROR and ROLLBACK end the batch with Msg 3609): the statements of this script too,
+    # the CREATE of the next trigger, even its own ALTER. So the database triggers a script
+    # writes are kept disabled until all of them are in place.
+    # - A sync script writes them last. One that it alters or has to disable is disabled first,
+    #   a new one right after its CREATE, and those the source has enabled are enabled at the
+    #   very end, when nothing is left for them to refuse.
+    # - A rollback script writes them first: the sync script left them enabled, and they would
+    #   refuse the rest of the rollback. The ones the sync script created are disabled and
+    #   dropped, the ones it changed disabled and put back, and at the end of the section those
+    #   that were enabled before the sync script are enabled again.
+    # DISABLE TRIGGER and ENABLE TRIGGER are not DDL events, so they are never refused.
+    # Left as it was: a trigger that has to be dropped and created again by hand (another type),
+    # and a new one on a target read without VIEW DEFINITION, which may be a trigger that was
+    # there already (whether that one is enabled is not this script's to change).
+    $writeModules = {
+        param([string]$category, [bool]$databaseScope = $false)
+        $new = @(@(& $pick $category 'OnlyInSource') | Where-Object { (Test-DatabaseScope (& $src $_)) -eq $databaseScope })
+        $changed = @(@(& $pick $category 'Different') | Where-Object { (Test-DatabaseScope (& $src $_)) -eq $databaseScope })
+        # For database triggers only: the ones a rollback drops, the ones disabled before
+        # anything is written, and the ones enabled when everything is.
+        $created = @()
+        $disableFirst = New-Object System.Collections.Generic.List[object]
+        $enableChanged = New-Object System.Collections.Generic.List[object]
+        $enableNew = New-Object System.Collections.Generic.List[object]
+        $stateNotes = @{}
+        if ($databaseScope) {
+            # ToArray, not @(...): Windows PowerShell 5.1 fails on @() around an empty generic list.
+            if ($Rollback -and -not $TargetIncomplete) { $created = $databaseTriggersCreated.ToArray() }
+            foreach ($item in $created) { $disableFirst.Add($item) }
+            foreach ($d in $changed) {
+                $s = & $src $d
+                if ((& $missingParts $s) -or $d.Detail -match '(^|\n)(Type|Table):') { continue }
+                $stateDiffers = $d.Detail -match '(^|\n)State:'
+                # The same test as below: a definition (or its SET options) that this script writes.
+                $altered = $d.Detail -match '(^|\n)(Definition differs|SetOptions:)' -and $d.Detail -notmatch '(^|\n)Definition: not readable' -and
+                    (ConvertTo-ModuleScript $s $d.SourceKey $false).ContainsKey('Script')
+                $enabled = [string]$s.Props['State'] -ne 'DISABLED'
+                if ($altered -or ($stateDiffers -and -not $enabled)) { $disableFirst.Add($s) }
+                if ($enabled -and ($altered -or $stateDiffers)) { $enableChanged.Add($s) }
+                # Nothing but the state differs: no batch follows its line, so the line says
+                # where its statement is.
+                if ($stateDiffers -and -not $altered) {
+                    if ($enabled) { $stateNotes[[string]$d.SourceKey] = '-- Enabled at the end of this section.' }
+                    else { $stateNotes[[string]$d.SourceKey] = '-- Disabled at the start of this section.' }
+                }
+            }
+        }
+        if (-not ($new.Count -or $changed.Count -or $created.Count)) { return }
+        if (-not $databaseScope) { & $section "$category`s" }
+        elseif ($Rollback) { & $section 'Database triggers first: disabled, dropped or put back, then enabled as they were before the sync script' }
+        else { & $section 'Database triggers last: disabled until all of them are in place (an enabled one fires on the statements after it)' }
+        if ($disableFirst.Count) {
+            if ($Rollback) { & $add '-- Disabled before anything else: the sync script left them enabled, and an enabled one may refuse the statements of this script.' }
+            else { & $add '-- Disabled before they are changed: an enabled one fires on the statements of this section, also on its own ALTER.' }
+            foreach ($item in $disableFirst) { & $add (Get-DatabaseTriggerStateSql $item 'DISABLE'); & $go }
+        }
+        if ($created.Count) {
+            & $add '-- Created by the sync script: dropped.'
+            foreach ($item in $created) { & $add (Get-DropModuleSql $item -IfExists); & $go }
+        }
+        foreach ($d in ($new + $changed)) {
+            $s = & $src $d
+            # True once the batch that creates or alters the module is written (not a comment).
+            $written = $false
+            if ($d.Status -eq 'OnlyInSource') { $what = 'only in source' } else { $what = $d.Detail }
+            & $note "$($d.Object): $what"
+            if ($stateNotes.ContainsKey([string]$d.SourceKey)) { & $add $stateNotes[[string]$d.SourceKey] }
+            # The SET options are stored with the module, so a difference in them alone is also
+            # made by running the definition again.
+            $definitionChanged = $d.Status -eq 'OnlyInSource' -or $d.Detail -match '(^|\n)(Definition differs|SetOptions:)'
+            $typeChanged = $d.Status -eq 'Different' -and $d.Detail -match '(^|\n)Type:'
+            # "Only in source" on a target read without VIEW DEFINITION may be an object that is
+            # there but hidden: CREATE OR ALTER would replace it without a word. (A rollback has no
+            # such items: what the sync script created reads as only in target there.)
+            $createOnly = [bool]$TargetIncomplete -and $d.Status -eq 'OnlyInSource'
+            # The same trigger name on another table. The table a trigger names is not part of the
+            # definition comparison (a renamed table keeps its earlier name in the text), so this
+            # shows only as the Table property, and CREATE OR ALTER cannot move a trigger (Msg 2110).
+            $tableChanged = $category -eq 'Trigger' -and $d.Status -eq 'Different' -and $d.Detail -match '(^|\n)Table:'
+            # The definition cannot be read on one side (no VIEW DEFINITION, WITH ENCRYPTION), yet
+            # something that can be read differs: the SET options, the type, a trigger's table.
+            # Nothing is written then, not even as a comment to run by hand: the body that would
+            # be replaced or dropped was never compared, and the other script could not put it
+            # back (it cannot read it either).
+            $unreadable = $d.Status -eq 'Different' -and $d.Detail -match '(^|\n)Definition: not readable'
+            if (($typeChanged -or $tableChanged) -and $unreadable) {
+                & $add '-- Not scripted: the object would have to be dropped and created again, but its definition is not readable on one side.'
+            }
+            elseif ($definitionChanged -and $unreadable) {
+                & $add '-- Not scripted: SET options differ, but the definition is not readable on one side.'
+            }
+            elseif ($typeChanged -or $tableChanged) {
+                # ALTER cannot turn, say, a scalar function into a table-valued one, nor put a
+                # trigger on another table: the object has to be dropped and created again. That
+                # is for a person to do, so both statements are written as comments, the CREATE
+                # with the catalog names (the text in the report may carry earlier ones).
+                $t = & $tgt $d
+                if ($typeChanged) { & $add '-- The object type changed, which ALTER cannot do. To change it, drop the object and create it again by hand:' }
+                else { & $add '-- The trigger is on another table on the two sides, and ALTER cannot move a trigger. To change it, drop the trigger and create it again by hand:' }
+                if (-not (& $missingParts $t)) {
+                    & $note (Get-DropModuleSql $t)
+                    & $add '-- GO'
+                }
+                $module = ConvertTo-ModuleScript $s $d.SourceKey $true
+                if ($module.ContainsKey('Comment')) { & $add $module.Comment }
+                else {
+                    # Line by line: a definition has line breaks, and each line needs its own "--".
+                    # (Not called $commented: that is the script block every section writes
+                    # comments with, also the ones this block calls.)
+                    $byHand = New-Object System.Collections.Generic.List[string]
+                    $setLines = @(Get-ModuleSetLines ([string]$s.Props['SetOptions']))
+                    if ($setLines.Count) { $byHand.AddRange([string[]]$setLines); $byHand.Add('GO') }
+                    $byHand.AddRange([string[]]($module.Script.TrimEnd() -split '\r\n|\r|\n'))
+                    $byHand.Add('GO')
+                    if ($setLines.Count) { $byHand.AddRange([string[]]@('SET ANSI_NULLS ON;', 'SET QUOTED_IDENTIFIER ON;', 'GO')) }
+                    if ($category -eq 'Trigger' -and $s.Props['State'] -eq 'DISABLED' -and -not (& $missingParts $s)) {
+                        $byHand.Add(('DISABLE TRIGGER {0} ON {1};' -f (Get-ModuleName $s), (Get-TriggerTarget $s)))
+                    }
+                    foreach ($line in $byHand) { & $add ('-- ' + $line).TrimEnd() }
+                }
+            }
+            elseif ($definitionChanged) {
+                $module = ConvertTo-ModuleScript $s $d.SourceKey $createOnly
+                if ($module.ContainsKey('Comment')) { & $add $module.Comment }
+                else {
+                    if ($createOnly) { & $add '-- Plain CREATE, because the comparison of the target is incomplete: if it fails with Msg 2714, the object is there already. Compare it with the source by hand.' }
+                    # SQL Server stores the whole batch as the module definition, so the comments
+                    # above must end in their own batch or they become part of the procedure text.
+                    & $go
+                    # A module keeps the ANSI_NULLS and QUOTED_IDENTIFIER of the session that
+                    # created or altered it. One that has another setting than the script's gets
+                    # it from a batch before its own, and the batch after it sets the script's
+                    # again for the modules that follow.
+                    $setLines = @(Get-ModuleSetLines ([string]$s.Props['SetOptions']))
+                    if ($setLines.Count) {
+                        if ($Rollback) { $where = 'had before the sync script' } else { $where = 'has in the source' }
+                        & $add "-- Created under the SET options it $where; the batch after it sets the script's own again."
+                        & $add $setLines
+                        & $go
+                    }
+                    & $add $module.Script
+                    & $go
+                    $written = $true
+                    if ($setLines.Count) { & $add @('SET ANSI_NULLS ON;', 'SET QUOTED_IDENTIFIER ON;'); & $go }
+                    if ($category -eq 'View') { & $writeIndexesOfView $d $createOnly }
+                }
+            }
+            if ($databaseScope) {
+                # A database trigger is not enabled here (see above). A new one is created
+                # enabled: disabled at once, and enabled with the others at the end of the
+                # section when the source has it enabled. A changed one was disabled before.
+                if ($d.Status -eq 'OnlyInSource' -and -not (& $missingParts $s)) {
+                    if ($createOnly) {
+                        # As for the trigger of a table, below.
+                        if ($s.Props['State'] -eq 'DISABLED') { & $note "It is disabled in source. Run this only if the CREATE above succeeded: DISABLE TRIGGER $(Get-ModuleName $s) ON $(Get-TriggerTarget $s);" }
+                    }
+                    elseif ($written) {
+                        & $add (Get-DatabaseTriggerStateSql $s 'DISABLE'); & $go
+                        if ([string]$s.Props['State'] -ne 'DISABLED') { $enableNew.Add($s) }
+                    }
+                }
+            }
+            elseif ($category -eq 'Trigger' -and -not (& $missingParts $s) -and -not ($typeChanged -or $tableChanged)) {
+                # The trigger of a table. Not one that has to be dropped and created again by
+                # hand: it is not there yet, or still on the other table.
+                $name = Get-ModuleName $s
+                $parent = Get-TriggerTarget $s
+                if ($createOnly) {
+                    # The trigger may be one that was there already (its CREATE then failed), and
+                    # whether that one is enabled is not this script's to change. A trigger this
+                    # script creates is enabled by its CREATE.
+                    if ($s.Props['State'] -eq 'DISABLED') { & $note "It is disabled in source. Run this only if the CREATE above succeeded: DISABLE TRIGGER $name ON $parent;" }
+                }
+                elseif ($s.Props['State'] -eq 'DISABLED') { & $add "DISABLE TRIGGER $name ON $parent;"; & $go }
+                elseif ($d.Detail -match 'State:') { & $add "ENABLE TRIGGER $name ON $parent;"; & $go }
+            }
+        }
+        # Database triggers: every one of this section is in place now. The new ones first, in
+        # the order they were created, then the changed ones.
+        if ($enableNew.Count + $enableChanged.Count) {
+            if ($Rollback) { & $add '-- Enabled again: the ones that were enabled before the sync script.' }
+            else { & $add '-- Enabled now that all of them are in place: the ones the source has enabled.' }
+            foreach ($item in ($enableNew.ToArray() + $enableChanged.ToArray())) { & $add (Get-DatabaseTriggerStateSql $item 'ENABLE'); & $go }
+        }
+    }
+
     $constraintDrops = New-Object System.Collections.Generic.List[string]
+    # Each @{ Line = the drop; View = key of the view }.
+    $viewIndexDrops = New-Object System.Collections.Generic.List[object]
     $moduleDrops = New-Object System.Collections.Generic.List[string]
+    # Database triggers, apart from the other modules. The drops as text, for the lists of
+    # comments, and the items themselves: a rollback disables and drops the ones the sync
+    # script created before anything else (see $writeModules).
+    $databaseTriggerDrops = New-Object System.Collections.Generic.List[string]
+    $databaseTriggersCreated = New-Object System.Collections.Generic.List[object]
     $dataDrops = New-Object System.Collections.Generic.List[string]
     if ($Rollback) { $exists = 'IF EXISTS ' } else { $exists = '' }
     foreach ($category in @('Foreign key', 'Check constraint', 'Index')) {
@@ -520,6 +936,9 @@ function Write-SyncScript {
                     $constraintDrops.Add('-- ' + (Get-CommentText "Not scripted: the sync script created $category $($d.Object) with a new system-generated name; find it on the target and drop it manually."))
                 }
             }
+            elseif ($category -eq 'Index' -and (& $isViewIndex $d)) {
+                $viewIndexDrops.Add(@{ Line = (Get-DropIndexSql $t -IfExists:$Rollback); View = [string]$t.Parent })
+            }
             elseif ($category -eq 'Index') { $constraintDrops.Add((Get-DropIndexSql $t -IfExists:$Rollback)) }
             else { $constraintDrops.Add((Get-DropConstraintSql $t -IfExists:$Rollback)) }
         }
@@ -528,7 +947,8 @@ function Write-SyncScript {
         foreach ($d in (& $pick $category 'OnlyInTarget')) {
             $t = & $tgt $d
             if (& $missingParts $t) { continue }
-            $moduleDrops.Add(('DROP {0} {1}{2};' -f $DropKeywords[[string](Get-SqlPart $t 'ObjectType')], $exists, (Get-QuotedPair (Get-SqlPart $t 'Schema') (Get-SqlPart $t 'Name'))))
+            if (Test-DatabaseScope $t) { $databaseTriggerDrops.Add((Get-DropModuleSql $t -IfExists:$Rollback)); $databaseTriggersCreated.Add($t) }
+            else { $moduleDrops.Add((Get-DropModuleSql $t -IfExists:$Rollback)) }
         }
     }
     foreach ($d in (& $pick 'Synonym' 'OnlyInTarget')) { $t = & $tgt $d; if (-not (& $missingParts $t)) { $moduleDrops.Add(('DROP SYNONYM {0}{1};' -f $exists, (Get-QuotedPair (Get-SqlPart $t 'Schema') (Get-SqlPart $t 'Name')))) } }
@@ -543,8 +963,18 @@ function Write-SyncScript {
     foreach ($d in (& $pick 'User-defined type' 'OnlyInTarget')) { $t = & $tgt $d; if (-not (& $missingParts $t)) { $dataDrops.Add(('DROP TYPE {0};' -f (Get-QuotedPair (Get-SqlPart $t 'Schema') (Get-SqlPart $t 'Name')))) } }
     foreach ($d in (& $pick 'Schema' 'OnlyInTarget')) { $dataDrops.Add(('DROP SCHEMA {0};' -f (Get-QuotedName $d.TargetKey))) }
 
-    $activeDrops = @($constraintDrops)
-    if (-not $TargetIncomplete) { $activeDrops += @($moduleDrops) }
+    # ---- (rollback) database triggers, before anything else ----
+    # The sync script ended by enabling the database triggers the model has enabled. One of them
+    # may refuse DDL: every drop and change below would end with Msg 3609.
+    if ($Rollback) { & $writeModules 'Trigger' $true }
+
+    # In a rollback the indexes the sync script created on views go with the other indexes. (Where
+    # the rollback alters the view back further down, that drops them anyway: hence IF EXISTS.)
+    $activeDrops = @($constraintDrops) + @($viewIndexDrops | ForEach-Object { $_.Line })
+    # The other modules after the indexes and constraints. (The database triggers went above.)
+    if (-not $TargetIncomplete) { $activeDrops = $activeDrops + @($moduleDrops) }
+    # Where modules are listed as comments: the database triggers first.
+    $moduleDropComments = @($databaseTriggerDrops) + @($moduleDrops)
     if ($Rollback -and $activeDrops.Count) {
         & $section 'Created by the sync script: dropped'
         foreach ($line in $activeDrops) {
@@ -687,7 +1117,7 @@ function Write-SyncScript {
             foreach ($c in $columns) {
                 $definition = Get-ColumnDefinition $c $targetCollation
                 if ($definition) { $lines.Add("    $definition") }
-                else { $lines.Add('    -- ' + (Get-CommentText "computed column $(Get-SqlPart $c 'Name') is not readable")) }
+                else { $lines.Add('    -- ' + (Get-CommentText (Get-UnreadableColumnText $c ([string](Get-SqlPart $c 'Name'))))) }
             }
             $pk = @($SourceSnap['Index'].get_Values() | Where-Object { $_.Parent -eq $d.SourceKey -and $_.Props['Kind'] -eq 'PRIMARY KEY' }) | Select-Object -First 1
             if ($pk) { $lines.Add(('    {0}PRIMARY KEY {1} ({2})' -f (Get-ConstraintPrefix $pk), $pk.Props['Type'], (Get-IndexKeyList $pk))) }
@@ -704,16 +1134,35 @@ function Write-SyncScript {
     $changed = @(& $pick 'Column' 'Different')
     if ($new.Count -or $changed.Count) {
         & $section 'Columns'
+        # New columns that are not computed come first, then the changed columns, then the new
+        # computed columns: SQL Server does not alter a column that a computed column uses (Msg
+        # 5074), so a computed column added before the columns it uses have been changed would be
+        # in the way of this script's own ALTER COLUMN.
+        $newPlain = New-Object System.Collections.Generic.List[object]
+        $newComputed = New-Object System.Collections.Generic.List[object]
         foreach ($d in $new) {
             $s = & $src $d
-            if (& $missingParts $s) { & $add $oldSnapshotNote; continue }
+            if ($null -ne $s -and [string]$s.Props['Computed']) { $newComputed.Add($d) } else { $newPlain.Add($d) }
+        }
+        $addColumn = {
+            param($d)
+            $s = & $src $d
+            if (& $missingParts $s) { & $add $oldSnapshotNote; return }
             $definition = Get-ColumnDefinition $s $targetCollation
-            if (-not $definition) { & $note "Not scripted: computed column $($d.Object) is not readable"; continue }
+            if (-not $definition) { & $note ('Not scripted: ' + (Get-UnreadableColumnText $s $d.Object)); return }
             if ($s.Props['Nullable'] -eq 'NOT NULL' -and -not $s.Props['Default'] -and -not $s.Props['Identity'] -and -not $s.Props['Computed']) {
                 & $add '-- WARNING: NOT NULL without a default fails when the table already has rows.'
             }
             & $add ('ALTER TABLE {0} ADD {1};' -f (Get-TableName $s), $definition); & $go
         }
+        # The computed columns that are on the target when this script runs, by table. For a sync
+        # script those of the target. For a rollback the target is what the sync script left: the
+        # model's columns (this call's target snapshot), and the columns only the target had,
+        # which the sync script does not drop (this call's source snapshot).
+        $computedSides = @((Get-ComputedColumnsByTable $TargetSnap))
+        if ($Rollback) { $computedSides += (Get-ComputedColumnsByTable $SourceSnap) }
+
+        foreach ($d in $newPlain) { & $addColumn $d }
         foreach ($d in $changed) {
             $s = & $src $d
             $t = & $tgt $d
@@ -751,6 +1200,12 @@ function Write-SyncScript {
                     }
                 }
             }
+            elseif (($diff['Nullable'] -or $diff['Collation']) -and ([string]$s.Props['Type'] -eq $HiddenValue -or [string]$t.Props['Type'] -eq $HiddenValue)) {
+                # ALTER COLUMN says the whole column again, its type first. One that is not
+                # readable cannot be written, and writing the other side's would change a type
+                # that was never compared.
+                & $add '-- Not scripted: the type of this column is not readable on one side (a user-defined type the login has no permission on), and ALTER COLUMN has to say the type again. Compare the column by hand.'
+            }
             elseif ($diff['Type'] -or $diff['Nullable'] -or $diff['Collation']) {
                 $userType = Test-UserDefinedType $s.Props['Type']
                 if ($userType -and $diff['Collation']) {
@@ -774,6 +1229,41 @@ function Write-SyncScript {
             # NULL and collation can change with the default in place.)
             $sourceDefault = [string]$s.Props['Default']
             $targetDefault = [string]$t.Props['Default']
+            # Computed columns of the table that use this column. SQL Server does not alter a
+            # column a computed column depends on, whatever changes (type, length, NULL / NOT
+            # NULL) and whether the computed column is persisted or not: Msg 5074 for each of
+            # them, then Msg 4922. They have to be dropped first and added again afterwards, and
+            # dropping a column is not for this script to do: the whole change is written as
+            # comments, one group to run by hand.
+            $dropDependents = New-Object System.Collections.Generic.List[string]
+            $addDependents = New-Object System.Collections.Generic.List[string]
+            if ($alterSql) {
+                $dependentNames = New-Object System.Collections.Generic.List[string]
+                $seen = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+                foreach ($side in $computedSides) {
+                    foreach ($entry in @(Get-ComputedDependents $side $s.Parent $column)) {
+                        if (-not $seen.Add($entry.Key)) { continue }
+                        $name = [string](Get-SqlPart $entry.Item 'Name')
+                        # A snapshot without name parts: the key is table.column.
+                        if (-not $name) { $name = $entry.Key.Substring(([string]$s.Parent).Length + 1) }
+                        $dependentNames.Add((Get-QuotedName $name))
+                        $dropDependents.Add(('ALTER TABLE {0} DROP COLUMN {1};' -f $table, (Get-QuotedName $name)))
+                        # Added again as the model has it; one the model does not have (only in
+                        # the target, which this script leaves alone) as it is now.
+                        $definition = $null
+                        foreach ($snap in @($SourceSnap, $TargetSnap)) {
+                            $candidate = $snap['Column'][$entry.Key]
+                            if ($null -eq $definition -and $null -ne $candidate -and $null -ne $candidate.Sql) { $definition = Get-ColumnDefinition $candidate $targetCollation }
+                        }
+                        if ($definition) { $addDependents.Add(('ALTER TABLE {0} ADD {1};' -f $table, $definition)) }
+                        else { $addDependents.Add('-- ' + (Get-CommentText "(add computed column $name again by hand: its definition is not readable)")) }
+                    }
+                }
+                if ($dependentNames.Count) {
+                    if ($dependentNames.Count -eq 1) { $which = 'computed column {0} uses' -f $dependentNames[0] } else { $which = 'computed columns {0} use' -f ($dependentNames -join ', ') }
+                    & $note "Not run: $which this column, and SQL Server does not alter a column that a computed column uses (Msg 5074, Msg 4922). By hand: first drop the indexes, constraints and statistics that use the computed columns named here, then run the next lines as one batch. They drop those computed columns, make the change and add them again:"
+                }
+            }
             if ($diff['Default'] -or ($alterSql -and $diff['Type'] -and $targetDefault)) {
                 $dropLines = @(Get-DropDefaultSql $table $column)
                 # What follows the drop: the ALTER COLUMN and the default of the source.
@@ -786,13 +1276,18 @@ function Write-SyncScript {
                     # Dropping a default that cannot be put back is not for a script to do.
                     if ($Rollback) { $which = 'the default the column had before the sync script' } else { $which = 'the default the column has in the source' }
                     & $add "-- Not scripted: the type change needs the default of the column dropped first, and $which is not readable, so it cannot be added again. By hand: run these, then add the default:"
-                    foreach ($line in ($dropLines + $afterDrop)) { & $note $line }
+                    & $commented (@($dropDependents) + $dropLines + $afterDrop + @($addDependents))
                 }
                 elseif ($targetDefault -eq $HiddenValue) {
                     # Nor is dropping a default nobody could read: what goes is not known, and
                     # the other script (which has it as the default to put back) cannot restore it.
                     & $add '-- Not scripted: the type change needs the default of the column dropped first, and the default the column has now is not readable, so what would be dropped is not known and could not be put back. By hand: look at that default, then run these:'
-                    foreach ($line in ($dropLines + $afterDrop)) { & $note $line }
+                    & $commented (@($dropDependents) + $dropLines + $afterDrop + @($addDependents))
+                }
+                elseif ($dropDependents.Count) {
+                    # By hand, and all or nothing: one transaction around the computed columns
+                    # going, the default going, the change, and all of them coming back.
+                    & $commented (@('BEGIN TRANSACTION;') + @($dropDependents) + $dropLines + $afterDrop + @($addDependents) + @('COMMIT TRANSACTION;'))
                 }
                 else {
                     # More than the drop itself: one transaction, under the script's SET XACT_ABORT
@@ -802,12 +1297,16 @@ function Write-SyncScript {
                     else { & $add $dropLines }
                 }
             }
+            elseif ($alterSql -and $dropDependents.Count) {
+                & $commented (@('BEGIN TRANSACTION;') + @($dropDependents) + @($alterSql) + @($addDependents) + @('COMMIT TRANSACTION;'))
+            }
             elseif ($alterSql) { & $add $alterSql }
             if ($diff['Ordinal']) {
                 & $add '-- Column order differs: SQL Server cannot move a column without rebuilding the table, so this is not scripted.'
             }
             & $go
         }
+        foreach ($d in $newComputed) { & $addColumn $d }
     }
 
     # ---- indexes, check constraints, foreign keys ----
@@ -816,15 +1315,19 @@ function Write-SyncScript {
         @{ Category = 'Check constraint'; Title = 'Check constraints' },
         @{ Category = 'Foreign key'; Title = 'Foreign keys' }
     )
-    foreach ($cs in $childSections) {
-        $category = $cs.Category
-        if ($SelectedCategories -notcontains $category) { continue }
-        # Objects of new tables are not in the diff list (only the table is), so take them from the source.
-        $ofNewTables = @($SourceSnap[$category].get_Values() | Where-Object { $newTableKeys.ContainsKey($_.Parent) -and -not ($category -eq 'Index' -and $_.Props['Kind'] -eq 'PRIMARY KEY') })
-        $new = @(& $pick $category 'OnlyInSource')
-        $changed = @(& $pick $category 'Different')
-        if (-not ($ofNewTables.Count -or $new.Count -or $changed.Count)) { continue }
-        & $section $cs.Title
+    # On a target read without VIEW DEFINITION, "only in source" may be something that is there
+    # but hidden. A statement that would then land on an object this script did not create,
+    # or add a second copy, is written as a comment that says what to check first. (Not in a
+    # rollback: it has no new tables, and its unnamed checks are comments already.)
+    $guarded = [bool]$TargetIncomplete -and -not $Rollback
+
+    # One section of them. It is written for the tables (each of the three categories), and once
+    # more for the indexes of views, which can only come after the views. $ofNewTables: items of
+    # the tables this script creates; $new and $changed: difference records.
+    $writeChildSection = {
+        param([string]$category, [string]$title, $ofNewTables, $new, $changed, [bool]$onViews)
+        if (-not ($ofNewTables.Count -or $new.Count -or $changed.Count)) { return }
+        & $section $title
 
         $create = {
             param($item)
@@ -840,17 +1343,6 @@ function Write-SyncScript {
             if ($category -eq 'Index') { Get-DropIndexSql $item } else { Get-DropConstraintSql $item }
         }
 
-        # On a target read without VIEW DEFINITION, "only in source" may be something that is there
-        # but hidden. A statement that would then land on an object this script did not create,
-        # or add a second copy, is written as a comment that says what to check first. (Not in a
-        # rollback: it has no new tables, and its unnamed checks are comments already.)
-        $guarded = [bool]$TargetIncomplete -and -not $Rollback
-        $commentedWith = {
-            param($condition, $lines)
-            foreach ($line in @($lines)) {
-                if ([string]$line -match '^\s*--') { & $add $line } else { & $note "Run this only if ${condition}: $line" }
-            }
-        }
         foreach ($item in $ofNewTables) {
             if ($guarded) {
                 # The table's CREATE TABLE fails when a table of that name is there already, and
@@ -888,6 +1380,16 @@ function Write-SyncScript {
                 & $add '-- Primary key differs. Foreign keys that reference it must be dropped first, so this is left commented out:'
                 & $note (& $drop $t)
                 foreach ($line in @(& $create $s)) { & $note $line }
+            }
+            elseif ($onViews -and ($s.Props['Type'] -eq 'CLUSTERED' -or $t.Props['Type'] -eq 'CLUSTERED')) {
+                # Dropping the clustered index of a view drops every other index of that view
+                # with it, and the view stops being an indexed view until it is created again.
+                & $add '-- The clustered index of a view differs. Dropping it drops every other index of the view with it, so this is left commented out. By hand: run these (the drop, the index, then the other indexes of the view):'
+                & $commented (& $drop $t)
+                & $commented (& $create $s)
+                foreach ($entry in $sourceViewIndexes[[string]$s.Parent]) {
+                    if ($entry.Key -ne $d.SourceKey) { & $commented (& $create $entry.Item) }
+                }
             }
             elseif ((@(Get-ChangedProps $s $t) -join ',') -eq 'State') {
                 # Only enabled / disabled differs: the constraint is switched, not rebuilt, so rows
@@ -937,109 +1439,42 @@ function Write-SyncScript {
             & $go
         }
     }
+    foreach ($cs in $childSections) {
+        $category = $cs.Category
+        if ($SelectedCategories -notcontains $category) { continue }
+        # Objects of new tables are not in the diff list (only the table is), so take them from the
+        # source. In the order of their keys: a snapshot holds them in no order (as the catalog
+        # returned them, which changes when other objects are added to the database), and the
+        # script of the same comparison must come out the same every time.
+        [string[]]$childKeys = @($SourceSnap[$category].get_Keys())
+        [System.Array]::Sort($childKeys, [System.StringComparer]::Ordinal)
+        $ofNewTables = @($childKeys | ForEach-Object { $SourceSnap[$category][$_] } | Where-Object { $newTableKeys.ContainsKey($_.Parent) -and -not ($category -eq 'Index' -and $_.Props['Kind'] -eq 'PRIMARY KEY') })
+        # Without the indexes of views: those have a section of their own, after the views.
+        $new = @(@(& $pick $category 'OnlyInSource') | Where-Object { -not (& $isViewIndex $_) })
+        $changed = @(@(& $pick $category 'Different') | Where-Object { -not (& $isViewIndex $_) })
+        & $writeChildSection $category $cs.Title $ofNewTables $new $changed $false
+    }
 
     # ---- programmable objects ----
-    foreach ($category in @('Function', 'View', 'Stored procedure', 'Trigger')) {
-        $new = @(& $pick $category 'OnlyInSource')
-        $changed = @(& $pick $category 'Different')
-        if (-not ($new.Count -or $changed.Count)) { continue }
-        & $section "$category`s"
-        foreach ($d in ($new + $changed)) {
-            $s = & $src $d
-            if ($d.Status -eq 'OnlyInSource') { $what = 'only in source' } else { $what = $d.Detail }
-            & $note "$($d.Object): $what"
-            # The SET options are stored with the module, so a difference in them alone is also
-            # made by running the definition again.
-            $definitionChanged = $d.Status -eq 'OnlyInSource' -or $d.Detail -match '(^|\n)(Definition differs|SetOptions:)'
-            $typeChanged = $d.Status -eq 'Different' -and $d.Detail -match '(^|\n)Type:'
-            # "Only in source" on a target read without VIEW DEFINITION may be an object that is
-            # there but hidden: CREATE OR ALTER would replace it without a word. (A rollback has no
-            # such items: what the sync script created reads as only in target there.)
-            $createOnly = [bool]$TargetIncomplete -and $d.Status -eq 'OnlyInSource'
-            # The same trigger name on another table. The table a trigger names is not part of the
-            # definition comparison (a renamed table keeps its earlier name in the text), so this
-            # shows only as the Table property, and CREATE OR ALTER cannot move a trigger (Msg 2110).
-            $tableChanged = $category -eq 'Trigger' -and $d.Status -eq 'Different' -and $d.Detail -match '(^|\n)Table:'
-            # The definition cannot be read on one side (no VIEW DEFINITION, WITH ENCRYPTION), yet
-            # something that can be read differs: the SET options, the type, a trigger's table.
-            # Nothing is written then, not even as a comment to run by hand: the body that would
-            # be replaced or dropped was never compared, and the other script could not put it
-            # back (it cannot read it either).
-            $unreadable = $d.Status -eq 'Different' -and $d.Detail -match '(^|\n)Definition: not readable'
-            if (($typeChanged -or $tableChanged) -and $unreadable) {
-                & $add '-- Not scripted: the object would have to be dropped and created again, but its definition is not readable on one side.'
-            }
-            elseif ($definitionChanged -and $unreadable) {
-                & $add '-- Not scripted: SET options differ, but the definition is not readable on one side.'
-            }
-            elseif ($typeChanged -or $tableChanged) {
-                # ALTER cannot turn, say, a scalar function into a table-valued one, nor put a
-                # trigger on another table: the object has to be dropped and created again. That
-                # is for a person to do, so both statements are written as comments, the CREATE
-                # with the catalog names (the text in the report may carry earlier ones).
-                $t = & $tgt $d
-                if ($typeChanged) { & $add '-- The object type changed, which ALTER cannot do. To change it, drop the object and create it again by hand:' }
-                else { & $add '-- The trigger is on another table on the two sides, and ALTER cannot move a trigger. To change it, drop the trigger and create it again by hand:' }
-                if (-not (& $missingParts $t)) {
-                    & $note ('DROP {0} {1};' -f $DropKeywords[[string](Get-SqlPart $t 'ObjectType')], (Get-QuotedPair (Get-SqlPart $t 'Schema') (Get-SqlPart $t 'Name')))
-                    & $add '-- GO'
-                }
-                $module = ConvertTo-ModuleScript $s $d.SourceKey $true
-                if ($module.ContainsKey('Comment')) { & $add $module.Comment }
-                else {
-                    # Line by line: a definition has line breaks, and each line needs its own "--".
-                    $commented = New-Object System.Collections.Generic.List[string]
-                    $setLines = @(Get-ModuleSetLines ([string]$s.Props['SetOptions']))
-                    if ($setLines.Count) { $commented.AddRange([string[]]$setLines); $commented.Add('GO') }
-                    $commented.AddRange([string[]]($module.Script.TrimEnd() -split '\r\n|\r|\n'))
-                    $commented.Add('GO')
-                    if ($setLines.Count) { $commented.AddRange([string[]]@('SET ANSI_NULLS ON;', 'SET QUOTED_IDENTIFIER ON;', 'GO')) }
-                    if ($category -eq 'Trigger' -and $s.Props['State'] -eq 'DISABLED' -and -not (& $missingParts $s)) {
-                        $commented.Add(('DISABLE TRIGGER {0} ON {1};' -f (Get-QuotedPair (Get-SqlPart $s 'Schema') (Get-SqlPart $s 'Name')), (Get-QuotedPair (Get-SqlPart $s 'ParentSchema') (Get-SqlPart $s 'ParentObject'))))
-                    }
-                    foreach ($line in $commented) { & $add ('-- ' + $line).TrimEnd() }
-                }
-            }
-            elseif ($definitionChanged) {
-                $module = ConvertTo-ModuleScript $s $d.SourceKey $createOnly
-                if ($module.ContainsKey('Comment')) { & $add $module.Comment }
-                else {
-                    if ($createOnly) { & $add '-- Plain CREATE, because the comparison of the target is incomplete: if it fails with Msg 2714, the object is there already. Compare it with the source by hand.' }
-                    # SQL Server stores the whole batch as the module definition, so the comments
-                    # above must end in their own batch or they become part of the procedure text.
-                    & $go
-                    # A module keeps the ANSI_NULLS and QUOTED_IDENTIFIER of the session that
-                    # created or altered it. One that has another setting than the script's gets
-                    # it from a batch before its own, and the batch after it sets the script's
-                    # again for the modules that follow.
-                    $setLines = @(Get-ModuleSetLines ([string]$s.Props['SetOptions']))
-                    if ($setLines.Count) {
-                        if ($Rollback) { $where = 'had before the sync script' } else { $where = 'has in the source' }
-                        & $add "-- Created under the SET options it $where; the batch after it sets the script's own again."
-                        & $add $setLines
-                        & $go
-                    }
-                    & $add $module.Script
-                    & $go
-                    if ($setLines.Count) { & $add @('SET ANSI_NULLS ON;', 'SET QUOTED_IDENTIFIER ON;'); & $go }
-                }
-            }
-            # Not for a trigger that has to be dropped and created again by hand: it is not there yet,
-            # or still on the other table.
-            if ($category -eq 'Trigger' -and -not (& $missingParts $s) -and -not ($typeChanged -or $tableChanged)) {
-                $name = Get-QuotedPair (Get-SqlPart $s 'Schema') (Get-SqlPart $s 'Name')
-                $parent = Get-QuotedPair (Get-SqlPart $s 'ParentSchema') (Get-SqlPart $s 'ParentObject')
-                if ($createOnly) {
-                    # The trigger may be one that was there already (its CREATE then failed), and
-                    # whether that one is enabled is not this script's to change. A trigger this
-                    # script creates is enabled by its CREATE.
-                    if ($s.Props['State'] -eq 'DISABLED') { & $note "It is disabled in source. Run this only if the CREATE above succeeded: DISABLE TRIGGER $name ON $parent;" }
-                }
-                elseif ($s.Props['State'] -eq 'DISABLED') { & $add "DISABLE TRIGGER $name ON $parent;"; & $go }
-                elseif ($d.Detail -match 'State:') { & $add "ENABLE TRIGGER $name ON $parent;"; & $go }
-            }
+    & $writeModules 'Function'
+    & $writeModules 'View'
+    # The indexes of the views that are on both sides, now that every view is as the model has
+    # it. Not those of a view written above: they were created with it. New ones with the
+    # clustered index first, which the others of its view need.
+    if ($SelectedCategories -contains 'Index') {
+        $notRebuilt = {
+            param($d)
+            if (-not (& $isViewIndex $d)) { return $false }
+            if ($null -ne $d.SourceKey) { $item = & $src $d } else { $item = & $tgt $d }
+            return -not $rebuiltViews.ContainsKey([string]$item.Parent)
         }
+        $newOnViews = @(@(& $pick 'Index' 'OnlyInSource') | Where-Object { & $notRebuilt $_ })
+        $clusteredFirst = @($newOnViews | Where-Object { (& $src $_).Props['Type'] -eq 'CLUSTERED' }) + @($newOnViews | Where-Object { (& $src $_).Props['Type'] -ne 'CLUSTERED' })
+        $changedOnViews = @(@(& $pick 'Index' 'Different') | Where-Object { & $notRebuilt $_ })
+        & $writeChildSection 'Index' 'Indexes on views' @() $clusteredFirst $changedOnViews $true
     }
+    & $writeModules 'Stored procedure'
+    & $writeModules 'Trigger'
 
     # ---- synonyms ----
     $new = @(& $pick 'Synonym' 'OnlyInSource')
@@ -1070,6 +1505,12 @@ function Write-SyncScript {
         }
     }
 
+    # ---- (sync) database triggers ----
+    # After everything else that is created or changed: a DDL trigger fires on the statements that
+    # follow it, and the one the model has may refuse or record what this script still has to do.
+    # (A rollback wrote them first, above.)
+    if (-not $Rollback) { & $writeModules 'Trigger' $true }
+
     # ---- database settings: comments only ----
     $items = @(& $pick 'Database' 'Different')
     if ($items.Count) {
@@ -1087,13 +1528,16 @@ function Write-SyncScript {
     # ---- only in target: commented-out drops ----
     if ($Rollback) {
         $drops = @($dataDrops)
-        if ($TargetIncomplete -and $moduleDrops.Count) {
-            $drops = @('-- The comparison of the target is incomplete: one of the next objects may have been there before the sync script (its CREATE then failed with Msg 2714). Uncomment only those the sync script created:') + @($moduleDrops) + $drops
+        if ($TargetIncomplete -and $moduleDropComments.Count) {
+            $drops = @('-- The comparison of the target is incomplete: one of the next objects may have been there before the sync script (its CREATE then failed with Msg 2714). Uncomment only those the sync script created:') + $moduleDropComments + $drops
         }
         $title = 'Created by the sync script: NOT dropped. Uncomment a line only after checking nothing still needs it (data is lost)'
     }
     else {
-        $drops = @($constraintDrops) + @($moduleDrops) + @($dataDrops)
+        # Not the indexes of a view this script altered: they are gone with the ALTER VIEW, and the
+        # note after that view says so.
+        $leftViewIndexDrops = @($viewIndexDrops | Where-Object { -not $rebuiltViews.ContainsKey($_.View) } | ForEach-Object { $_.Line })
+        $drops = @($constraintDrops) + $leftViewIndexDrops + $moduleDropComments + @($dataDrops)
         $title = 'Only in target: NOT dropped. Uncomment a line only after checking nothing still needs it (data is lost)'
     }
     if ($drops.Count) {

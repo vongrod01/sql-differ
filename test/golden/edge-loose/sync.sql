@@ -7,7 +7,16 @@
 -- - Nothing in this file has been executed by database-diff.
 -- - Statements that drop tables, columns or other objects are commented out at the end.
 -- - ALTER COLUMN statements are active: check them for data loss (narrower types, NOT NULL).
+--   Except the change of a column that a computed column uses: SQL Server refuses it (Msg
+--   5074), so it is written as a group of comments to run by hand (those computed columns
+--   dropped, the change, the columns added again).
 -- - Objects are ordered by kind, not by dependency; rerun a failed part after the rest.
+-- - A view this script alters gets the indexes the source has on it created again right after
+--   it (ALTER VIEW drops every index of a view). The indexes of the other views come after
+--   the views.
+-- - Database triggers (ON DATABASE) come last. The ones this script creates or changes stay
+--   disabled until all of them are in place, and the ones the source has enabled are enabled at
+--   the very end: an enabled one fires on the statements after it and may refuse them.
 -- - Uses CREATE OR ALTER, which needs SQL Server 2016 SP1 or later on the target.
 -- - It starts with USE of the target database. If that fails (wrong server, no access), nothing
 --   after it is executed, so no statement runs in another database.

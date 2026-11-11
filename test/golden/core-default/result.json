@@ -29,9 +29,9 @@
     "compareColumnOrder": false
   },
   "counts": {
-    "onlyInSource": 11,
+    "onlyInSource": 12,
     "onlyInTarget": 4,
-    "different": 10,
+    "different": 11,
     "unverified": 0
   },
   "warnings": [],
@@ -42,8 +42,8 @@
   "summary": [
     {
       "Category": "Table",
-      "Source": 6,
-      "Target": 4,
+      "Source": 7,
+      "Target": 5,
       "OnlyInSource": 3,
       "OnlyInTarget": 1,
       "Different": 0,
@@ -51,8 +51,8 @@
     },
     {
       "Category": "Column",
-      "Source": 46,
-      "Target": 15,
+      "Source": 49,
+      "Target": 18,
       "OnlyInSource": 1,
       "OnlyInTarget": 1,
       "Different": 6,
@@ -60,11 +60,11 @@
     },
     {
       "Category": "View",
-      "Source": 3,
-      "Target": 1,
-      "OnlyInSource": 2,
+      "Source": 6,
+      "Target": 3,
+      "OnlyInSource": 3,
       "OnlyInTarget": 0,
-      "Different": 1,
+      "Different": 2,
       "Unverified": 0
     },
     {
@@ -216,6 +216,26 @@
       "TargetDefinition": "CREATE VIEW dbo.vOrders\nAS\nSELECT o.Id, o.Name, o.Amount FROM dbo.Orders AS o;",
       "SourceKey": "dbo.vOrders",
       "TargetKey": "dbo.vOrders"
+    },
+    {
+      "Category": "View",
+      "Object": "dbo.vSalesBig",
+      "Status": "OnlyInSource",
+      "Detail": "Type: VIEW",
+      "SourceDefinition": "CREATE VIEW dbo.vSalesBig WITH SCHEMABINDING\nAS\nSELECT Id, Amount FROM dbo.Sales WHERE Amount > 1000;",
+      "TargetDefinition": null,
+      "SourceKey": "dbo.vSalesBig",
+      "TargetKey": null
+    },
+    {
+      "Category": "View",
+      "Object": "dbo.vSalesTotals",
+      "Status": "Different",
+      "Detail": "Definition differs",
+      "SourceDefinition": "-- Indexed views. ALTER VIEW (and so CREATE OR ALTER VIEW) drops every index of the view, without\n-- a word: a script that alters a view has to create its indexes again, the clustered one first.\n-- vSalesTotals: another definition, the same clustered index as the target and a new nonclustered\n-- one. vSalesByRegion: the view is the same; one index has another column list and one is new.\n-- vSalesBig: a new view with its clustered index.\nCREATE VIEW dbo.vSalesTotals WITH SCHEMABINDING\nAS\nSELECT Id, Region, Amount FROM dbo.Sales WHERE Amount >= 0;",
+      "TargetDefinition": "CREATE VIEW dbo.vSalesTotals WITH SCHEMABINDING\nAS\nSELECT Id, Region, Amount FROM dbo.Sales WHERE Amount > 0;",
+      "SourceKey": "dbo.vSalesTotals",
+      "TargetKey": "dbo.vSalesTotals"
     },
     {
       "Category": "View",

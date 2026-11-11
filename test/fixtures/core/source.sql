@@ -17,6 +17,10 @@ CREATE TYPE dbo.tRows AS TABLE (
 GO
 CREATE SEQUENCE dbo.seqShipment AS bigint START WITH 1000;
 GO
+-- A sequence of a decimal type: the precision is part of the type. Written without it ("decimal"
+-- alone is decimal(18,0)) the limits of this one do not fit, and CREATE SEQUENCE fails (Msg 11708).
+CREATE SEQUENCE dbo.seqBig AS decimal(28,0) START WITH 1;
+GO
 -- New tables: one with a foreign key to an existing table, a column of the new type and a default
 -- that takes its value from the new sequence (a comparison of tables and columns only still has
 -- to create that type and that sequence), one with most column types the sync script has to
@@ -168,4 +172,37 @@ AS
 SELECT "a double-quoted string" AS Txt;
 GO
 SET QUOTED_IDENTIFIER ON;
+GO
+-- Indexed views. ALTER VIEW (and so CREATE OR ALTER VIEW) drops every index of the view, without
+-- a word: a script that alters a view has to create its indexes again, the clustered one first.
+-- vSalesTotals: another definition, the same clustered index as the target and a new nonclustered
+-- one. vSalesByRegion: the view is the same; one index has another column list and one is new.
+-- vSalesBig: a new view with its clustered index.
+ALTER VIEW dbo.vSalesTotals WITH SCHEMABINDING
+AS
+SELECT Id, Region, Amount FROM dbo.Sales WHERE Amount >= 0;
+GO
+CREATE UNIQUE CLUSTERED INDEX CIX_vSalesTotals ON dbo.vSalesTotals (Id);
+CREATE NONCLUSTERED INDEX IX_vSalesTotals_Region ON dbo.vSalesTotals (Region);
+CREATE UNIQUE CLUSTERED INDEX CIX_vSalesByRegion ON dbo.vSalesByRegion (Region);
+CREATE NONCLUSTERED INDEX IX_vSalesByRegion_Total ON dbo.vSalesByRegion (Total) INCLUDE (Cnt);
+CREATE NONCLUSTERED INDEX IX_vSalesByRegion_Cnt ON dbo.vSalesByRegion (Cnt);
+GO
+CREATE VIEW dbo.vSalesBig WITH SCHEMABINDING
+AS
+SELECT Id, Amount FROM dbo.Sales WHERE Amount > 1000;
+GO
+CREATE UNIQUE CLUSTERED INDEX CIX_vSalesBig ON dbo.vSalesBig (Id);
+GO
+-- Database triggers: one for more events than in the target, one that is disabled here and
+-- otherwise the same, one that is new. The sync script writes them after everything else.
+ALTER TRIGGER trDdlChanged ON DATABASE FOR CREATE_SYNONYM, DROP_SYNONYM
+AS
+SET NOCOUNT ON;
+GO
+DISABLE TRIGGER trDdlState ON DATABASE;
+GO
+CREATE TRIGGER trDdlNew ON DATABASE FOR DROP_SYNONYM
+AS
+SET NOCOUNT ON;
 GO

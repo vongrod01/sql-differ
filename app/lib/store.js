@@ -10,7 +10,7 @@ function ensureDir(dir) {
 
 function readJson(file, fallback) {
   try {
-    return JSON.parse(fs.readFileSync(file, 'utf8').replace(/^﻿/, ''));
+    return JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, ''));
   } catch (err) {
     if (err.code === 'ENOENT' && fallback !== undefined) return fallback;
     throw err;

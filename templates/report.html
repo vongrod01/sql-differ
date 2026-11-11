@@ -1,273 +1,519 @@
 <!doctype html>
-<html lang="en">
+<html lang="th">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Schema diff</title>
+<!-- No icon: served by the web app, the browser would ask it for one that is not there. -->
+<link rel="icon" href="data:,">
+<title>เทียบโครงสร้างฐานข้อมูล</title>
 <style>
+  /* Layout: one centred column. A header names both databases and explains the four words, then
+     one card per table with everything of that table, then the code and the rest. The file is
+     opened offline, so it uses system fonts only. */
   :root {
     color-scheme: light dark;
-    --bg: #f5f6f8;
+    --bg: #f4f5f8;
     --panel: #ffffff;
-    --text: #1c2230;
-    --muted: #5d6878;
-    --border: #dfe3e9;
-    --head: #eef1f5;
-    --src: #b42318;
-    --src-bg: #fdeceb;
-    --tgt: #1a7f37;
-    --tgt-bg: #e6f4ea;
-    --chg: #8a5d00;
-    --chg-bg: #fff4d6;
-    --unk: #4b5563;
-    --unk-bg: #eceff3;
-    --warn-bg: #fff4d6;
-    --warn-border: #e7c76a;
-    --accent: #2f5bd3;
-    --code-bg: #f8f9fb;
+    --text: #1b2130;
+    --muted: #586375;
+    --line: #dde2ea;
+    --head: #eef1f6;
+    --accent: #2c55c9;
+    --add: #17713a;
+    --add-bg: #e3f3e8;
+    --del: #a8261c;
+    --del-bg: #fbe9e7;
+    --chg: #855a00;
+    --chg-bg: #fdf1d3;
+    --unk: #4a5462;
+    --unk-bg: #eaedf2;
+    --warn-line: #e7c76a;
+    --code-bg: #f7f8fb;
+    --font-body: "Leelawadee UI", "Segoe UI", Tahoma, sans-serif;
+    --font-code: Consolas, "Cascadia Mono", "Leelawadee UI", monospace;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #12151a;
-      --panel: #1a1e25;
-      --text: #e3e7ed;
-      --muted: #98a3b3;
-      --border: #2c333e;
-      --head: #20252d;
-      --src: #ff9b94;
-      --src-bg: #3b1d1b;
-      --tgt: #74d491;
-      --tgt-bg: #17311f;
-      --chg: #e8c060;
-      --chg-bg: #362c15;
-      --unk: #b4bfcd;
-      --unk-bg: #262c35;
-      --warn-bg: #362c15;
-      --warn-border: #6b5520;
-      --accent: #8eaaff;
-      --code-bg: #151920;
+      --bg: #11141a; --panel: #191d25; --text: #e4e8ee; --muted: #9aa5b5; --line: #2b323d; --head: #1f242d;
+      --accent: #8fabff; --add: #79d496; --add-bg: #16301f; --del: #ff9d95; --del-bg: #3a1c1a;
+      --chg: #e9c262; --chg-bg: #352b14; --unk: #b6c0cd; --unk-bg: #262c35; --warn-line: #6b5520; --code-bg: #141820;
     }
   }
   * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    background: var(--bg);
-    color: var(--text);
-    font: 14px/1.55 "Segoe UI", "Leelawadee UI", Tahoma, system-ui, sans-serif;
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.6 var(--font-body); }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 24px 16px 64px; display: grid; gap: 18px; }
+  /* Single-column grids: wide code stays inside its own scroll box instead of widening the page. */
+  .wrap, .group, .rows, .tables, .tcard, .body, .changes, .kids { grid-template-columns: minmax(0, 1fr); }
+  .group { display: grid; gap: 10px; }
+  .note { font-size: 14px; color: var(--muted); }
+  h1 { font-size: 24px; line-height: 1.3; margin: 0; }
+  h2 { font-size: 18px; margin: 0; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* The two databases */
+  .pair { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 10px; align-items: stretch; }
+  .db { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; min-width: 0; }
+  .db.model { border-color: var(--accent); }
+  .db .role { font-size: 14px; color: var(--muted); }
+  .db .name { font-family: var(--font-code); font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
+  .arrow { align-self: center; color: var(--muted); font-size: 14px; text-align: center; line-height: 1.3; }
+  .arrow b { display: block; font-size: 22px; color: var(--text); }
+  .lead { margin: 0; max-width: 75ch; }
+  .warn { padding: 10px 14px; border-radius: 10px; background: var(--chg-bg); border: 1px solid var(--warn-line); word-break: break-word; }
+  .warn b { display: block; }
+
+  /* The four kinds: a legend that also filters */
+  .legend { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+  .kind { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; display: grid; gap: 4px; align-content: start; text-align: left; font: inherit; color: inherit; cursor: pointer; }
+  .kind:hover { border-color: var(--accent); }
+  .kind.on { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .kind .top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
+  .kind .n { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .kind .t { font-weight: 600; }
+  .kind .d { font-size: 14px; color: var(--muted); }
+  .kind.add .n, .kind.add .t { color: var(--add); }
+  .kind.del .n, .kind.del .t { color: var(--del); }
+  .kind.chg .n, .kind.chg .t { color: var(--chg); }
+  .kind.unk .n, .kind.unk .t { color: var(--unk); }
+
+  .chip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 10px; border-radius: 999px; font-size: 14px; font-weight: 600; white-space: nowrap; }
+  .chip.add, .sym.add { color: var(--add); background: var(--add-bg); }
+  .chip.del, .sym.del { color: var(--del); background: var(--del-bg); }
+  .chip.chg, .sym.chg { color: var(--chg); background: var(--chg-bg); }
+  .chip.unk, .sym.unk { color: var(--unk); background: var(--unk-bg); }
+
+  .toolbar { position: sticky; top: 0; z-index: 2; background: var(--bg); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 0; }
+  .toolbar input, .toolbar select { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; min-width: 0; max-width: 100%; }
+  .toolbar input { flex: 1 1 240px; }
+  .toolbar .count { color: var(--muted); font-size: 14px; }
+  .linkbtn { justify-self: start; font: inherit; font-size: 14px; color: var(--accent); background: none; border: 1px solid var(--line); border-radius: 6px; padding: 2px 10px; cursor: pointer; }
+  .linkbtn:hover { border-color: var(--accent); }
+
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; min-width: 0; }
+  .empty { padding: 28px 16px; text-align: center; color: var(--muted); }
+  .group-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; margin-top: 8px; }
+
+  /* One card per table */
+  .tables { display: grid; gap: 12px; }
+  .tcard { display: grid; }
+  .tcard-h { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 12px 16px; background: var(--head); border-radius: 10px 10px 0 0; }
+  .tcard-h .obj { font-family: var(--font-code); font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
+  .tcard-h .note { margin-left: auto; }
+  .titem { display: grid; grid-template-columns: 1.5rem 13rem minmax(0, 1fr); gap: 4px 10px; padding: 10px 16px; border-top: 1px solid var(--line); align-items: baseline; }
+  .sym { font-family: var(--font-code); font-weight: 700; text-align: center; border-radius: 4px; }
+  .what { font-size: 14px; color: var(--muted); min-width: 0; }
+  .what b { display: block; color: var(--text); font-family: var(--font-code); font-weight: 600; overflow-wrap: anywhere; }
+  .body { min-width: 0; display: grid; gap: 4px; }
+  .say { font-size: 14px; color: var(--muted); }
+  .say b { color: var(--text); font-weight: 600; }
+  .hint { font-size: 14px; border-left: 3px solid var(--warn-line); padding-left: 10px; }
+
+  /* What changed: the value now, struck through, then the value it becomes */
+  .changes { display: grid; gap: 4px; }
+  .ch { display: grid; grid-template-columns: 11rem minmax(0, 1fr); gap: 10px; align-items: baseline; font-size: 14px; }
+  .ch .p { color: var(--muted); }
+  .ft { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; min-width: 0; }
+  .ft .from { text-decoration: line-through; text-decoration-color: var(--del); color: var(--muted); font-family: var(--font-code); overflow-wrap: anywhere; white-space: pre-wrap; }
+  .ft .to { font-family: var(--font-code); font-weight: 600; overflow-wrap: anywhere; white-space: pre-wrap; }
+  .ft .arr { color: var(--muted); }
+  .facts { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 14px; color: var(--muted); }
+  .facts span { min-width: 0; }
+  .facts b { color: var(--text); font-weight: 600; font-family: var(--font-code); overflow-wrap: anywhere; white-space: pre-wrap; }
+  .rawline { font-family: var(--font-code); font-size: 14px; word-break: break-word; white-space: pre-wrap; }
+
+  /* The code and the rest */
+  .rows { display: grid; }
+  .row { display: grid; grid-template-columns: 9.5rem minmax(0, 1fr); gap: 4px 14px; padding: 12px 16px; border-top: 1px solid var(--line); }
+  .row:first-child { border-top: 0; }
+  .row .obj { font-family: var(--font-code); font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+  .row .obj .note { font-family: var(--font-body); font-weight: 400; }
+  .kids { display: grid; margin-top: 6px; border: 1px solid var(--line); border-radius: 8px; }
+  .kids .titem:first-child { border-top: 0; }
+  .kids .titem { padding: 8px 12px; }
+
+  /* Code and line diffs: the only boxes that scroll sideways */
+  .codebox { min-width: 0; }
+  .code { overflow: auto; max-height: 70vh; background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px; }
+  .code table { border-collapse: collapse; width: 100%; font: 14px/1.55 var(--font-code); }
+  .code td { padding: 0 10px; white-space: pre; vertical-align: top; }
+  .code td.ln { width: 1%; color: var(--muted); text-align: right; user-select: none; padding-right: 4px; }
+  .code td.sig { width: 1%; color: var(--muted); padding: 0 4px; user-select: none; }
+  .code tr.del td { background: var(--del-bg); }
+  .code tr.add td { background: var(--add-bg); }
+  .code tr.del td.sig { color: var(--del); }
+  .code tr.add td.sig { color: var(--add); }
+  .code tr.gap td { background: var(--head); color: var(--muted); font: 14px/1.6 var(--font-body); padding: 2px 10px; }
+  .cap { display: flex; flex-wrap: wrap; gap: 2px 16px; padding: 6px 10px; font: 14px/1.5 var(--font-body); color: var(--muted); border-bottom: 1px solid var(--line); position: sticky; left: 0; }
+  .cap .m { font-weight: 600; }
+  .cap .m.del { color: var(--del); }
+  .cap .m.add { color: var(--add); }
+
+  details.totals { font-size: 14px; color: var(--muted); }
+  details.totals summary { cursor: pointer; }
+  details.totals table { border-collapse: collapse; margin-top: 8px; font-variant-numeric: tabular-nums; }
+  details.totals th, details.totals td { padding: 3px 14px 3px 0; text-align: right; font-weight: 400; }
+  details.totals th:first-child, details.totals td:first-child { text-align: left; }
+  details.totals thead th { font-weight: 600; color: var(--text); }
+
+  @media (max-width: 720px) {
+    .pair { grid-template-columns: minmax(0, 1fr); }
+    .arrow b { display: inline-block; transform: rotate(90deg); margin-right: 8px; }
+    .legend { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .row { grid-template-columns: minmax(0, 1fr); }
+    .ch { grid-template-columns: minmax(0, 1fr); gap: 0; }
+    .titem { grid-template-columns: 1.5rem minmax(0, 1fr); }
+    .titem .body { grid-column: 2; }
+    .tcard-h .note { margin-left: 0; }
+    /* Two rows of controls would cover too much of a small screen. */
+    .toolbar { position: static; }
   }
-  .wrap { max-width: 1280px; margin: 0 auto; padding: 28px 16px 64px; }
-  h1 { font-size: 22px; margin: 0 0 6px; }
-  .meta { display: flex; flex-wrap: wrap; gap: 4px 24px; color: var(--muted); }
-  .meta b { color: var(--text); font-weight: 600; word-break: break-all; }
-  .muted { color: var(--muted); font-weight: 400; }
-  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin: 20px 0; }
-  .card {
-    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
-    padding: 12px 16px; cursor: pointer; text-align: left; font: inherit; color: inherit;
-  }
-  .card:hover { border-color: var(--accent); }
-  .card.active { outline: 2px solid var(--accent); outline-offset: -1px; }
-  .card .n { display: block; font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
-  .card.del .n { color: var(--src); }
-  .card.add .n { color: var(--tgt); }
-  .card.chg .n { color: var(--chg); }
-  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
-  .scroll-x { overflow-x: auto; }
-  table { border-collapse: collapse; width: 100%; }
-  .summary th, .summary td {
-    padding: 7px 12px; text-align: right; border-bottom: 1px solid var(--border);
-    font-variant-numeric: tabular-nums; white-space: nowrap;
-  }
-  .summary th { background: var(--head); font-weight: 600; }
-  .summary th:first-child, .summary td:first-child { text-align: left; }
-  .summary tbody tr { cursor: pointer; }
-  .summary tbody tr:hover { background: var(--head); }
-  .summary tbody tr:last-child td { border-bottom: 0; }
-  .summary tr.zero td { color: var(--muted); }
-  .summary td.del { color: var(--src); font-weight: 600; }
-  .summary td.add { color: var(--tgt); font-weight: 600; }
-  .summary td.chg { color: var(--chg); font-weight: 600; }
-  .summary td.unk { color: var(--unk); font-weight: 600; }
-  .toolbar {
-    position: sticky; top: 0; z-index: 2; background: var(--bg);
-    display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 14px 0; margin-top: 12px;
-  }
-  .toolbar input, .toolbar select {
-    font: inherit; color: var(--text); background: var(--panel);
-    border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px;
-  }
-  .toolbar input { flex: 1 1 260px; min-width: 0; }
-  .toolbar select { max-width: 100%; }
-  .toolbar .count { color: var(--muted); }
-  section.cat { margin-top: 18px; }
-  section.cat h2 { font-size: 16px; margin: 0 0 8px; }
-  .results td { padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
-  .results tr:last-child td { border-bottom: 0; }
-  .results td.st { width: 1%; white-space: nowrap; }
-  .results td.obj { font-family: Consolas, "Cascadia Mono", "Leelawadee UI", monospace; word-break: break-all; width: 38%; }
-  .results td.detail div { word-break: break-word; }
-  .tag { display: inline-block; padding: 1px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; }
-  .tag.del { color: var(--src); background: var(--src-bg); }
-  .tag.add { color: var(--tgt); background: var(--tgt-bg); }
-  .tag.chg { color: var(--chg); background: var(--chg-bg); }
-  .tag.unk { color: var(--unk); background: var(--unk-bg); }
-  .card.unk .n { color: var(--unk); }
-  .warn {
-    margin-top: 16px; padding: 10px 14px; border-radius: 10px;
-    background: var(--warn-bg); border: 1px solid var(--warn-border); word-break: break-word;
-  }
-  .warn b { display: block; margin-bottom: 2px; }
-  button.toggle {
-    margin-top: 6px; font: inherit; font-size: 13px; color: var(--accent); background: none;
-    border: 1px solid var(--border); border-radius: 6px; padding: 2px 10px; cursor: pointer;
-  }
-  button.toggle:hover { border-color: var(--accent); }
-  tr.defrow > td { padding: 0; background: var(--code-bg); }
-  .code-wrap { overflow: auto; max-height: 70vh; }
-  .legend { padding: 6px 12px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--border); }
-  table.code { font: 14px/1.5 Consolas, "Cascadia Mono", "Leelawadee UI", monospace; }
-  table.code td { padding: 0 10px; border: 0; white-space: pre; }
-  table.code td.ln { color: var(--muted); text-align: right; user-select: none; width: 1%; }
-  table.code td.sig { width: 1%; padding: 0 4px; color: var(--muted); user-select: none; }
-  table.code tr.del td { background: var(--src-bg); }
-  table.code tr.add td { background: var(--tgt-bg); }
-  table.code tr.del td.sig { color: var(--src); }
-  table.code tr.add td.sig { color: var(--tgt); }
-  table.code tr.gap td { background: var(--head); color: var(--muted); font-style: italic; padding: 2px 10px; }
-  .empty { padding: 32px 16px; text-align: center; color: var(--muted); }
-  @media (max-width: 640px) {
-    .results tr:not(.defrow) td { display: block; width: auto; border-bottom: 0; padding: 4px 12px; }
-    .results tr:not(.defrow) td.st { padding-top: 10px; }
-    .results tr:not(.defrow) td.detail { padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+  @media (prefers-reduced-motion: no-preference) {
+    .kind, .linkbtn { transition: border-color .15s; }
   }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>Schema diff</h1>
-  <div class="meta">
-    <span>Source: <b id="m-source"></b></span>
-    <span>Target: <b id="m-target"></b></span>
-    <span>Generated: <span id="m-generated"></span></span>
-  </div>
-  <div class="meta" id="m-options"></div>
-  <div id="warnings"></div>
-  <div class="cards" id="cards"></div>
-  <div class="panel scroll-x"><table class="summary" id="summary"></table></div>
+  <header class="group">
+    <h1 id="title"></h1>
+    <div class="pair">
+      <div class="db" id="card-source"><div class="role" id="role-source"></div><div class="name" id="m-source"></div></div>
+      <div class="arrow"><b>&rarr;</b><span id="arrow-text"></span></div>
+      <div class="db"><div class="role" id="role-target"></div><div class="name" id="m-target"></div></div>
+    </div>
+    <p class="lead" id="lead"></p>
+    <div class="note" id="m-options"></div>
+    <div class="group" id="warnings"></div>
+    <div class="legend" id="legend"></div>
+  </header>
   <div class="toolbar">
-    <input id="q" type="search" placeholder="Filter by object name or detail" aria-label="Filter">
-    <select id="f-status" aria-label="Status"></select>
-    <select id="f-cat" aria-label="Category"></select>
+    <input id="q" type="search" placeholder="ค้นชื่อ เช่น Orders หรือ pGetOrder" aria-label="ค้นหา">
+    <select id="f-cat" aria-label="ชนิดของ"></select>
+    <button class="linkbtn" id="clear" hidden>ล้างตัวกรอง</button>
     <span class="count" id="count"></span>
   </div>
-  <div id="results"></div>
+  <div class="group" id="results"></div>
+  <details class="totals" id="totals"></details>
 </div>
 <script>
 const META = __META_JSON__;
 const DATA = __DATA_JSON__;
-(function () {
+
+// Everything that does not touch the page: the words, the parsing of the engine's detail text, the
+// grouping by table and the line diff. test/report.test.ts runs this part without a browser.
+function createReportCore(meta) {
   'use strict';
-  // sync (default): read as changes to the target, which becomes like the source model, so
-  // "only in source" is something to add (green) and "only in target" something to remove (red).
+  // sync (default): read as changes to the target, which becomes like the source model, so "only
+  // in source" is something to add (green) and "only in target" something that is extra (red).
   // timeline (drift): read from the older source to the later target, the other way round.
-  const TIMELINE = META.perspective === 'timeline';
-  const STATUS = {
-    OnlyInSource: { label: 'Only in source', cls: TIMELINE ? 'del' : 'add' },
-    OnlyInTarget: { label: 'Only in target', cls: TIMELINE ? 'add' : 'del' },
-    Different: { label: 'Different', cls: 'chg' },
-    Unverified: { label: 'Cannot compare', cls: 'unk' }
-  };
-  const rows = DATA.map((r, i) => ({ id: i, cat: r[0], obj: r[1], status: r[2], detail: r[3] || '', a: r[4], b: r[5] }));
-  const state = { q: '', status: 'all', cat: 'all' };
-  const $ = id => document.getElementById(id);
+  const TIMELINE = meta.perspective === 'timeline';
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-  $('m-source').textContent = META.source;
-  $('m-target').textContent = META.target;
-  $('m-generated').textContent = META.generated;
-  $('m-options').textContent = META.options;
-  $('warnings').innerHTML = META.warnings.map(w => `<div class="warn"><b>Incomplete comparison</b>${esc(w)}</div>`).join('');
+  const SIDE = TIMELINE
+    ? { source: 'จุด "ก่อน"', target: 'จุด "หลัง"', both: 'ทั้งสองจุด' }
+    : { source: 'ฝั่งต้นแบบ', target: 'ฝั่งปลายทาง', both: 'ทั้งสองฝั่ง' };
 
-  const total = s => rows.filter(r => r.status === s).length;
+  const UNREADABLE = 'อ่านค่าไม่ได้ (ไม่มีสิทธิ์ หรือถูกเข้ารหัส)';
+  const KIND = TIMELINE ? {
+    OnlyInSource: { cls: 'del', sym: '−', t: 'หายไป', d: 'เคยมีในจุด "ก่อน" แต่จุด "หลัง" ไม่มีแล้ว' },
+    OnlyInTarget: { cls: 'add', sym: '+', t: 'เพิ่มขึ้นมา', d: 'จุด "ก่อน" ยังไม่มี เพิ่งมีในจุด "หลัง"' },
+    Different: { cls: 'chg', sym: '~', t: 'ถูกแก้', d: 'มีทั้งสองจุด แต่ไม่เหมือนเดิม' },
+    Unverified: { cls: 'unk', sym: '?', t: 'ตรวจไม่ได้', d: UNREADABLE + ' จึงบอกไม่ได้ว่าเปลี่ยนหรือไม่' }
+  } : {
+    OnlyInSource: { cls: 'add', sym: '+', t: 'ต้องเพิ่ม', d: 'ต้นแบบมี แต่ปลายทางยังไม่มี sync จะสร้างให้' },
+    OnlyInTarget: { cls: 'del', sym: '−', t: 'มีเกิน', d: 'ปลายทางมีแต่ต้นแบบไม่มี sync ไม่ลบให้ แค่เขียนคำสั่งลบไว้เป็นหมายเหตุ' },
+    Different: { cls: 'chg', sym: '~', t: 'ต้องแก้', d: 'มีทั้งคู่แต่ไม่เหมือนกัน sync จะแก้ปลายทางให้ตรงต้นแบบ ยกเว้นส่วนที่ไฟล์ sync เขียนไว้เป็นหมายเหตุให้ทำเอง' },
+    Unverified: { cls: 'unk', sym: '?', t: 'ตรวจไม่ได้', d: UNREADABLE + ' จึงเทียบไม่ได้ และไม่เขียนคำสั่งให้' }
+  };
 
-  function renderCards() {
-    const cards = [
-      ['all', 'All items', rows.length, ''],
-      ['OnlyInSource', 'Only in source', total('OnlyInSource'), STATUS.OnlyInSource.cls],
-      ['OnlyInTarget', 'Only in target', total('OnlyInTarget'), STATUS.OnlyInTarget.cls],
-      ['Different', 'Different', total('Different'), 'chg'],
-      ['Unverified', 'Cannot compare', total('Unverified'), 'unk']
-    ];
-    $('cards').innerHTML = cards.map(c =>
-      `<button class="card ${c[3]}${state.status === c[0] ? ' active' : ''}" data-status="${c[0]}">` +
-      `<span class="n">${c[2]}</span>${c[1]}</button>`).join('');
+  const CAT = {
+    'Database': 'ค่าของฐานข้อมูล', 'Schema': 'schema', 'Table': 'ตาราง', 'Column': 'คอลัมน์', 'Index': 'index',
+    'Foreign key': 'foreign key', 'Check constraint': 'check constraint', 'View': 'view', 'Stored procedure': 'stored procedure',
+    'Function': 'function', 'Trigger': 'trigger', 'User-defined type': 'type ที่สร้างเอง', 'Sequence': 'sequence', 'Synonym': 'synonym'
+  };
+  const cat = c => CAT[c] || c;
+  // A category inside a Thai sentence: a Latin word needs a space on each side, a Thai one none.
+  const catWord = c => (/^[A-Za-z]/.test(cat(c)) ? ' ' + cat(c) + ' ' : cat(c));
+
+  // The properties the engine compares, per category, in the order it writes them.
+  const MODULE_PROPS = ['Type', 'Table', 'State', 'SetOptions'];
+  const PROPS = {
+    'Database': ['CompatibilityLevel', 'Collation'],
+    'Column': ['Type', 'Nullable', 'Identity', 'Computed', 'Persisted', 'Default', 'Collation', 'Ordinal'],
+    'Index': ['Kind', 'Type', 'Columns', 'Include', 'Filter', 'Name'],
+    'Foreign key': ['Columns', 'References', 'OnDelete', 'OnUpdate', 'State'],
+    'Check constraint': ['Expression', 'State'],
+    'View': MODULE_PROPS, 'Stored procedure': MODULE_PROPS, 'Function': MODULE_PROPS, 'Trigger': MODULE_PROPS,
+    'User-defined type': ['Kind', 'Spec', 'Details', 'Collation'],
+    'Sequence': ['DataType', 'Precision', 'Start', 'Increment', 'Min', 'Max', 'Cycle', 'Cache'],
+    'Synonym': ['BaseObject']
+  };
+  const MODULES = ['View', 'Stored procedure', 'Function', 'Trigger'];
+  const TABLE_CHILDREN = ['Column', 'Index', 'Foreign key', 'Check constraint'];
+
+  const LABEL = {
+    Type: 'ชนิดข้อมูล', DataType: 'ชนิดข้อมูล', Nullable: 'ยอมให้ว่าง (NULL)', Identity: 'เลขรันอัตโนมัติ (IDENTITY)',
+    Computed: 'สูตรคำนวณ', Persisted: 'เก็บค่าที่คำนวณไว้', Default: 'ค่าเริ่มต้น', Collation: 'collation', Ordinal: 'ลำดับคอลัมน์',
+    Kind: 'ประเภท', Columns: 'คอลัมน์', Include: 'คอลัมน์ที่แนบ (INCLUDE)', Filter: 'เงื่อนไขกรอง (WHERE)', Name: 'ชื่อ',
+    References: 'อ้างถึง', OnDelete: 'เมื่อลบแถวแม่', OnUpdate: 'เมื่อแก้แถวแม่', State: 'สถานะ', Expression: 'เงื่อนไข',
+    Table: 'อยู่บน', SetOptions: 'ค่า SET ตอนสร้าง', Definition: 'โค้ด', Spec: 'โครงสร้าง', Details: 'รายละเอียดเพิ่ม',
+    Precision: 'จำนวนหลัก (precision)', Start: 'เริ่มที่', Increment: 'เพิ่มทีละ', Min: 'ต่ำสุด', Max: 'สูงสุด', Cycle: 'วนรอบ',
+    Cache: 'cache', BaseObject: 'ชี้ไปที่', CompatibilityLevel: 'compatibility level'
+  };
+  const OBJECT_TYPE = { Type: 'ประเภท object' };
+  const LABEL_BY_CAT = {
+    'Index': { Type: 'แบบ index' },
+    'View': OBJECT_TYPE, 'Stored procedure': OBJECT_TYPE, 'Function': OBJECT_TYPE, 'Trigger': OBJECT_TYPE,
+    'User-defined type': { Collation: 'collation ของคอลัมน์', Details: 'รายละเอียดเพิ่ม (IDENTITY, default, key, check)' },
+    'Database': { Collation: 'collation ของฐาน' }
+  };
+  const propLabel = (category, key) => (LABEL_BY_CAT[category] && LABEL_BY_CAT[category][key]) || LABEL[key] || key;
+
+  const VALUE = {
+    Nullable: { 'NULL': 'ได้ (NULL)', 'NOT NULL': 'ไม่ได้ (NOT NULL)' },
+    State: { 'ENABLED': 'เปิดใช้', 'DISABLED': 'ปิดอยู่' },
+    Persisted: { 'PERSISTED': 'เก็บไว้ (PERSISTED)', '(none)': 'ไม่เก็บ' },
+    SetOptions: { '(none)': 'ปกติ (ON)' },
+    Cycle: { 'CYCLE': 'วน (CYCLE)', 'NO CYCLE': 'ไม่วน (NO CYCLE)' },
+    Cache: { 'NO CACHE': 'ไม่ใช้ (NO CACHE)' },
+    OnDelete: { 'NO_ACTION': 'ไม่ทำอะไร (NO ACTION)', 'CASCADE': 'ทำตามแถวแม่ (CASCADE)', 'SET_NULL': 'ใส่ NULL (SET NULL)', 'SET_DEFAULT': 'ใส่ค่าเริ่มต้น (SET DEFAULT)' },
+    Name: { '(system-named)': 'ระบบตั้งชื่อให้' },
+    Kind: { 'alias type': 'type ย่อ (alias)', 'table type': 'type แบบตาราง' },
+    Table: { 'DATABASE': 'ทั้งฐานข้อมูล (database trigger)' }
+  };
+  VALUE.OnUpdate = VALUE.OnDelete;
+  // A value as the engine writes it, in plain words. "(none)" is its word for an empty value.
+  function val(key, v) {
+    if (v === '(not readable)') return 'อ่านไม่ได้';
+    const known = VALUE[key];
+    if (known && Object.prototype.hasOwnProperty.call(known, v)) return known[v];
+    return v === '(none)' ? 'ไม่มี' : v;
   }
 
-  function renderSummary() {
-    let html = '<thead><tr><th>Category</th><th>Objects in source</th><th>Objects in target</th>' +
-      '<th>Only in source</th><th>Only in target</th><th>Different</th><th>Cannot compare</th></tr></thead><tbody>';
-    META.summary.forEach(s => {
-      const zero = s[3] + s[4] + s[5] + s[6] === 0;
-      html += `<tr data-cat="${esc(s[0])}"${zero ? ' class="zero"' : ''}><td>${esc(s[0])}</td><td>${s[1]}</td><td>${s[2]}</td>` +
-        `<td${s[3] ? ` class="${STATUS.OnlyInSource.cls}"` : ''}>${s[3]}</td><td${s[4] ? ` class="${STATUS.OnlyInTarget.cls}"` : ''}>${s[4]}</td>` +
-        `<td${s[5] ? ' class="chg"' : ''}>${s[5]}</td><td${s[6] ? ' class="unk"' : ''}>${s[6]}</td></tr>`;
-    });
-    $('summary').innerHTML = html + '</tbody>';
+  // The text the engine writes where a definition exists but cannot be read ($HiddenDefinition).
+  const HIDDEN_DEFINITION = '-- definition not available (encrypted, CLR, or no VIEW DEFINITION permission)';
+
+  function toRows(data) {
+    return data.map((r, i) => ({
+      id: i, cat: r[0], obj: r[1], status: r[2], detail: r[3] || '', a: r[4], b: r[5],
+      group: r[6] ? { kind: r[6][0], key: r[6][1] } : null
+    }));
   }
 
-  function renderFilters() {
-    $('f-status').innerHTML = '<option value="all">All statuses</option>' +
-      Object.keys(STATUS).map(k => `<option value="${k}">${STATUS[k].label}</option>`).join('');
-    const cats = META.summary.filter(s => s[3] + s[4] + s[5] + s[6] > 0);
-    $('f-cat').innerHTML = '<option value="all">All categories</option>' +
-      cats.map(s => `<option value="${esc(s[0])}">${esc(s[0])} (${s[3] + s[4] + s[5] + s[6]})</option>`).join('');
-  }
+  const ENTRY_START = /^[A-Za-z]+: (?:source |not readable on )/;
+  const NOT_READABLE = /^([A-Za-z]+): not readable on (source|target|either side)( \(not compared\))?$/;
 
-  function matches(r) {
-    if (state.status !== 'all' && r.status !== state.status) return false;
-    if (state.cat !== 'all' && r.cat !== state.cat) return false;
-    if (state.q && r.obj.toLowerCase().indexOf(state.q) < 0 && r.detail.toLowerCase().indexOf(state.q) < 0) return false;
-    return true;
-  }
-
-  function renderResults() {
-    const list = rows.filter(matches);
-    $('count').textContent = `${list.length} of ${rows.length} shown`;
-    if (!rows.length) {
-      $('results').innerHTML = '<div class="panel empty">No differences found. The two schemas match.</div>';
-      return;
-    }
-    if (!list.length) {
-      $('results').innerHTML = '<div class="panel empty">Nothing matches the current filter.</div>';
-      return;
-    }
-    let html = '';
-    META.categories.forEach(cat => {
-      const items = list.filter(r => r.cat === cat);
-      if (!items.length) return;
-      html += `<section class="cat"><h2>${esc(cat)} <span class="muted">${items.length}</span></h2>` +
-        '<div class="panel"><table class="results"><tbody>';
-      items.forEach(r => {
-        const st = STATUS[r.status];
-        const hasDef = r.a !== null || r.b !== null;
-        const what = r.status === 'Different' ? 'diff' : 'definition';
-        const detail = r.detail ? r.detail.split('\n').map(l => `<div>${esc(l)}</div>`).join('') : '';
-        const btn = hasDef ? `<button class="toggle" data-id="${r.id}">Show ${what}</button>` : '';
-        html += `<tr><td class="st"><span class="tag ${st.cls}">${st.label}</span></td>` +
-          `<td class="obj">${esc(r.obj)}</td><td class="detail">${detail}${btn}</td></tr>`;
-        if (hasDef) html += `<tr class="defrow" id="def-${r.id}" hidden><td colspan="3"></td></tr>`;
+  // What the engine's detail text says, as data.
+  // - "only in" rows: "Prop: value; Prop: value" -> facts.
+  // - different rows: one line per property, "Prop: source A, target B" -> changes, shown as
+  //   from (what is there now) -> to (what it becomes). "Definition differs" -> code.
+  // - "Prop: not readable on source" -> notes.
+  // A line that cannot be read with certainty (a value that holds ", target " itself) goes to
+  // raw and is shown as the engine wrote it: never a guess at which value is whose.
+  function parseDetail(row) {
+    const out = { code: false, changes: [], facts: [], notes: [], raw: [] };
+    const detail = row.detail || '';
+    if (!detail) return out;
+    if (row.status === 'OnlyInSource' || row.status === 'OnlyInTarget') {
+      const names = PROPS[row.cat];
+      const splitter = names ? new RegExp('; (?=(?:' + names.join('|') + '): )') : /; (?=[A-Z][A-Za-z]*: )/;
+      detail.split(splitter).forEach(part => {
+        const at = part.indexOf(': ');
+        if (at < 1) { out.raw.push(part); return; }
+        const key = part.slice(0, at);
+        out.facts.push({ key, label: propLabel(row.cat, key), value: val(key, part.slice(at + 2)) });
       });
-      html += '</tbody></table></div></section>';
+      return out;
+    }
+    // One entry per line, but a value (a default, a check) can hold line breaks itself.
+    const entries = [];
+    detail.split('\n').forEach(line => {
+      if (!entries.length || line === 'Definition differs' || ENTRY_START.test(line)) entries.push(line);
+      else entries[entries.length - 1] += '\n' + line;
     });
-    $('results').innerHTML = html;
+    entries.forEach(text => {
+      if (text === 'Definition differs') { out.code = true; return; }
+      const hidden = NOT_READABLE.exec(text);
+      if (hidden) {
+        const side = hidden[2] === 'either side' ? SIDE.both : SIDE[hidden[2]];
+        out.notes.push({ key: hidden[1], side: hidden[2], text: propLabel(row.cat, hidden[1]) + ': อ่านไม่ได้ใน' + side + (hidden[3] ? ' จึงไม่ได้เทียบส่วนนี้' : '') });
+        return;
+      }
+      const m = /^([A-Za-z]+): source ([\s\S]*)$/.exec(text);
+      const sides = m ? m[2].split(', target ') : [];
+      if (sides.length !== 2) { out.raw.push(text); return; }
+      const source = val(m[1], sides[0]), target = val(m[1], sides[1]);
+      out.changes.push({ key: m[1], label: propLabel(row.cat, m[1]), from: TIMELINE ? source : target, to: TIMELINE ? target : source });
+    });
+    return out;
+  }
+
+  // The name of a column, index or constraint inside its table's card: the object name without
+  // the table. The engine writes "<table>.<name>", or "<table> (primary key)", "<table> (unique:
+  // columns)", "<table> (foreign key: ...)", "<table> (check: ...)" for one without a name of
+  // its own. The table is known from the group key, so nothing is guessed from the dots.
+  function leafOf(row) {
+    const g = row.group;
+    if (!g || TABLE_CHILDREN.indexOf(row.cat) < 0 || row.obj.slice(0, g.key.length) !== g.key) return { name: row.obj, kind: cat(row.cat), pk: false };
+    const rest = row.obj.slice(g.key.length);
+    if (rest.charAt(0) === '.') return { name: rest.slice(1), kind: cat(row.cat), pk: false };
+    const m = /^ \((primary key|unique: |foreign key: |check: )([\s\S]*)\)$/.exec(rest);
+    if (!m) return { name: row.obj, kind: cat(row.cat), pk: false };
+    if (m[1] === 'primary key') return { name: 'ของตารางนี้', kind: 'primary key', pk: true };
+    const kind = m[1] === 'unique: ' ? 'unique' : m[1] === 'check: ' ? 'check constraint' : 'foreign key';
+    return { name: 'ไม่มีชื่อ: ' + m[2], kind, pk: false };
+  }
+
+  // True when the sync script writes the view of this row again (CREATE OR ALTER VIEW), which
+  // drops every index the view has. The same test as the engine's.
+  function viewIsRewritten(self) {
+    return Boolean(self) && self.status === 'Different' && /(^|\n)(Definition differs|SetOptions:)/.test(self.detail) &&
+      !/(^|\n)(Type:|Definition: not readable)/.test(self.detail);
+  }
+
+  // One line on what happens to this row. ctx.self: the row of the table or view it belongs to.
+  function sentence(row, parsed, ctx) {
+    const self = ctx && ctx.self;
+    if (TIMELINE) {
+      if (row.status === 'OnlyInSource') return 'เคยมีในจุด "ก่อน" แต่จุด "หลัง" ไม่มีแล้ว';
+      if (row.status === 'OnlyInTarget') return 'จุด "ก่อน" ยังไม่มี เพิ่งมีในจุด "หลัง"';
+      if (row.status === 'Unverified') return 'อ่านค่าไม่ได้ จึงบอกไม่ได้ว่าเปลี่ยนหรือไม่';
+      return parsed.code ? 'โค้ดข้างในถูกแก้' + (parsed.changes.length ? ' และค่าด้านล่างเปลี่ยนจากที่ขีดฆ่าเป็นค่าใหม่' : '') : 'เปลี่ยนจากค่าที่ขีดฆ่าเป็นค่าใหม่';
+    }
+    if (row.status === 'Unverified') return 'อ่านค่าไม่ได้ จึงเทียบไม่ได้ และ sync ไม่เขียนคำสั่งให้';
+    if (row.status === 'OnlyInSource') {
+      if (row.cat === 'Table') {
+        const skipped = ['Index', 'Check constraint', 'Foreign key'].filter(c => (meta.categories || []).indexOf(c) < 0).map(cat);
+        return 'ปลายทางยังไม่มีตารางนี้ sync จะสร้างทั้งตาราง พร้อมคอลัมน์และ primary key' +
+          (skipped.length ? ' (ไม่รวม ' + skipped.join(', ') + ' เพราะไม่ได้เลือกเทียบหมวดนั้น)' : ' รวมทั้ง index, check และ foreign key ของมัน');
+      }
+      if (row.cat === 'Synonym') return 'ปลายทางยังไม่มี synonym นี้ sync จะสร้างให้ (ถ้าชี้ไปฐานอื่น จะเขียนไว้เป็นหมายเหตุให้ตรวจก่อน)';
+      // A module whose text cannot be read in the source cannot be written for the target.
+      if (MODULES.indexOf(row.cat) >= 0 && row.a === HIDDEN_DEFINITION) {
+        return 'ปลายทางยังไม่มี' + catWord(row.cat) + 'นี้ แต่โค้ดของต้นแบบอ่านไม่ได้ sync จึงสร้างให้ไม่ได้ มีแต่หมายเหตุ';
+      }
+      return 'ปลายทางยังไม่มี' + catWord(row.cat) + 'นี้ sync จะสร้างให้';
+    }
+    if (row.status === 'OnlyInTarget') {
+      if (row.cat === 'Index' && row.group && row.group.kind === 'view' && viewIsRewritten(self)) {
+        return 'มีแค่ในปลายทาง แต่ sync จะเขียน view นี้ใหม่ ซึ่งทำให้ index นี้หายไปด้วย (rollback script สร้างคืนให้)';
+      }
+      return 'มีแค่ในปลายทาง sync ไม่ลบให้ แค่เขียนคำสั่งลบไว้เป็นหมายเหตุ';
+    }
+    // Different: what the sync script does depends on what differs.
+    const keys = parsed.changes.map(c => c.key);
+    const has = key => keys.indexOf(key) >= 0;
+    const only = key => !parsed.code && keys.length > 0 && keys.every(k => k === key);
+    const BY_HAND = ' sync เขียนคำสั่งไว้เป็นหมายเหตุให้ทำเอง';
+    if (row.cat === 'Database') return 'sync ไม่แก้ค่าของฐานข้อมูลให้ แค่เขียนไว้เป็นหมายเหตุ';
+    if (row.cat === 'User-defined type') return 'type แก้ตรงๆ ไม่ได้ ต้องลบแล้วสร้างใหม่' + BY_HAND;
+    if (row.cat === 'Sequence') return 'sync จะแก้ให้ตรงต้นแบบ ยกเว้นชนิดข้อมูลและค่าเริ่มที่ ซึ่งแก้ไม่ได้';
+    if (row.cat === 'Synonym') return 'sync จะลบแล้วสร้างใหม่ให้ชี้ตามต้นแบบ (ถ้าชี้ไปฐานอื่น จะเขียนไว้เป็นหมายเหตุให้ตรวจก่อน)';
+    if (row.cat === 'Column') {
+      if (has('Identity') || has('Computed')) return 'IDENTITY และสูตรคำนวณแก้ด้วยคำสั่งไม่ได้ ต้องสร้างคอลัมน์ใหม่' + BY_HAND;
+      if (only('Ordinal')) return 'ลำดับคอลัมน์ต่างกัน sync ไม่ย้ายให้ (ต้องสร้างตารางใหม่ถึงจะย้ายได้)';
+      // ALTER COLUMN says the type again, and a type that could not be read cannot be written.
+      if ((has('Nullable') || has('Collation')) && parsed.notes.some(n => n.key === 'Type')) {
+        return 'ชนิดข้อมูลอ่านไม่ได้ฝั่งหนึ่ง และคำสั่งแก้ต้องระบุชนิด sync จึงไม่เขียนคำสั่งให้ มีแต่หมายเหตุ';
+      }
+      // Nothing is struck through when no line of the detail could be read as from -> to.
+      if (!parsed.changes.length) return 'sync จะแก้ปลายทางให้ตรงต้นแบบ';
+      return 'sync จะแก้ปลายทางจากค่าที่ขีดฆ่าเป็นค่าใหม่' + (has('Ordinal') ? ' ยกเว้นลำดับคอลัมน์ ซึ่ง sync ไม่ย้ายให้' : '');
+    }
+    if (TABLE_CHILDREN.indexOf(row.cat) >= 0) {
+      if (leafOf(row).pk) return 'primary key ต่างกัน ต้องลบ foreign key ที่อ้างถึงก่อน' + BY_HAND;
+      if (only('Name')) return 'ของข้างในเหมือนกัน ต่างกันแค่ชื่อ sync จะเปลี่ยนชื่อให้ตรงต้นแบบ';
+      if (only('State')) return 'sync จะเปิดหรือปิดให้ตรงต้นแบบ';
+      // The model's own filter cannot be read: nothing can be written to put in its place.
+      if (parsed.notes.some(n => n.key === 'Filter' && n.side !== 'target')) return 'เงื่อนไขกรองของต้นแบบอ่านไม่ได้ sync จึงไม่แก้ให้ มีแต่หมายเหตุ';
+      return 'sync จะลบของเดิมแล้วสร้างใหม่ตามต้นแบบ';
+    }
+    // Views, procedures, functions and triggers.
+    const hiddenCode = parsed.notes.some(n => n.key === 'Definition');
+    if (only('State')) return 'sync จะเปิดหรือปิดให้ตรงต้นแบบ';
+    if (hiddenCode) return 'โค้ดอ่านไม่ได้ฝั่งหนึ่ง sync จึงไม่เขียนคำสั่งให้ มีแต่หมายเหตุ';
+    if (has('Type') || has('Table')) return 'แก้ด้วย ALTER ไม่ได้ ต้องลบแล้วสร้างใหม่' + BY_HAND;
+    if (parsed.code) return 'โค้ดข้างในต่างกัน sync จะแทนด้วยโค้ดของต้นแบบ';
+    return 'sync จะสร้างซ้ำด้วยโค้ดเดิมและค่า SET ของต้นแบบ';
+  }
+
+  // For a row whose only difference is the SET options a module was created under: what that
+  // means, in two short lines. Nothing for any other row.
+  function setOptionsHint(parsed) {
+    if (parsed.code || parsed.changes.length !== 1 || parsed.changes[0].key !== 'SetOptions' || parsed.notes.length || parsed.raw.length) return [];
+    const values = parsed.changes[0].from + ' ' + parsed.changes[0].to;
+    const lines = ['โค้ดเหมือนกันทุกบรรทัด ต่างกันแค่ค่า SET ที่ถูกบันทึกไว้ตอนสร้าง object นี้ (ค่า "ปกติ" คือ ON)'];
+    const quoted = 'QUOTED_IDENTIFIER OFF: ข้อความใน "..." ถูกอ่านเป็นข้อความธรรมดา และ object แบบนี้แก้ข้อมูลในตารางที่มี filtered index หรือ indexed view ไม่ได้ มักเกิดจากสร้างด้วยเครื่องมืออย่าง sqlcmd ที่ไม่ใส่ -I';
+    const ansi = 'ANSI_NULLS OFF: เทียบ = NULL แล้วเป็นจริงได้ (แบบเก่า)';
+    const hasQuoted = values.indexOf('QUOTED_IDENTIFIER OFF') >= 0, hasAnsi = values.indexOf('ANSI_NULLS OFF') >= 0;
+    if (hasQuoted && hasAnsi) lines.push(quoted + ' ส่วน ' + ansi);
+    else if (hasQuoted) lines.push(quoted);
+    else if (hasAnsi) lines.push(ansi);
+    return lines;
+  }
+
+  // The facts worth showing for a row that is on one side only. Left out: the object type of a
+  // module (the category says it) and the table of a trigger (its card, or its name, says it).
+  function shownFacts(row, parsed) {
+    if (MODULES.indexOf(row.cat) < 0) return parsed.facts;
+    return parsed.facts.filter(f => f.key !== 'Type' && f.key !== 'Table');
+  }
+
+  // Groups the rows: one group per table (the table's own row, if it has one, and everything
+  // on it), and the rest. A view with rows on it (its indexes, its triggers) is one entry of the
+  // rest, with those rows under it. Keys are matched ignoring case, as the engine matches names.
+  // order: the categories in report order.
+  function groupRows(rows, order) {
+    const fold = key => String(key).toLowerCase();
+    const tables = new Map(), views = new Map(), others = [];
+    rows.forEach(row => {
+      const g = row.group;
+      if (!g) { others.push({ kind: 'single', cat: row.cat, key: '', name: row.obj, self: row, items: [] }); return; }
+      const map = g.kind === 'view' ? views : tables;
+      const id = fold(g.key);
+      if (!map.has(id)) {
+        const group = { kind: g.kind, cat: g.kind === 'view' ? 'View' : 'Table', key: g.key, name: g.key, self: null, items: [] };
+        map.set(id, group);
+        if (g.kind === 'view') others.push(group);
+      }
+      const group = map.get(id);
+      if (row.cat === group.cat) { group.self = row; group.name = row.obj; }
+      else group.items.push(row);
+    });
+    const rank = c => { const i = (order || []).indexOf(c); return i < 0 ? 999 : i; };
+    const byName = (a, b) => fold(a.name) < fold(b.name) ? -1 : fold(a.name) > fold(b.name) ? 1 : 0;
+    const sortItems = group => group.items.sort((a, b) => rank(a.cat) - rank(b.cat) || a.id - b.id);
+    const tableList = Array.from(tables.values()).sort(byName);
+    tableList.forEach(sortItems);
+    others.forEach(sortItems);
+    others.sort((a, b) => rank(a.cat) - rank(b.cat) || byName(a, b));
+    return { tables: tableList, others };
+  }
+
+  // The chip in the header of a table's card (or of a view that has rows on it).
+  function groupStatus(group) {
+    const thing = group.kind === 'view' ? 'view ' : 'ตาราง';
+    const whole = group.kind === 'view' ? '' : 'ทั้งตาราง';
+    const self = group.self;
+    if (self && self.status === 'OnlyInSource') {
+      return { cls: KIND.OnlyInSource.cls, sym: KIND.OnlyInSource.sym, text: TIMELINE ? thing + 'หายไป' + whole : thing + 'ใหม่' + whole };
+    }
+    if (self && self.status === 'OnlyInTarget') {
+      return { cls: KIND.OnlyInTarget.cls, sym: KIND.OnlyInTarget.sym, text: TIMELINE ? thing + 'เพิ่มขึ้นมา' + whole : thing + 'เกินมา' + whole };
+    }
+    const all = (self ? [self] : []).concat(group.items);
+    if (all.length && all.every(r => r.status === 'Unverified')) return { cls: 'unk', sym: '?', text: 'มีของที่ตรวจไม่ได้' };
+    return { cls: 'chg', sym: '~', text: TIMELINE ? 'ของข้างในเปลี่ยนไป' : 'มีของข้างในต่างกัน' };
   }
 
   function lineKey(s) {
     // Same rule as the engine: CREATE OR ALTER is stored as "CREATE   PROCEDURE", so that run
     // of keywords does not count as a change.
     let k = s.replace(/^(\s*)CREATE\s+(?:OR\s+ALTER\s+)?/i, '$1CREATE ');
-    if (META.ignoreWhitespace) k = k.replace(/\s+/g, ' ').trim();
-    if (META.ignoreCase) k = k.toLowerCase();
+    if (meta.ignoreWhitespace) k = k.replace(/\s+/g, ' ').trim();
+    if (meta.ignoreCase) k = k.toLowerCase();
     return k;
   }
 
@@ -307,8 +553,10 @@ const DATA = __DATA_JSON__;
     return ops;
   }
 
-  // a is the "before" side (red, -) and b the "after" side (green, +).
-  function renderDiff(a, b, aName, bName) {
+  // The unified diff of a module that differs. a is the "before" side (red, -) and b the "after"
+  // side (green, +): the target now and the source model, or the two points in time of a drift.
+  function renderDiff(row) {
+    const a = TIMELINE ? row.a : row.b, b = TIMELINE ? row.b : row.a;
     const ops = diffLines(a.split('\n'), b.split('\n'));
     const CONTEXT = 3;
     const show = new Uint8Array(ops.length);
@@ -317,7 +565,7 @@ const DATA = __DATA_JSON__;
       for (let k = Math.max(0, i - CONTEXT); k <= Math.min(ops.length - 1, i + CONTEXT); k++) show[k] = 1;
     });
     let html = '', la = 0, lb = 0, hidden = 0;
-    const gap = count => `<tr class="gap"><td colspan="4">${count} unchanged line${count === 1 ? '' : 's'}</td></tr>`;
+    const gap = count => `<tr class="gap"><td colspan="4">… ${count} บรรทัดที่เหมือนกัน</td></tr>`;
     ops.forEach((op, i) => {
       const t = op[0];
       if (t !== '+') la++;
@@ -326,65 +574,244 @@ const DATA = __DATA_JSON__;
       if (hidden) { html += gap(hidden); hidden = 0; }
       const cls = t === '-' ? 'del' : t === '+' ? 'add' : 'ctx';
       html += `<tr class="${cls}"><td class="ln">${t !== '+' ? la : ''}</td><td class="ln">${t !== '-' ? lb : ''}</td>` +
-        `<td class="sig">${t === ' ' ? '' : t}</td><td>${esc(op[1])}</td></tr>`;
+        `<td class="sig">${t === '-' ? '−' : t === '+' ? '+' : ''}</td><td>${esc(op[1])}</td></tr>`;
     });
     if (hidden) html += gap(hidden);
-    return `<div class="legend">- ${aName} &nbsp; + ${bName} &nbsp; (line numbers: ${aName.split(' ')[0]} | ${bName.split(' ')[0]})</div>` +
-      `<div class="code-wrap"><table class="code">${html}</table></div>`;
+    const cap = TIMELINE
+      ? '<span><span class="m del">− แดง</span> = บรรทัดเดิมในจุด "ก่อน" (หายไป)</span><span><span class="m add">+ เขียว</span> = บรรทัดใหม่ในจุด "หลัง"</span><span>เลขบรรทัด: ก่อน | หลัง</span>'
+      : '<span><span class="m del">− แดง</span> = บรรทัดในปลายทางตอนนี้ (จะหายไป)</span><span><span class="m add">+ เขียว</span> = บรรทัดจากต้นแบบ (จะใส่แทน)</span><span>เลขบรรทัด: ปลายทาง | ต้นแบบ</span>';
+    return `<div class="code"><div class="cap">${cap}</div><table>${html}</table></div>`;
   }
 
-  function renderPlain(text) {
+  // The code of a module that is on one side only.
+  function renderPlain(row) {
+    const fromSource = row.a !== null && row.a !== undefined;
+    const text = fromSource ? row.a : row.b;
+    const cap = TIMELINE
+      ? (fromSource ? 'โค้ดในจุด "ก่อน" (จุด "หลัง" ไม่มีแล้ว)' : 'โค้ดในจุด "หลัง"')
+      : (fromSource ? 'โค้ดของต้นแบบ (sync จะสร้างในปลายทาง)' : 'โค้ดของปลายทาง');
     const lines = text.split('\n').map((l, i) => `<tr><td class="ln">${i + 1}</td><td>${esc(l)}</td></tr>`).join('');
-    return `<div class="code-wrap"><table class="code">${lines}</table></div>`;
+    return `<div class="code"><div class="cap">${cap}</div><table>${lines}</table></div>`;
   }
 
-  $('cards').addEventListener('click', e => {
-    const card = e.target.closest('.card');
+  return {
+    TIMELINE, KIND, CAT, SIDE, HIDDEN_DEFINITION, esc, cat, catWord, propLabel, val, toRows, parseDetail, leafOf, sentence,
+    setOptionsHint, shownFacts, groupRows, groupStatus, lineKey, diffLines, renderDiff, renderPlain
+  };
+}
+
+// The page itself. Not run where there is no document (the tests).
+if (typeof document !== 'undefined') (function () {
+  'use strict';
+  const core = createReportCore(META);
+  const KIND = core.KIND, esc = core.esc, TIMELINE = core.TIMELINE;
+  const rows = core.toRows(DATA);
+  const parsed = rows.map(core.parseDetail);
+  const groups = core.groupRows(rows, META.categories);
+  const state = { q: '', status: 'all', cat: 'all' };
+  const $ = id => document.getElementById(id);
+
+  // ---- header ----
+  const title = TIMELINE ? 'โครงสร้างฐานข้อมูลที่เปลี่ยนไป (schema drift)' : 'เทียบโครงสร้างฐานข้อมูล';
+  document.title = title;
+  $('title').textContent = title;
+  $('m-source').textContent = META.source;
+  $('m-target').textContent = META.target;
+  if (TIMELINE) {
+    $('role-source').textContent = 'ก่อน: จุดเริ่ม (จาก)';
+    $('role-target').textContent = 'หลัง: จุดที่เอามาเทียบ (ถึง)';
+    $('arrow-text').textContent = 'เวลาผ่านไป';
+    $('lead').textContent = 'รายงานนี้บอกว่าโครงสร้างของฐานข้อมูลเปลี่ยนไปอย่างไรจากจุด "ก่อน" ถึงจุด "หลัง" (ไม่ได้จะ sync ไปทางไหน) กดกล่องด้านล่างเพื่อดูเฉพาะแบบนั้น';
+  } else {
+    $('card-source').classList.add('model');
+    $('role-source').textContent = 'ต้นแบบ: ตัวที่ถูกต้อง (source)';
+    $('role-target').textContent = 'ปลายทาง: ตัวที่จะถูกปรับ (target)';
+    $('arrow-text').textContent = 'ปรับให้เหมือน';
+    $('lead').textContent = 'รายงานนี้บอกว่าปลายทางต่างจากต้นแบบตรงไหน และไฟล์ sync จะทำอะไรกับปลายทางเพื่อให้เหมือนต้นแบบ (รายงานนี้ไม่ได้แก้ฐานข้อมูลใดๆ) กดกล่องด้านล่างเพื่อดูเฉพาะแบบนั้น';
+  }
+  const options = [
+    META.ignoreWhitespace ? 'ไม่สนช่องว่าง' : '', META.ignoreCase ? 'ไม่สนตัวพิมพ์เล็ก/ใหญ่' : '',
+    META.ignoreCollation ? 'ไม่เทียบ collation' : '', META.compareColumnOrder ? 'เทียบลำดับคอลัมน์ด้วย' : ''
+  ].filter(Boolean);
+  $('m-options').textContent = 'สร้างเมื่อ ' + META.generated + ' · หมวดที่เทียบ: ' + META.categories.map(core.cat).join(', ') +
+    (options.length ? ' · ตัวเลือก: ' + options.join(', ') : '');
+
+  // A side read without VIEW DEFINITION: objects hidden from that login show as being on the
+  // other side only, and definitions it cannot read as "cannot check".
+  const incomplete = (META.noViewDefinition || []).map(w => {
+    const seenAs = KIND[w[0] === 'target' ? 'OnlyInSource' : 'OnlyInTarget'].t;
+    return `<div class="warn"><b>ผลเทียบไม่ครบ</b>login ${esc(w[1])} ไม่มีสิทธิ์ VIEW DEFINITION ใน${core.SIDE[w[0]]}: ` +
+      `ของที่ login นี้มองไม่เห็นจะขึ้นเป็น "${seenAs}" ทั้งที่อาจมีอยู่จริง และโค้ดที่อ่านไม่ได้จะขึ้นเป็น "${KIND.Unverified.t}"</div>`;
+  });
+  // Any other warning of the engine is shown as it wrote it.
+  const otherWarnings = (META.warnings || []).filter(w => !(incomplete.length && /has no VIEW DEFINITION permission/.test(w)))
+    .map(w => `<div class="warn"><b>ผลเทียบไม่ครบ</b>${esc(w)}</div>`);
+  $('warnings').innerHTML = incomplete.concat(otherWarnings).join('');
+  $('warnings').hidden = !(incomplete.length + otherWarnings.length);
+
+  const total = s => rows.filter(r => r.status === s).length;
+
+  function renderLegend() {
+    $('legend').innerHTML = Object.keys(KIND).map(k => {
+      const K = KIND[k], on = state.status === k;
+      return `<button class="kind ${K.cls}${on ? ' on' : ''}" data-status="${k}" aria-pressed="${on}">` +
+        `<span class="top"><span class="n">${total(k)}</span><span class="t">${K.sym} ${K.t}</span></span><span class="d">${esc(K.d)}</span></button>`;
+    }).join('');
+  }
+
+  function renderFilters() {
+    const used = META.categories.filter(c => rows.some(r => r.cat === c));
+    $('f-cat').innerHTML = `<option value="all">ทุกชนิด (${rows.length})</option>` +
+      used.map(c => `<option value="${esc(c)}">${esc(core.cat(c))} (${rows.filter(r => r.cat === c).length})</option>`).join('');
+  }
+
+  function matches(r) {
+    if (state.status !== 'all' && r.status !== state.status) return false;
+    if (state.cat !== 'all' && r.cat !== state.cat) return false;
+    if (!state.q) return true;
+    const text = r.obj + '\n' + r.detail + '\n' + (r.group ? r.group.key : '');
+    return text.toLowerCase().indexOf(state.q) >= 0;
+  }
+
+  // An object name: a long one may break after a dot or an underscore before it breaks anywhere.
+  const nameHtml = s => esc(s).replace(/([._])(?=\S)/g, '$1<wbr>');
+  const chip = s => `<span class="chip ${s.cls}">${s.sym} ${esc(s.text)}</span>`;
+  const rowChip = r => chip({ cls: KIND[r.status].cls, sym: KIND[r.status].sym, text: KIND[r.status].t });
+  const symbol = r => `<span class="sym ${KIND[r.status].cls}" title="${KIND[r.status].t}">${KIND[r.status].sym}</span>`;
+
+  function codeHtml(r) {
+    const one = r.a !== null ? r.a : r.b;
+    if (one === null) return '';
+    if (r.status !== 'Different' && one === core.HIDDEN_DEFINITION) return '<div class="say">อ่านโค้ดไม่ได้ (ถูกเข้ารหัส เป็น CLR หรือไม่มีสิทธิ์ VIEW DEFINITION)</div>';
+    return `<button class="linkbtn" data-code="${r.id}" aria-expanded="false">${codeLabel(r, false)}</button><div class="codebox" id="code-${r.id}" hidden></div>`;
+  }
+  const codeLabel = (r, open) => (open ? 'ซ่อนโค้ด' : r.status === 'Different' ? 'ดูว่าโค้ดต่างกันตรงไหน' : 'ดูโค้ด');
+
+  // What is said about one row: the sentence, then the details.
+  function bodyHtml(r, self) {
+    const p = parsed[r.id];
+    let h = `<div class="say">${esc(core.sentence(r, p, { self }))}</div>`;
+    if (p.changes.length) {
+      h += '<div class="changes">' + p.changes.map(c =>
+        `<div class="ch"><span class="p">${esc(c.label)}</span><span class="ft"><span class="sr">เดิม </span><span class="from">${esc(c.from)}</span>` +
+        `<span class="arr" aria-hidden="true">&rarr;</span><span class="sr">ใหม่ </span><span class="to">${esc(c.to)}</span></span></div>`).join('') + '</div>';
+    }
+    const facts = core.shownFacts(r, p);
+    if (facts.length) h += '<div class="facts">' + facts.map(f => `<span>${esc(f.label)}: <b>${esc(f.value)}</b></span>`).join('') + '</div>';
+    h += p.notes.map(n => `<div class="say">${esc(n.text)}</div>`).join('');
+    h += p.raw.map(t => `<div class="rawline">${esc(t)}</div>`).join('');
+    const hint = core.setOptionsHint(p);
+    if (hint.length) h += `<div class="hint">${hint.map(esc).join('<br>')}</div>`;
+    return h + codeHtml(r);
+  }
+
+  // One row of a table's card, or of a view: symbol, what it is, what happens.
+  function itemHtml(r, self) {
+    const leaf = core.leafOf(r);
+    return `<div class="titem">${symbol(r)}<div class="what">${esc(leaf.kind)}<b>${nameHtml(leaf.name)}</b></div>` +
+      `<div class="body"><span class="sr">${KIND[r.status].t}</span>${bodyHtml(r, self)}</div></div>`;
+  }
+
+  // The rows of a group that pass the filter; the group's own row counts as one.
+  function visible(group) {
+    const self = group.self && matches(group.self) ? group.self : null;
+    const items = group.items.filter(matches);
+    return { self, items, count: items.length + (self ? 1 : 0) };
+  }
+
+  function tableHtml(group, v) {
+    let h = `<div class="panel tcard"><div class="tcard-h"><span class="obj">${nameHtml(group.name)}</span>${chip(core.groupStatus(group))}` +
+      `<span class="note">${v.count} รายการ</span></div>`;
+    if (v.self) {
+      h += `<div class="titem">${symbol(v.self)}<div class="what">${esc(core.cat('Table'))}<b>ทั้งตาราง</b></div>` +
+        `<div class="body">${bodyHtml(v.self, null)}</div></div>`;
+    }
+    return h + v.items.map(r => itemHtml(r, group.self)).join('') + '</div>';
+  }
+
+  function otherHtml(group, v) {
+    const self = v.self;
+    const name = group.kind === 'single' && group.cat === 'Database' ? core.cat('Database') : group.name;
+    let h = `<div class="row"><div>${self ? rowChip(self) : chip(core.groupStatus(group))}</div><div class="body">` +
+      `<div class="obj">${nameHtml(name)}${group.cat === 'Database' ? '' : ` <span class="note">${esc(core.cat(group.cat))}</span>`}</div>`;
+    if (self) h += bodyHtml(self, null);
+    else if (group.self) h += '<div class="say">ตัว view ไม่ตรงกับตัวกรองนี้ ด้านล่างคือของที่อยู่บน view นี้</div>';
+    else h += `<div class="say">${TIMELINE ? 'ตัว view เหมือนเดิม ที่เปลี่ยนคือของที่อยู่บน view นี้' : 'ตัว view เหมือนกัน ที่ต่างคือของที่อยู่บน view นี้'}</div>`;
+    if (v.items.length) h += '<div class="kids">' + v.items.map(r => itemHtml(r, group.self)).join('') + '</div>';
+    return h + '</div></div>';
+  }
+
+  function renderResults() {
+    const shown = rows.filter(matches).length;
+    $('count').textContent = `แสดง ${shown} จาก ${rows.length} รายการ`;
+    $('clear').hidden = state.status === 'all' && state.cat === 'all' && !state.q;
+    if (!rows.length) {
+      $('results').innerHTML = '<div class="panel empty">' + (incomplete.length + otherWarnings.length
+        ? 'ไม่พบความต่างในส่วนที่อ่านได้ (ผลเทียบไม่ครบ ดูคำเตือนด้านบน)'
+        : TIMELINE ? 'ไม่มีอะไรเปลี่ยน โครงสร้างเหมือนเดิม' : 'ไม่มีความต่าง โครงสร้างตรงกัน') + '</div>';
+      return;
+    }
+    if (!shown) {
+      $('results').innerHTML = '<div class="panel empty">ไม่มีรายการที่ตรงกับตัวกรอง</div>';
+      return;
+    }
+    let html = '';
+    const tables = groups.tables.map(g => [g, visible(g)]).filter(x => x[1].count);
+    if (tables.length) {
+      html += `<div class="group-h"><h2>ตาราง</h2><span class="note">${tables.length} ตาราง รวมคอลัมน์ index constraint และ trigger ของแต่ละตาราง</span></div>` +
+        '<div class="tables">' + tables.map(x => tableHtml(x[0], x[1])).join('') + '</div>';
+    }
+    const others = groups.others.map(g => [g, visible(g)]).filter(x => x[1].count);
+    if (others.length) {
+      html += '<div class="group-h"><h2>โค้ดและของอื่น</h2><span class="note">view, procedure, function, type, sequence, synonym, schema, database trigger</span></div>' +
+        '<div class="panel rows">' + others.map(x => otherHtml(x[0], x[1])).join('') + '</div>';
+    }
+    $('results').innerHTML = html;
+  }
+
+  function renderTotals() {
+    $('totals').innerHTML = '<summary>ดูจำนวน object ที่อ่านได้ของแต่ละฝั่ง</summary><table><thead><tr><th>หมวด</th>' +
+      `<th>${TIMELINE ? 'ก่อน' : 'ต้นแบบ'}</th><th>${TIMELINE ? 'หลัง' : 'ปลายทาง'}</th><th>รายการในรายงาน</th></tr></thead><tbody>` +
+      META.summary.map(s => `<tr><td>${esc(core.cat(s[0]))}</td><td>${s[1]}</td><td>${s[2]}</td><td>${s[3] + s[4] + s[5] + s[6]}</td></tr>`).join('') +
+      '</tbody></table>';
+  }
+
+  function refresh() { renderLegend(); renderResults(); }
+
+  $('legend').addEventListener('click', e => {
+    const card = e.target.closest('.kind');
     if (!card) return;
-    state.status = card.dataset.status;
-    $('f-status').value = state.status;
-    renderCards();
-    renderResults();
+    state.status = state.status === card.dataset.status ? 'all' : card.dataset.status;
+    refresh();
   });
-
-  $('summary').addEventListener('click', e => {
-    const tr = e.target.closest('tr[data-cat]');
-    if (!tr || tr.classList.contains('zero')) return;
-    state.cat = tr.dataset.cat;
-    $('f-cat').value = state.cat;
-    renderResults();
-    $('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
-  });
-
   let timer = 0;
   $('q').addEventListener('input', e => {
     clearTimeout(timer);
     timer = setTimeout(() => { state.q = e.target.value.trim().toLowerCase(); renderResults(); }, 150);
   });
-  $('f-status').addEventListener('change', e => { state.status = e.target.value; renderCards(); renderResults(); });
   $('f-cat').addEventListener('change', e => { state.cat = e.target.value; renderResults(); });
-
+  $('clear').addEventListener('click', () => {
+    state.q = ''; state.status = 'all'; state.cat = 'all';
+    $('q').value = ''; $('f-cat').value = 'all';
+    refresh();
+  });
   $('results').addEventListener('click', e => {
-    const btn = e.target.closest('button.toggle');
+    const btn = e.target.closest('[data-code]');
     if (!btn) return;
-    const r = rows[Number(btn.dataset.id)];
-    const tr = $('def-' + r.id);
-    if (!tr.dataset.ready) {
-      let html;
-      if (r.a === null || r.b === null) html = renderPlain(r.a !== null ? r.a : r.b);
-      else if (TIMELINE) html = renderDiff(r.a, r.b, 'source (from)', 'target (to)');
-      else html = renderDiff(r.b, r.a, 'target (current)', 'source (model)');
-      tr.firstElementChild.innerHTML = html;
-      tr.dataset.ready = '1';
+    const r = rows[Number(btn.dataset.code)];
+    const box = $('code-' + r.id);
+    if (!box.dataset.ready) {
+      box.innerHTML = r.a === null || r.b === null ? core.renderPlain(r) : core.renderDiff(r);
+      box.dataset.ready = '1';
     }
-    tr.hidden = !tr.hidden;
-    btn.textContent = (tr.hidden ? 'Show ' : 'Hide ') + (r.status === 'Different' ? 'diff' : 'definition');
+    box.hidden = !box.hidden;
+    btn.setAttribute('aria-expanded', String(!box.hidden));
+    btn.textContent = codeLabel(r, !box.hidden);
   });
 
-  renderCards();
-  renderSummary();
   renderFilters();
-  renderResults();
+  renderTotals();
+  refresh();
 })();
 </script>
 </body>

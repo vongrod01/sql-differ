@@ -307,6 +307,66 @@
           "Schema": "dbo",
           "Table": "Orders"
         }
+      },
+      "dbo.Sales.Amount": {
+        "Definition": null,
+        "Name": "dbo.Sales.Amount",
+        "ObjectName": "",
+        "Parent": "dbo.Sales",
+        "Props": {
+          "Collation": "",
+          "Computed": "",
+          "Default": "",
+          "Identity": "",
+          "Nullable": "NOT NULL",
+          "Ordinal": "3",
+          "Type": "int"
+        },
+        "Sql": {
+          "Name": "Amount",
+          "Schema": "dbo",
+          "Table": "Sales"
+        }
+      },
+      "dbo.Sales.Id": {
+        "Definition": null,
+        "Name": "dbo.Sales.Id",
+        "ObjectName": "",
+        "Parent": "dbo.Sales",
+        "Props": {
+          "Collation": "",
+          "Computed": "",
+          "Default": "",
+          "Identity": "",
+          "Nullable": "NOT NULL",
+          "Ordinal": "1",
+          "Type": "int"
+        },
+        "Sql": {
+          "Name": "Id",
+          "Schema": "dbo",
+          "Table": "Sales"
+        }
+      },
+      "dbo.Sales.Region": {
+        "Definition": null,
+        "Name": "dbo.Sales.Region",
+        "ObjectName": "",
+        "Parent": "dbo.Sales",
+        "Props": {
+          "Collation": "Thai_CI_AS",
+          "Computed": "",
+          "Default": "",
+          "Identity": "",
+          "Nullable": "NOT NULL",
+          "Ordinal": "2",
+          "Type": "varchar(10)"
+        },
+        "Sql": {
+          "Name": "Region",
+          "Schema": "dbo",
+          "Table": "Sales"
+        }
       }
     },
     "Database": {
@@ -502,6 +562,111 @@
           "Schema": "dbo",
           "Table": "Orders"
         }
+      },
+      "dbo.Sales|PK": {
+        "Definition": null,
+        "Name": "dbo.Sales (primary key)",
+        "ObjectName": "PK_Sales",
+        "Parent": "dbo.Sales",
+        "Props": {
+          "Columns": "Id",
+          "Filter": "",
+          "Include": "",
+          "Kind": "PRIMARY KEY",
+          "Name": "PK_Sales",
+          "Type": "CLUSTERED"
+        },
+        "Sql": {
+          "Includes": [],
+          "IsSystemNamed": false,
+          "KeyParts": [
+            {
+              "Desc": false,
+              "Name": "Id"
+            }
+          ],
+          "Name": "PK_Sales",
+          "Schema": "dbo",
+          "Table": "Sales"
+        }
+      },
+      "dbo.vSalesByRegion|CIX_vSalesByRegion": {
+        "Definition": null,
+        "Name": "dbo.vSalesByRegion.CIX_vSalesByRegion",
+        "ObjectName": "CIX_vSalesByRegion",
+        "Parent": "dbo.vSalesByRegion",
+        "Props": {
+          "Columns": "Region",
+          "Filter": "",
+          "Include": "",
+          "Kind": "UNIQUE INDEX",
+          "Type": "CLUSTERED"
+        },
+        "Sql": {
+          "Includes": [],
+          "IsSystemNamed": false,
+          "KeyParts": [
+            {
+              "Desc": false,
+              "Name": "Region"
+            }
+          ],
+          "Name": "CIX_vSalesByRegion",
+          "Schema": "dbo",
+          "Table": "vSalesByRegion"
+        }
+      },
+      "dbo.vSalesByRegion|IX_vSalesByRegion_Total": {
+        "Definition": null,
+        "Name": "dbo.vSalesByRegion.IX_vSalesByRegion_Total",
+        "ObjectName": "IX_vSalesByRegion_Total",
+        "Parent": "dbo.vSalesByRegion",
+        "Props": {
+          "Columns": "Total",
+          "Filter": "",
+          "Include": "",
+          "Kind": "INDEX",
+          "Type": "NONCLUSTERED"
+        },
+        "Sql": {
+          "Includes": [],
+          "IsSystemNamed": false,
+          "KeyParts": [
+            {
+              "Desc": false,
+              "Name": "Total"
+            }
+          ],
+          "Name": "IX_vSalesByRegion_Total",
+          "Schema": "dbo",
+          "Table": "vSalesByRegion"
+        }
+      },
+      "dbo.vSalesTotals|CIX_vSalesTotals": {
+        "Definition": null,
+        "Name": "dbo.vSalesTotals.CIX_vSalesTotals",
+        "ObjectName": "CIX_vSalesTotals",
+        "Parent": "dbo.vSalesTotals",
+        "Props": {
+          "Columns": "Id",
+          "Filter": "",
+          "Include": "",
+          "Kind": "UNIQUE INDEX",
+          "Type": "CLUSTERED"
+        },
+        "Sql": {
+          "Includes": [],
+          "IsSystemNamed": false,
+          "KeyParts": [
+            {
+              "Desc": false,
+              "Name": "Id"
+            }
+          ],
+          "Name": "CIX_vSalesTotals",
+          "Schema": "dbo",
+          "Table": "vSalesTotals"
+        }
       }
     },
     "Schema": {},
@@ -655,9 +820,80 @@
           "Name": "Orders",
           "Schema": "dbo"
         }
+      },
+      "dbo.Sales": {
+        "Definition": null,
+        "Name": "dbo.Sales",
+        "ObjectName": "",
+        "Parent": "",
+        "Props": {},
+        "Sql": {
+          "Name": "Sales",
+          "Schema": "dbo"
+        }
       }
     },
     "Trigger": {
+      "(database trigger)|trDdlChanged": {
+        "Definition": "-- Database triggers (DDL triggers: ON DATABASE). They have no schema and are not in sys.objects.\n-- These do nothing, and fire on the synonyms that the fixtures and the scripts create and drop.\nCREATE TRIGGER trDdlChanged ON DATABASE FOR CREATE_SYNONYM\nAS\nSET NOCOUNT ON;\n",
+        "Name": "trDdlChanged (database trigger)",
+        "ObjectName": "",
+        "Parent": "",
+        "Props": {
+          "SetOptions": "",
+          "State": "ENABLED",
+          "Table": "DATABASE",
+          "Type": "SQL_TRIGGER"
+        },
+        "Sql": {
+          "Name": "trDdlChanged",
+          "ObjectType": "TR",
+          "ParentObject": "",
+          "ParentSchema": "",
+          "Schema": "",
+          "Scope": "DATABASE"
+        }
+      },
+      "(database trigger)|trDdlLegacy": {
+        "Definition": "-- A database trigger that is only here: the sync script leaves it (its drop is a comment).\nCREATE TRIGGER trDdlLegacy ON DATABASE FOR DROP_SYNONYM\nAS\nSET NOCOUNT ON;\n",
+        "Name": "trDdlLegacy (database trigger)",
+        "ObjectName": "",
+        "Parent": "",
+        "Props": {
+          "SetOptions": "",
+          "State": "ENABLED",
+          "Table": "DATABASE",
+          "Type": "SQL_TRIGGER"
+        },
+        "Sql": {
+          "Name": "trDdlLegacy",
+          "ObjectType": "TR",
+          "ParentObject": "",
+          "ParentSchema": "",
+          "Schema": "",
+          "Scope": "DATABASE"
+        }
+      },
+      "(database trigger)|trDdlState": {
+        "Definition": "CREATE TRIGGER trDdlState ON DATABASE FOR CREATE_SYNONYM\nAS\nSET NOCOUNT ON;\n",
+        "Name": "trDdlState (database trigger)",
+        "ObjectName": "",
+        "Parent": "",
+        "Props": {
+          "SetOptions": "",
+          "State": "ENABLED",
+          "Table": "DATABASE",
+          "Type": "SQL_TRIGGER"
+        },
+        "Sql": {
+          "Name": "trDdlState",
+          "ObjectType": "TR",
+          "ParentObject": "",
+          "ParentSchema": "",
+          "Schema": "",
+          "Scope": "DATABASE"
+        }
+      },
       "dbo.trOrders_Insert": {
         "Definition": "CREATE TRIGGER dbo.trOrders_Insert ON dbo.Orders AFTER INSERT\nAS\nSET NOCOUNT ON;\n",
         "Name": "dbo.trOrders_Insert",
@@ -711,6 +947,40 @@
           "ParentSchema": "",
           "Schema": "dbo"
         }
+      },
+      "dbo.vSalesByRegion": {
+        "Definition": "CREATE VIEW dbo.vSalesByRegion WITH SCHEMABINDING\nAS\nSELECT Region, SUM(Amount) AS Total, COUNT_BIG(*) AS Cnt FROM dbo.Sales GROUP BY Region;\n",
+        "Name": "dbo.vSalesByRegion",
+        "ObjectName": "",
+        "Parent": "",
+        "Props": {
+          "SetOptions": "",
+          "Type": "VIEW"
+        },
+        "Sql": {
+          "Name": "vSalesByRegion",
+          "ObjectType": "V",
+          "ParentObject": "",
+          "ParentSchema": "",
+          "Schema": "dbo"
+        }
+      },
+      "dbo.vSalesTotals": {
+        "Definition": "CREATE VIEW dbo.vSalesTotals WITH SCHEMABINDING\nAS\nSELECT Id, Region, Amount FROM dbo.Sales WHERE Amount > 0;\n",
+        "Name": "dbo.vSalesTotals",
+        "ObjectName": "",
+        "Parent": "",
+        "Props": {
+          "SetOptions": "",
+          "Type": "VIEW"
+        },
+        "Sql": {
+          "Name": "vSalesTotals",
+          "ObjectType": "V",
+          "ParentObject": "",
+          "ParentSchema": "",
+          "Schema": "dbo"
+        }
       }
     }
   },
@@ -719,5 +989,5 @@
   "login": "<login>",
   "server": "<server>",
   "serverName": "<servername>",
-  "version": 1
+  "version": 2
 }

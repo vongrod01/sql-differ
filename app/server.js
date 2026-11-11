@@ -9,6 +9,7 @@ const store = require('./lib/store');
 const servers = require('./lib/servers');
 const runs = require('./lib/runs');
 const jobs = require('./lib/jobs');
+const retention = require('./lib/retention');
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -156,10 +157,13 @@ const routes = [
   // Only Task Scheduler and the "run now" button may tie a run to a job.
   ['POST', /^\/api\/runs$/, (m, body) => ({ id: runs.start({ ...body, trigger: 'manual', jobId: null, jobName: null }).id })],
   ['GET', /^\/api\/runs\/([^/]+)$/, (m) => runs.readMeta(m[1])],
-  ['DELETE', /^\/api\/runs\/([^/]+)$/, (m) => { runs.remove(m[1]); return { ok: true }; }],
+  // The size of the history is kept for a few minutes: forgotten here, so the page shows the new one.
+  ['DELETE', /^\/api\/runs\/([^/]+)$/, (m) => { runs.remove(m[1]); retention.forgetUsage(); return { ok: true }; }],
   ['GET', /^\/api\/runs\/([^/]+)\/events$/, (m, body, req, res) => streamRun(req, res, m[1])],
 
   ['GET', /^\/api\/snapshots$/, () => runs.listSnapshots()],
+  // Size of the run history and how long it is kept, for the history page.
+  ['GET', /^\/api\/storage$/, () => retention.usage()],
 
   ['GET', /^\/api\/jobs$/, () => jobs.list()],
   ['POST', /^\/api\/jobs$/, (m, body) => jobs.save(body)],
@@ -228,14 +232,21 @@ async function handle(req, res) {
 }
 
 const server = http.createServer((req, res) => {
+  // No response of this app may be shown in a frame, by any site: its pages start runs and delete
+  // history at a click, and a page that frames them invisibly can make the user click
+  // (clickjacking). Set here, before anything answers, so that every way out carries them: JSON,
+  // files, the event stream, combined scripts, errors. Both headers: frame-ancestors is the
+  // current one, X-Frame-Options is what older browsers read.
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Content-Security-Policy', "frame-ancestors 'none'");
   handle(req, res).catch((err) => {
     if (res.headersSent) return res.end();
     send(res, err.status || 500, { error: err.message });
   });
 });
 
-// nodemon restarts this script on every code change; open the browser only once per parent
-// process (one nodemon or one start.cmd console), not on each restart.
+// "npm run dev" (node --watch-path) restarts this script on every code change; open the browser
+// only once per parent process (one watcher or one start.cmd console), not on each restart.
 function openBrowserOnce(url) {
   store.ensureDir(config.TMP);
   const marker = path.join(config.TMP, `opened-${process.ppid}`);
@@ -248,6 +259,9 @@ function openBrowserOnce(url) {
 server.listen(config.PORT, config.HOST, () => {
   const url = `http://${config.HOST}:${config.PORT}/`;
   console.log(`database-diff is running at ${url}  (Ctrl+C to stop)`);
+  // Deletes runs older than the retention period now, and once a day while the server runs
+  // (not under node --watch: see retention.schedule).
+  retention.schedule();
   if (process.argv.includes('--open')) openBrowserOnce(url);
 });
 

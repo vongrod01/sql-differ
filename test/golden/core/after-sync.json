@@ -39,7 +39,7 @@
   },
   "counts": {
     "onlyInSource": 0,
-    "onlyInTarget": 5,
+    "onlyInTarget": 6,
     "different": 0,
     "unverified": 0
   },
@@ -69,8 +69,8 @@
     },
     {
       "Category": "Table",
-      "Source": 6,
-      "Target": 7,
+      "Source": 7,
+      "Target": 8,
       "OnlyInSource": 0,
       "OnlyInTarget": 1,
       "Different": 0,
@@ -78,8 +78,8 @@
     },
     {
       "Category": "Column",
-      "Source": 46,
-      "Target": 49,
+      "Source": 49,
+      "Target": 52,
       "OnlyInSource": 0,
       "OnlyInTarget": 1,
       "Different": 0,
@@ -87,8 +87,8 @@
     },
     {
       "Category": "Index",
-      "Source": 8,
-      "Target": 10,
+      "Source": 15,
+      "Target": 17,
       "OnlyInSource": 0,
       "OnlyInTarget": 1,
       "Different": 0,
@@ -114,8 +114,8 @@
     },
     {
       "Category": "View",
-      "Source": 3,
-      "Target": 3,
+      "Source": 6,
+      "Target": 6,
       "OnlyInSource": 0,
       "OnlyInTarget": 0,
       "Different": 0,
@@ -141,10 +141,10 @@
     },
     {
       "Category": "Trigger",
-      "Source": 2,
-      "Target": 2,
+      "Source": 5,
+      "Target": 6,
       "OnlyInSource": 0,
-      "OnlyInTarget": 0,
+      "OnlyInTarget": 1,
       "Different": 0,
       "Unverified": 0
     },
@@ -159,8 +159,8 @@
     },
     {
       "Category": "Sequence",
-      "Source": 2,
-      "Target": 2,
+      "Source": 3,
+      "Target": 3,
       "OnlyInSource": 0,
       "OnlyInTarget": 0,
       "Different": 0,
@@ -226,6 +226,16 @@
       "TargetDefinition": "-- Another procedure under the name the source's pRenamed had before sp_rename, which is still the\n-- name in that procedure's stored text. The sync script must leave this one as it is.\nCREATE PROCEDURE dbo.pOldName\nAS\nSELECT 'target only' AS Keep;",
       "SourceKey": null,
       "TargetKey": "dbo.pOldName"
+    },
+    {
+      "Category": "Trigger",
+      "Object": "trDdlLegacy (database trigger)",
+      "Status": "OnlyInTarget",
+      "Detail": "Type: SQL_TRIGGER; Table: DATABASE; State: ENABLED",
+      "SourceDefinition": null,
+      "TargetDefinition": "-- A database trigger that is only here: the sync script leaves it (its drop is a comment).\nCREATE TRIGGER trDdlLegacy ON DATABASE FOR DROP_SYNONYM\nAS\nSET NOCOUNT ON;",
+      "SourceKey": null,
+      "TargetKey": "(database trigger)|trDdlLegacy"
     }
   ]
 }

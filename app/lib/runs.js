@@ -101,10 +101,22 @@ function list() {
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 }
 
+// A file that another program has open for a moment (a virus scanner, a report in an editor)
+// is tried a few more times before a delete gives up.
+const REMOVE_OPTIONS = { recursive: true, force: true, maxRetries: 3, retryDelay: 100 };
+
 function remove(id) {
   // readMeta also covers runs of other processes (scheduled jobs) and marks dead ones interrupted.
   if (live.has(id) || readMeta(id).status === 'running') throw httpError(409, 'The run is still in progress');
-  fs.rmSync(runDir(id), { recursive: true, force: true });
+  const dir = runDir(id);
+  // run.json goes last. A delete that stops part way (a file in use cannot be deleted on
+  // Windows) then leaves a run that is still one: the history page lists it and the next
+  // clean-up tries again. Without its run.json the folder would be nothing anyone recognises.
+  for (const name of fs.readdirSync(dir)) {
+    if (name.toLowerCase() !== 'run.json') fs.rmSync(path.join(dir, name), REMOVE_OPTIONS);
+  }
+  fs.rmSync(path.join(dir, 'run.json'), REMOVE_OPTIONS);
+  fs.rmSync(dir, REMOVE_OPTIONS);
 }
 
 function snapshotPath(ref) {

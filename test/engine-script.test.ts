@@ -71,9 +71,24 @@ test('script: a computed column is never altered', () => {
     .column('T', 'Both', { Computed: '([Qty]*(2))' });
   const s = scriptsFor('computed-columns', source, target);
 
-  assert.deepEqual(statements(s.sync), [
-    'ALTER TABLE [dbo].[T] ALTER COLUMN [Both] ADD PERSISTED;',
-    'ALTER TABLE [dbo].[T] ALTER COLUMN [Qty] bigint NOT NULL;',
+  // Nothing for Qty: three computed columns use it, so its ALTER COLUMN would fail (Msg 5074).
+  assert.deepEqual(statements(s.sync), ['ALTER TABLE [dbo].[T] ALTER COLUMN [Both] ADD PERSISTED;']);
+  // It is there to run by hand, between the drops of those columns and the statements that add
+  // them again as the source has them.
+  const byHand = comments(s.sync);
+  const start = byHand.findIndex((l) => l.startsWith('-- Not run: computed columns [Twice], [Half], [Both] use this column'));
+  assert.ok(start >= 0, s.sync);
+  assert.match(byHand[start] ?? '', /Msg 5074, Msg 4922.*first drop the indexes, constraints and statistics/);
+  assert.deepEqual(byHand.slice(start + 1, start + 10), [
+    '-- BEGIN TRANSACTION;',
+    '-- ALTER TABLE [dbo].[T] DROP COLUMN [Twice];',
+    '-- ALTER TABLE [dbo].[T] DROP COLUMN [Half];',
+    '-- ALTER TABLE [dbo].[T] DROP COLUMN [Both];',
+    '-- ALTER TABLE [dbo].[T] ALTER COLUMN [Qty] bigint NOT NULL;',
+    '-- ALTER TABLE [dbo].[T] ADD [Twice] AS ([Qty]*(2)) PERSISTED NOT NULL;',
+    '-- ALTER TABLE [dbo].[T] ADD [Half] AS ([Qty]/(2));',
+    '-- ALTER TABLE [dbo].[T] ADD [Both] AS ([Qty]*(2)) PERSISTED NOT NULL;',
+    '-- COMMIT TRANSACTION;',
   ]);
   // What to run by hand for NOT NULL, as comments.
   for (const line of [
@@ -82,15 +97,136 @@ test('script: a computed column is never altered', () => {
     '-- ALTER TABLE [dbo].[T] DROP COLUMN [Both];',
     '-- ALTER TABLE [dbo].[T] ADD [Both] AS ([Qty]*(2)) PERSISTED NOT NULL;',
   ]) assert.ok(comments(s.sync).includes(line), `${line} expected in:\n${s.sync}`);
-  // The type of Half is not something to run: it changes with Qty.
-  assert.ok(!s.sync.includes('DROP COLUMN [Half]'), s.sync);
+  // The type of Half is not something to change on its own: it changes with Qty. Its only drop
+  // is the one in the group for Qty (below).
+  assert.equal(s.sync.split('DROP COLUMN [Half]').length - 1, 1, s.sync);
   assert.equal(comments(s.sync).filter((l) => /^-- Not scripted: .*computed column/.test(l)).length, 3, s.sync);
 
-  assert.deepEqual(statements(s.rollback), [
-    'ALTER TABLE [dbo].[T] ALTER COLUMN [Both] DROP PERSISTED;',
-    'ALTER TABLE [dbo].[T] ALTER COLUMN [Qty] int NOT NULL;',
-  ]);
+  // The same the other way round: the columns come back as the target had them.
+  assert.deepEqual(statements(s.rollback), ['ALTER TABLE [dbo].[T] ALTER COLUMN [Both] DROP PERSISTED;']);
   assert.ok(comments(s.rollback).includes('-- ALTER TABLE [dbo].[T] ADD [Twice] AS ([Qty]*(2)) PERSISTED;'), s.rollback);
+  const back = comments(s.rollback);
+  const backStart = back.findIndex((l) => l.startsWith('-- Not run: computed columns [Twice], [Half], [Both] use this column'));
+  assert.deepEqual(back.slice(backStart + 1, backStart + 10), [
+    '-- BEGIN TRANSACTION;',
+    '-- ALTER TABLE [dbo].[T] DROP COLUMN [Twice];',
+    '-- ALTER TABLE [dbo].[T] DROP COLUMN [Half];',
+    '-- ALTER TABLE [dbo].[T] DROP COLUMN [Both];',
+    '-- ALTER TABLE [dbo].[T] ALTER COLUMN [Qty] int NOT NULL;',
+    '-- ALTER TABLE [dbo].[T] ADD [Twice] AS ([Qty]*(2)) PERSISTED;',
+    '-- ALTER TABLE [dbo].[T] ADD [Half] AS ([Qty]/(2));',
+    '-- ALTER TABLE [dbo].[T] ADD [Both] AS ([Qty]*(2));',
+    '-- COMMIT TRANSACTION;',
+  ]);
+});
+
+// The lines after a "-- Not run: ... computed column" comment, up to the end of its batch.
+function byHandLines(script: string, column: string): string[] {
+  const lines = script.split('\n').map((l) => l.trimEnd());
+  const header = lines.findIndex((l) => l.startsWith(`-- dbo.T.${column}: `));
+  const start = lines.findIndex((l, i) => i > header && /^-- Not run: computed column/.test(l));
+  const end = lines.indexOf('GO', header);
+  return header >= 0 && start >= 0 && start < end ? lines.slice(start + 1, end) : [];
+}
+
+test('script: a column that a computed column uses is changed by hand, with those columns dropped and added again', () => {
+  const HIDDEN = '(not readable)';
+  const source = snapshot().database('Thai_CI_AS').table('T')
+    // A new column that is not computed: first, as before.
+    .column('T', 'Added', {})
+    .column('T', 'Base', { Type: 'bigint', Nullable: 'NOT NULL' })
+    // New, and computed from a column that changes: after that column's ALTER COLUMN.
+    .column('T', 'BaseNew', { Computed: '([Base]+(1))' })
+    // A default as well: its drop and add are inside the same group.
+    .column('T', 'Dflt', { Type: 'bigint', Default: '((1))' }, { DefaultName: 'DF_T_Dflt' })
+    .column('T', 'DfltTwice', { Computed: '([Dflt]*(2))', Persisted: 'PERSISTED', Type: 'bigint' })
+    // The source's default cannot be read: still comments only, with the computed column around them.
+    .column('T', 'Hid', { Type: 'bigint', Default: HIDDEN })
+    .column('T', 'HidPlus', { Computed: '([Hid]+(1))', Type: 'bigint' })
+    // Only its default differs: no ALTER COLUMN, so the computed column is not in the way.
+    .column('T', 'OnlyDefault', { Default: '((5))' })
+    .column('T', 'OnlyDefaultPlus', { Computed: '([OnlyDefault]+(1))' })
+    // Names that need quoting, and a name that is only part of another.
+    .column('T', 'we]ird col', { Type: 'bigint' })
+    .column('T', 'Weird', { Computed: '([we]]ird col]+[Other])' })
+    .column('T', 'Q', { Type: 'bigint' })
+    .column('T', 'NotQ', { Computed: '([Q2]+[OtherQ])' })
+    // Read without VIEW DEFINITION: nobody knows what it uses, so it is not counted.
+    .column('T', 'Unknown', { Computed: HIDDEN });
+  const target = snapshot().database('Thai_CI_AS').table('T')
+    .column('T', 'Base', { Nullable: 'NOT NULL' })
+    .column('T', 'Dflt', { Default: '((1))' }, { DefaultName: 'DF_T_Dflt' })
+    .column('T', 'DfltTwice', { Computed: '([Dflt]*(2))', Persisted: 'PERSISTED' })
+    .column('T', 'Hid', { Default: '((1))' })
+    .column('T', 'HidPlus', { Computed: '([Hid]+(1))' })
+    .column('T', 'OnlyDefault', { Default: '((4))' })
+    .column('T', 'OnlyDefaultPlus', { Computed: '([OnlyDefault]+(1))' })
+    .column('T', 'we]ird col', {})
+    // Written in another case than the column is called: SQL Server keeps what was typed.
+    .column('T', 'Weird', { Computed: '([WE]]IRD COL]+[Other])' })
+    .column('T', 'Q', {})
+    .column('T', 'NotQ', { Computed: '([Q2]+[OtherQ])' })
+    .column('T', 'Unknown', { Computed: HIDDEN })
+    // Only here, and it uses Base: the sync script leaves it, so it is added again as it is.
+    .column('T', 'Legacy', { Computed: '([Base]-(1))' });
+  const s = scriptsFor('computed-dependents', source, target);
+
+  const active = statements(s.sync);
+  assert.deepEqual(active, [
+    'ALTER TABLE [dbo].[T] ADD [Added] int NULL;',
+    // Base: nothing active. The target's Legacy uses it.
+    ...inTransaction(...dropDefault('OnlyDefault'), 'ALTER TABLE [dbo].[T] ADD DEFAULT ((5)) FOR [OnlyDefault];'),
+    // No computed column uses Q: [Q2] and [OtherQ] are other names.
+    'ALTER TABLE [dbo].[T] ALTER COLUMN [Q] bigint NULL;',
+    // After every changed column.
+    'ALTER TABLE [dbo].[T] ADD [BaseNew] AS ([Base]+(1));',
+  ]);
+  assert.deepEqual(byHandLines(s.sync, 'Base'), [
+    '-- BEGIN TRANSACTION;',
+    '-- ALTER TABLE [dbo].[T] DROP COLUMN [Legacy];',
+    '-- ALTER TABLE [dbo].[T] ALTER COLUMN [Base] bigint NOT NULL;',
+    '-- ALTER TABLE [dbo].[T] ADD [Legacy] AS ([Base]-(1));',
+    '-- COMMIT TRANSACTION;',
+  ]);
+  assert.deepEqual(byHandLines(s.sync, 'Dflt'), [
+    '-- BEGIN TRANSACTION;',
+    '-- ALTER TABLE [dbo].[T] DROP COLUMN [DfltTwice];',
+    ...dropDefault('Dflt').map((l) => `-- ${l}`),
+    '-- ALTER TABLE [dbo].[T] ALTER COLUMN [Dflt] bigint NULL;',
+    '-- ALTER TABLE [dbo].[T] ADD CONSTRAINT [DF_T_Dflt] DEFAULT ((1)) FOR [Dflt];',
+    '-- ALTER TABLE [dbo].[T] ADD [DfltTwice] AS ([Dflt]*(2)) PERSISTED;',
+    '-- COMMIT TRANSACTION;',
+  ]);
+  // No transaction to offer: the default cannot be added again.
+  assert.deepEqual(byHandLines(s.sync, 'Hid'), [
+    '-- Not scripted: the type change needs the default of the column dropped first, and the default the column has in the source is not readable, so it cannot be added again. By hand: run these, then add the default:',
+    '-- ALTER TABLE [dbo].[T] DROP COLUMN [HidPlus];',
+    ...dropDefault('Hid').map((l) => `-- ${l}`),
+    '-- ALTER TABLE [dbo].[T] ALTER COLUMN [Hid] bigint NULL;',
+    '-- ALTER TABLE [dbo].[T] ADD [HidPlus] AS ([Hid]+(1));',
+  ]);
+  assert.deepEqual(byHandLines(s.sync, 'we]ird col'), [
+    '-- BEGIN TRANSACTION;',
+    '-- ALTER TABLE [dbo].[T] DROP COLUMN [Weird];',
+    '-- ALTER TABLE [dbo].[T] ALTER COLUMN [we]]ird col] bigint NULL;',
+    '-- ALTER TABLE [dbo].[T] ADD [Weird] AS ([we]]ird col]+[Other]);',
+    '-- COMMIT TRANSACTION;',
+  ]);
+  assert.equal(comments(s.sync).filter((l) => l.startsWith('-- Not run: computed column')).length, 4, s.sync);
+
+  // The rollback runs on what the sync script left: Legacy is still there (a sync script drops
+  // no column) and BaseNew has been added (a rollback drops none either). Both use Base.
+  assert.deepEqual(byHandLines(s.rollback, 'Base'), [
+    '-- BEGIN TRANSACTION;',
+    '-- ALTER TABLE [dbo].[T] DROP COLUMN [BaseNew];',
+    '-- ALTER TABLE [dbo].[T] DROP COLUMN [Legacy];',
+    '-- ALTER TABLE [dbo].[T] ALTER COLUMN [Base] int NOT NULL;',
+    '-- ALTER TABLE [dbo].[T] ADD [BaseNew] AS ([Base]+(1));',
+    '-- ALTER TABLE [dbo].[T] ADD [Legacy] AS ([Base]-(1));',
+    '-- COMMIT TRANSACTION;',
+  ]);
+  assert.ok(!statements(s.rollback).some((l) => /ALTER COLUMN \[(Base|Dflt|Hid|we\]\]ird col)\]/.test(l)), s.rollback);
+  assert.ok(statements(s.rollback).includes('ALTER TABLE [dbo].[T] ALTER COLUMN [Q] int NULL;'), s.rollback);
 });
 
 test('script: a new persisted computed column keeps NOT NULL', () => {
@@ -113,6 +249,56 @@ test('script: a new persisted computed column keeps NOT NULL', () => {
     'ALTER TABLE [dbo].[T] ADD [Plain] AS ([Qty]+(1)) PERSISTED;',
     'ALTER TABLE [dbo].[T] ADD [Twice] AS ([Qty]*(2)) PERSISTED NOT NULL;',
   ]);
+});
+
+// ---------------------------------------------------------------------------------------------
+// A column of a user-defined type the login cannot see. The catalog shows the column but not the
+// name of its type, which then reads as "(not readable)": no statement is made up from that.
+// ---------------------------------------------------------------------------------------------
+
+test('script: a column whose type is not readable is not added, created or altered', () => {
+  const HIDDEN = '(not readable)';
+  // The source was read by the login that cannot see dbo.tCode.
+  const source = snapshot().database('Thai_CI_AS').table('T').table('New')
+    .column('T', 'Id', { Nullable: 'NOT NULL' })
+    // The same column on both sides as far as can be seen.
+    .column('T', 'Same', { Type: HIDDEN })
+    // NULL / NOT NULL differs, which is compared; the type is not.
+    .column('T', 'Code', { Type: HIDDEN, Nullable: 'NOT NULL' })
+    // Only its default differs: that needs no type.
+    .column('T', 'Dflt', { Type: HIDDEN, Default: "('a')" })
+    .column('T', 'Added', { Type: HIDDEN })
+    .column('New', 'Id', { Nullable: 'NOT NULL' })
+    .column('New', 'Code', { Type: HIDDEN });
+  const target = snapshot().database('Thai_CI_AS').table('T')
+    .column('T', 'Id', { Nullable: 'NOT NULL' })
+    .column('T', 'Same', { Type: 'dbo.tCode' })
+    .column('T', 'Code', { Type: 'dbo.tCode' })
+    .column('T', 'Dflt', { Type: 'dbo.tCode' });
+  const s = scriptsFor('type-not-readable', source, target);
+
+  assert.equal(s.statuses['dbo.T.Same'], 'Unverified');
+  assert.equal(s.details['dbo.T.Same'], 'Type: not readable on source');
+  assert.equal(s.statuses['dbo.T.Code'], 'Different');
+  assert.equal(s.details['dbo.T.Code'], 'Nullable: source NOT NULL, target NULL\nType: not readable on source (not compared)');
+  assert.equal(s.statuses['dbo.T.Added'], 'OnlyInSource');
+
+  // The new table is created without the column that cannot be written, which is named in a
+  // comment. The default is put on its column: that needs no type.
+  assert.deepEqual(statements(s.sync), [
+    'CREATE TABLE [dbo].[New] (',
+    '    [Id] int NOT NULL',
+    '    -- the type of column Code is not readable (a user-defined type the login has no permission on)',
+    ');',
+    ...inTransaction(...dropDefault('Dflt'), "ALTER TABLE [dbo].[T] ADD DEFAULT ('a') FOR [Dflt];"),
+  ]);
+  for (const script of [s.sync, s.rollback]) {
+    assert.ok(!statements(script).some((l) => l.includes(HIDDEN)), script);
+    assert.ok(!statements(script).some((l) => /ALTER COLUMN|ADD \[(?:Added|Code)\]/.test(l)), script);
+  }
+  assert.ok(comments(s.sync).includes('-- Not scripted: the type of column dbo.T.Added is not readable (a user-defined type the login has no permission on)'), s.sync);
+  assert.equal(comments(s.sync).filter((l) => l.startsWith('-- Not scripted: the type of this column is not readable on one side')).length, 1, s.sync);
+  assert.equal(comments(s.rollback).filter((l) => l.startsWith('-- Not scripted: the type of this column is not readable on one side')).length, 1, s.rollback);
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -201,6 +387,42 @@ test('script: a default is dropped for a type change and put back, in one transa
     '-- ALTER TABLE [dbo].[T] ADD DEFAULT ((1)) FOR [SourceHidden];',
     '-- ALTER TABLE [dbo].[T] ALTER COLUMN [TargetHidden] int NULL;',
   ]) assert.ok(comments(s.rollback).includes(line), `${line} expected in:\n${s.rollback}`);
+});
+
+// ---------------------------------------------------------------------------------------------
+// Sequences of a decimal or numeric type. The precision is part of the type: "AS decimal" alone
+// is decimal(18,0), and the limits of a wider sequence do not fit that (Msg 11708).
+// ---------------------------------------------------------------------------------------------
+
+test('script: a decimal or numeric sequence is created with its precision', () => {
+  const wide = { Min: '-9999999999999999999999999999', Max: '9999999999999999999999999999' };
+  const source = snapshot().database('Thai_CI_AS')
+    .sequence('seqBig', 'dbo', { DataType: 'decimal', Precision: '28', ...wide })
+    .sequence('seqNum', 'dbo', { DataType: 'numeric', Precision: '10' })
+    // Read by an engine that did not know the precision yet: written as it was then.
+    .sequence('seqOld', 'dbo', { DataType: 'decimal' })
+    .sequence('seqInt', 'dbo', { DataType: 'int' })
+    // The precision differs: reported, and nothing can change it short of creating the sequence again.
+    .sequence('seqWider', 'dbo', { DataType: 'decimal', Precision: '28' })
+    // A default takes its value from it, and sequences are not compared in the second run below.
+    .table('T').column('T', 'Id', { Type: 'decimal(28,0)', Nullable: 'NOT NULL', Default: '(NEXT VALUE FOR [dbo].[seqBig])' });
+  const target = snapshot().database('Thai_CI_AS').sequence('seqWider', 'dbo', { DataType: 'decimal', Precision: '18' });
+  const rest = 'START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 1000 NO CYCLE CACHE;';
+  const big = `CREATE SEQUENCE [dbo].[seqBig] AS decimal(28,0) START WITH 1 INCREMENT BY 1 MINVALUE ${wide.Min} MAXVALUE ${wide.Max} NO CYCLE CACHE;`;
+
+  const s = scriptsFor('sequence-precision', source, target);
+  assert.equal(s.details['dbo.seqWider'], 'Precision: source 28, target 18');
+  assert.deepEqual(statements(s.sync).filter((l) => l.includes('SEQUENCE')), [
+    big,
+    `CREATE SEQUENCE [dbo].[seqInt] AS int ${rest}`,
+    `CREATE SEQUENCE [dbo].[seqNum] AS numeric(10,0) ${rest}`,
+    `CREATE SEQUENCE [dbo].[seqOld] AS decimal ${rest}`,
+    'ALTER SEQUENCE [dbo].[seqWider] INCREMENT BY 1 MINVALUE 1 MAXVALUE 1000 NO CYCLE CACHE;  -- data type and start value are not changed',
+  ]);
+
+  // Created only because the new table needs it: the same statement.
+  const needed = scriptsFor('sequence-precision-needed', source, target, { categories: 'Table,Column' });
+  assert.deepEqual(statements(needed.sync).filter((l) => l.includes('SEQUENCE')), [`IF OBJECT_ID(N'[dbo].[seqBig]', N'SO') IS NULL ${big}`]);
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -507,4 +729,448 @@ test('script: a module that cannot be read on one side is not replaced because i
     assert.ok(!/DROP (PROCEDURE|FUNCTION|TRIGGER)/.test(script), script);
     assert.ok(!script.includes('source body'), script);
   }
+});
+
+// ---------------------------------------------------------------------------------------------
+// Indexes of views and database triggers. The engine reads them since snapshot version 2. A file
+// of version 1 holds neither, which does not mean that database had none: with such a file on
+// one side they are left out of the comparison, and the run says so.
+// ---------------------------------------------------------------------------------------------
+
+const TOTALS_VIEW = 'CREATE VIEW dbo.vTotals WITH SCHEMABINDING AS SELECT Region, COUNT_BIG(*) AS Cnt FROM dbo.Sales GROUP BY Region';
+const SALES_TRIGGER = 'CREATE TRIGGER dbo.trSales ON dbo.Sales AFTER INSERT AS RETURN';
+const NOT_COMPARED = /one side is a snapshot saved before the engine read the indexes of views and database triggers/;
+
+// A database with an indexed view, a database trigger and a trigger on a table.
+function indexedViewSide() {
+  return snapshot().database('Thai_CI_AS').table('Sales')
+    .module('View', 'vTotals', 'V', 'VIEW', TOTALS_VIEW)
+    .viewIndex('vTotals', 'CIX_vTotals', ['Region'], { clustered: true })
+    .viewIndex('vTotals', 'IX_vTotals_Cnt', ['Cnt'])
+    .databaseTrigger('trDdl', 'CREATE TRIGGER trDdl ON DATABASE FOR CREATE_SYNONYM AS SET NOCOUNT ON;')
+    .trigger('trSales', 'Sales', SALES_TRIGGER);
+}
+
+// The same database without the view's indexes and the database trigger: as it is when it has
+// none, or as a file of version 1 holds it whatever it has.
+function plainViewSide(trigger = SALES_TRIGGER) {
+  return snapshot().database('Thai_CI_AS').table('Sales')
+    .module('View', 'vTotals', 'V', 'VIEW', TOTALS_VIEW)
+    .trigger('trSales', 'Sales', trigger);
+}
+
+test('script: indexes of views and database triggers are compared when both sides read them', () => {
+  const missing = scriptsFor('view-items-missing', indexedViewSide(), plainViewSide());
+  assert.deepEqual(missing.statuses, {
+    'dbo.vTotals.CIX_vTotals': 'OnlyInSource',
+    'dbo.vTotals.IX_vTotals_Cnt': 'OnlyInSource',
+    'trDdl (database trigger)': 'OnlyInSource',
+  });
+  assert.equal(missing.details['trDdl (database trigger)'], 'Type: SQL_TRIGGER; Table: DATABASE; State: ENABLED');
+  assert.equal(missing.details['dbo.vTotals.CIX_vTotals'], 'Kind: UNIQUE INDEX; Type: CLUSTERED; Columns: Region');
+  assert.doesNotMatch(missing.log, NOT_COMPARED);
+
+  const extra = scriptsFor('view-items-extra', plainViewSide(), indexedViewSide());
+  assert.deepEqual(extra.statuses, {
+    'dbo.vTotals.CIX_vTotals': 'OnlyInTarget',
+    'dbo.vTotals.IX_vTotals_Cnt': 'OnlyInTarget',
+    'trDdl (database trigger)': 'OnlyInTarget',
+  });
+
+  // Changed ones: another column list, another event, disabled.
+  const changedSide = plainViewSide()
+    .viewIndex('vTotals', 'CIX_vTotals', ['Region'], { clustered: true })
+    .viewIndex('vTotals', 'IX_vTotals_Cnt', ['Cnt', 'Region'])
+    .databaseTrigger('trDdl', 'CREATE TRIGGER trDdl ON DATABASE FOR DROP_SYNONYM AS SET NOCOUNT ON;', 'DISABLED');
+  const changed = scriptsFor('view-items-changed', indexedViewSide(), changedSide);
+  assert.deepEqual(changed.statuses, { 'dbo.vTotals.IX_vTotals_Cnt': 'Different', 'trDdl (database trigger)': 'Different' });
+  assert.equal(changed.details['dbo.vTotals.IX_vTotals_Cnt'], 'Columns: source Cnt, target Cnt, Region');
+  assert.equal(changed.details['trDdl (database trigger)'], 'Definition differs\nState: source ENABLED, target DISABLED');
+
+  // A view on one side only is one difference: its indexes come with it, as a table's do.
+  const noView = snapshot().database('Thai_CI_AS').table('Sales').trigger('trSales', 'Sales', SALES_TRIGGER).databaseTrigger('trDdl', 'CREATE TRIGGER trDdl ON DATABASE FOR CREATE_SYNONYM AS SET NOCOUNT ON;');
+  assert.deepEqual(scriptsFor('view-items-new-view', indexedViewSide(), noView).statuses, { 'dbo.vTotals': 'OnlyInSource' });
+});
+
+test('script: a snapshot saved before view indexes and database triggers were read does not show them as differences', () => {
+  for (const [name, source, target] of [
+    ['view-items-old-target', indexedViewSide(), plainViewSide().savedAsVersion(1)],
+    ['view-items-old-source', plainViewSide().savedAsVersion(1), indexedViewSide()],
+    ['view-items-old-both', plainViewSide().savedAsVersion(1), plainViewSide().savedAsVersion(1)],
+  ] as const) {
+    const s = scriptsFor(name, source, target);
+    assert.deepEqual(s.statuses, {}, name);
+    assert.equal(s.exitCode, 0, name);
+    assert.match(s.log, NOT_COMPARED, name);
+    assert.ok(!/vTotals|trDdl/.test(statements(s.sync).join('\n') + statements(s.rollback).join('\n')), name);
+  }
+
+  // Everything else is compared as before, a table's trigger among it.
+  const other = 'CREATE TRIGGER dbo.trSales ON dbo.Sales AFTER UPDATE AS RETURN';
+  const rest = scriptsFor('view-items-old-rest', indexedViewSide(), plainViewSide(other).savedAsVersion(1));
+  assert.deepEqual(rest.statuses, { 'dbo.trSales': 'Different' });
+  assert.match(rest.log, NOT_COMPARED);
+
+  // Nothing to say when neither kind is among what is compared.
+  const tables = scriptsFor('view-items-old-tables', indexedViewSide(), plainViewSide().savedAsVersion(1), { categories: 'Table,Column,View' });
+  assert.deepEqual(tables.statuses, {});
+  assert.doesNotMatch(tables.log, NOT_COMPARED);
+});
+
+// ---------------------------------------------------------------------------------------------
+// Scripts for the indexes of views. ALTER VIEW drops every index of the view (and CREATE OR ALTER
+// VIEW is an ALTER when the view is there), so a script that writes a view creates that view's
+// indexes again. The indexes of the other views come in a section after the views.
+// ---------------------------------------------------------------------------------------------
+
+function totalsView(name: string, filter = ''): string {
+  return `CREATE VIEW dbo.${name} WITH SCHEMABINDING AS SELECT Region, COUNT_BIG(*) AS Cnt FROM dbo.Sales ${filter}GROUP BY Region`;
+}
+
+function alteredTo(definition: string): string {
+  return definition.replace('CREATE VIEW', 'CREATE OR ALTER VIEW');
+}
+
+test('script: a view the script writes gets its indexes again, and the other views theirs after the views', () => {
+  const source = snapshot().database('Thai_CI_AS').table('Sales')
+    // Another definition: altered, so everything on it has to be created again.
+    .module('View', 'vAltered', 'V', 'VIEW', totalsView('vAltered', 'WHERE Region > 0 '))
+    .viewIndex('vAltered', 'CIX_vAltered', ['Region'], { clustered: true })
+    .viewIndex('vAltered', 'IX_vAltered_Cnt', ['Cnt'])
+    // Only here.
+    .module('View', 'vNew', 'V', 'VIEW', totalsView('vNew'))
+    .viewIndex('vNew', 'CIX_vNew', ['Region'], { clustered: true })
+    // The same view on both sides: both of its indexes are new (the nonclustered one sorts first).
+    .module('View', 'vSame', 'V', 'VIEW', totalsView('vSame'))
+    .viewIndex('vSame', 'AIX_vSame', ['Cnt'])
+    .viewIndex('vSame', 'CIX_vSame', ['Region'], { clustered: true })
+    // The same view, a nonclustered index with another column list.
+    .module('View', 'vChanged', 'V', 'VIEW', totalsView('vChanged'))
+    .viewIndex('vChanged', 'CIX_vChanged', ['Region'], { clustered: true })
+    .viewIndex('vChanged', 'IX_vChanged', ['Cnt', 'Region'])
+    // The same view, a clustered index with another column list.
+    .module('View', 'vClustered', 'V', 'VIEW', totalsView('vClustered'))
+    .viewIndex('vClustered', 'CIX_vClustered', ['Region', 'Cnt'], { clustered: true })
+    .viewIndex('vClustered', 'IX_vClustered_Cnt', ['Cnt']);
+  const target = snapshot().database('Thai_CI_AS').table('Sales')
+    .module('View', 'vAltered', 'V', 'VIEW', totalsView('vAltered'))
+    .viewIndex('vAltered', 'CIX_vAltered', ['Region'], { clustered: true })
+    // Only here, on a view that gets altered: the ALTER drops it. (Other columns than the
+    // source's index: with the same ones the two would be one index under two names.)
+    .viewIndex('vAltered', 'IX_vAltered_Old', ['Cnt', 'Region'])
+    .module('View', 'vSame', 'V', 'VIEW', totalsView('vSame'))
+    .module('View', 'vChanged', 'V', 'VIEW', totalsView('vChanged'))
+    .viewIndex('vChanged', 'CIX_vChanged', ['Region'], { clustered: true })
+    .viewIndex('vChanged', 'IX_vChanged', ['Cnt'])
+    // Only here, on a view that stays as it is: left, as an index of a table is.
+    .viewIndex('vChanged', 'IX_vChanged_Old', ['Region'])
+    .module('View', 'vClustered', 'V', 'VIEW', totalsView('vClustered'))
+    .viewIndex('vClustered', 'CIX_vClustered', ['Region'], { clustered: true })
+    .viewIndex('vClustered', 'IX_vClustered_Cnt', ['Cnt']);
+  const s = scriptsFor('view-indexes', source, target);
+
+  assert.deepEqual(statements(s.sync), [
+    // The views, each with its indexes right after it, the clustered one first.
+    alteredTo(totalsView('vNew')),
+    'CREATE UNIQUE CLUSTERED INDEX [CIX_vNew] ON [dbo].[vNew] ([Region]);',
+    alteredTo(totalsView('vAltered', 'WHERE Region > 0 ')),
+    'CREATE UNIQUE CLUSTERED INDEX [CIX_vAltered] ON [dbo].[vAltered] ([Region]);',
+    'CREATE NONCLUSTERED INDEX [IX_vAltered_Cnt] ON [dbo].[vAltered] ([Cnt]);',
+    // Then the indexes of the views that were not written: new ones, the clustered one first.
+    'CREATE UNIQUE CLUSTERED INDEX [CIX_vSame] ON [dbo].[vSame] ([Region]);',
+    'CREATE NONCLUSTERED INDEX [AIX_vSame] ON [dbo].[vSame] ([Cnt]);',
+    // A changed nonclustered one: dropped and created in one transaction, like a table's.
+    ...inTransaction('DROP INDEX [IX_vChanged] ON [dbo].[vChanged];', 'CREATE NONCLUSTERED INDEX [IX_vChanged] ON [dbo].[vChanged] ([Cnt], [Region]);'),
+    // Nothing for vClustered: dropping a clustered index takes the view's other indexes with it.
+  ]);
+  const said = comments(s.sync);
+  assert.ok(said.includes('-- ALTER VIEW drops every index of a view. The indexes dbo.vAltered has in the source are created again:'), s.sync);
+  assert.ok(said.includes('-- Not created again: index IX_vAltered_Old of dbo.vAltered is only in the target, and the ALTER VIEW above drops it. The rollback script creates it again.'), s.sync);
+  // By hand, with the view's other index after it.
+  const clustered = said.findIndex((l) => l.startsWith('-- The clustered index of a view differs.'));
+  assert.deepEqual(said.slice(clustered + 1, clustered + 4), [
+    '-- DROP INDEX [CIX_vClustered] ON [dbo].[vClustered];',
+    '-- CREATE UNIQUE CLUSTERED INDEX [CIX_vClustered] ON [dbo].[vClustered] ([Region], [Cnt]);',
+    '-- CREATE NONCLUSTERED INDEX [IX_vClustered_Cnt] ON [dbo].[vClustered] ([Cnt]);',
+  ]);
+  // Only in the target: the one on the view that stays is listed with the drops nobody runs; the
+  // one on the altered view is gone already, and listing its drop would only mislead.
+  assert.ok(said.includes('-- DROP INDEX [IX_vChanged_Old] ON [dbo].[vChanged];'), s.sync);
+  assert.ok(!s.sync.includes('DROP INDEX [IX_vAltered_Old]'), s.sync);
+  // The section of the views' indexes comes after the views.
+  assert.ok(s.sync.indexOf('-- Indexes on views') > s.sync.indexOf('-- Views'), s.sync);
+
+  assert.deepEqual(statements(s.rollback), [
+    // What the sync script created.
+    'DROP INDEX IF EXISTS [IX_vAltered_Cnt] ON [dbo].[vAltered];',
+    'DROP INDEX IF EXISTS [AIX_vSame] ON [dbo].[vSame];',
+    'DROP INDEX IF EXISTS [CIX_vSame] ON [dbo].[vSame];',
+    'DROP VIEW IF EXISTS [dbo].[vNew];',
+    // The view as it was, with the indexes it had: also the one the sync script lost.
+    alteredTo(totalsView('vAltered')),
+    'CREATE UNIQUE CLUSTERED INDEX [CIX_vAltered] ON [dbo].[vAltered] ([Region]);',
+    'CREATE NONCLUSTERED INDEX [IX_vAltered_Old] ON [dbo].[vAltered] ([Cnt], [Region]);',
+    ...inTransaction('DROP INDEX [IX_vChanged] ON [dbo].[vChanged];', 'CREATE NONCLUSTERED INDEX [IX_vChanged] ON [dbo].[vChanged] ([Cnt]);'),
+  ]);
+  assert.ok(comments(s.rollback).includes('-- ALTER VIEW drops every index of a view. The indexes dbo.vAltered had before the sync script are created again:'), s.rollback);
+  assert.ok(comments(s.rollback).includes('-- CREATE UNIQUE CLUSTERED INDEX [CIX_vClustered] ON [dbo].[vClustered] ([Region]);'), s.rollback);
+
+  // Indexes not among what is compared: a view the script writes still gets its own again (the
+  // script is what drops them), and nothing else about indexes is written.
+  const viewsOnly = scriptsFor('view-indexes-views-only', source, target, { categories: 'View' });
+  assert.deepEqual(statements(viewsOnly.sync), [
+    alteredTo(totalsView('vNew')),
+    'CREATE UNIQUE CLUSTERED INDEX [CIX_vNew] ON [dbo].[vNew] ([Region]);',
+    alteredTo(totalsView('vAltered', 'WHERE Region > 0 ')),
+    'CREATE UNIQUE CLUSTERED INDEX [CIX_vAltered] ON [dbo].[vAltered] ([Region]);',
+    'CREATE NONCLUSTERED INDEX [IX_vAltered_Cnt] ON [dbo].[vAltered] ([Cnt]);',
+  ]);
+  assert.ok(!viewsOnly.sync.includes('Indexes on views'), viewsOnly.sync);
+});
+
+test('script: a view taken from a snapshot without index details is altered with a warning about its indexes', () => {
+  const source = snapshot().database('Thai_CI_AS').table('Sales')
+    .module('View', 'vAltered', 'V', 'VIEW', totalsView('vAltered', 'WHERE Region > 0 '))
+    .savedAsVersion(1);
+  const target = snapshot().database('Thai_CI_AS').table('Sales')
+    .module('View', 'vAltered', 'V', 'VIEW', totalsView('vAltered'))
+    .viewIndex('vAltered', 'CIX_vAltered', ['Region'], { clustered: true })
+    .viewIndex('vAltered', 'IX_vAltered_Cnt', ['Cnt']);
+  const s = scriptsFor('view-indexes-old-model', source, target);
+
+  // The view is still altered: that is the difference found. What indexes it had in the source
+  // is not known, so none is created.
+  assert.deepEqual(statements(s.sync), [alteredTo(totalsView('vAltered', 'WHERE Region > 0 '))]);
+  const said = comments(s.sync);
+  const warning = said.findIndex((l) => l.startsWith('-- WARNING: the ALTER VIEW above drops the indexes of dbo.vAltered (CIX_vAltered, IX_vAltered_Cnt), and this script cannot create them again'));
+  assert.ok(warning >= 0, s.sync);
+  assert.deepEqual(said.slice(warning + 1, warning + 3), [
+    '-- CREATE UNIQUE CLUSTERED INDEX [CIX_vAltered] ON [dbo].[vAltered] ([Region]);',
+    '-- CREATE NONCLUSTERED INDEX [IX_vAltered_Cnt] ON [dbo].[vAltered] ([Cnt]);',
+  ]);
+
+  // The rollback takes the view from the side that was read in full.
+  assert.deepEqual(statements(s.rollback), [
+    alteredTo(totalsView('vAltered')),
+    'CREATE UNIQUE CLUSTERED INDEX [CIX_vAltered] ON [dbo].[vAltered] ([Region]);',
+    'CREATE NONCLUSTERED INDEX [IX_vAltered_Cnt] ON [dbo].[vAltered] ([Cnt]);',
+  ]);
+});
+
+test('script: on a target read without VIEW DEFINITION the indexes of a new view wait for its CREATE VIEW', () => {
+  const source = snapshot().database('Thai_CI_AS').table('Sales')
+    .module('View', 'vNew', 'V', 'VIEW', totalsView('vNew'))
+    .viewIndex('vNew', 'CIX_vNew', ['Region'], { clustered: true })
+    .viewIndex('vNew', 'IX_vNew_Cnt', ['Cnt']);
+  const target = snapshot().database('Thai_CI_AS').table('Sales').readWithoutViewDefinition();
+  const s = scriptsFor('view-indexes-guarded', source, target);
+
+  // A plain CREATE, which fails when a view of that name is there but hidden from this login.
+  assert.deepEqual(statements(s.sync), [totalsView('vNew')]);
+  const guard = '-- Run this only if the CREATE VIEW of dbo.vNew above succeeded: ';
+  assert.deepEqual(comments(s.sync).filter((l) => l.startsWith(guard)), [
+    `${guard}CREATE UNIQUE CLUSTERED INDEX [CIX_vNew] ON [dbo].[vNew] ([Region]);`,
+    `${guard}CREATE NONCLUSTERED INDEX [IX_vNew_Cnt] ON [dbo].[vNew] ([Cnt]);`,
+  ]);
+});
+
+// ---------------------------------------------------------------------------------------------
+// Scripts for database triggers. An enabled DDL trigger fires on the statements that come after
+// it, and may refuse them. The sync script writes the database triggers after everything else and
+// keeps them disabled until all of them are in place; the rollback script starts with them:
+// disabled, dropped or put back, then enabled as they were. (With real triggers that refuse
+// statements: test/engine-ddlguard.test.ts.)
+// ---------------------------------------------------------------------------------------------
+
+function ddlTrigger(name: string, events: string): string {
+  return `CREATE TRIGGER ${name} ON DATABASE FOR ${events} AS SET NOCOUNT ON;`;
+}
+
+// DISABLE or ENABLE of a database trigger as the scripts write it: only when the trigger is there.
+function triggerState(name: string, action: 'DISABLE' | 'ENABLE'): string {
+  return `IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'${name}') ${action} TRIGGER [${name}] ON DATABASE;`;
+}
+
+function databaseTriggerSides() {
+  const source = snapshot().database('Thai_CI_AS').table('T')
+    .databaseTrigger('trNew', ddlTrigger('trNew', 'CREATE_TABLE'))
+    .databaseTrigger('trNewOff', ddlTrigger('trNewOff', 'CREATE_TABLE'), 'DISABLED')
+    .databaseTrigger('trChanged', ddlTrigger('trChanged', 'CREATE_TABLE, DROP_TABLE'))
+    .databaseTrigger('trOff', ddlTrigger('trOff', 'CREATE_TABLE'), 'DISABLED')
+    .databaseTrigger('trOn', ddlTrigger('trOn', 'CREATE_TABLE'))
+    .databaseTrigger('trAnsi', ddlTrigger('trAnsi', 'CREATE_TABLE'), 'ENABLED', 'ANSI_NULLS OFF')
+    // A table's trigger of the same name as a database trigger: both can exist.
+    .trigger('trNew', 'T', 'CREATE TRIGGER dbo.trNew ON dbo.T AFTER INSERT AS RETURN')
+    .synonym('synNew', '[dbo].[T]');
+  const target = snapshot().database('Thai_CI_AS').table('T')
+    .databaseTrigger('trChanged', ddlTrigger('trChanged', 'CREATE_TABLE'))
+    .databaseTrigger('trOff', ddlTrigger('trOff', 'CREATE_TABLE'))
+    .databaseTrigger('trOn', ddlTrigger('trOn', 'CREATE_TABLE'), 'DISABLED')
+    .databaseTrigger('trAnsi', ddlTrigger('trAnsi', 'CREATE_TABLE'))
+    .databaseTrigger('trLegacy', ddlTrigger('trLegacy', 'DROP_TABLE'));
+  return { source, target };
+}
+
+test('script: database triggers are written last and kept disabled until all are in place, and a rollback starts with them', () => {
+  const { source, target } = databaseTriggerSides();
+  const s = scriptsFor('database-triggers', source, target);
+  const altered = (name: string, events: string) => ddlTrigger(name, events).replace('CREATE TRIGGER', 'CREATE OR ALTER TRIGGER');
+
+  assert.deepEqual(statements(s.sync), [
+    // The trigger of the table, with the triggers of tables. (A new trigger is enabled as well
+    // as created: CREATE OR ALTER on one that is there and disabled would leave it disabled.)
+    'CREATE OR ALTER TRIGGER dbo.trNew ON dbo.T AFTER INSERT AS RETURN',
+    'ENABLE TRIGGER [dbo].[trNew] ON [dbo].[T];',
+    'CREATE SYNONYM [dbo].[synNew] FOR [dbo].[T];',
+    // Then the database triggers. First the ones that are there and get another text (an
+    // enabled trigger fires on its own ALTER) or have to be disabled: disabled.
+    triggerState('trAnsi', 'DISABLE'),
+    triggerState('trChanged', 'DISABLE'),
+    triggerState('trOff', 'DISABLE'),
+    // The new ones: each disabled as soon as it is created, also the one the source has enabled.
+    altered('trNew', 'CREATE_TABLE'),
+    triggerState('trNew', 'DISABLE'),
+    altered('trNewOff', 'CREATE_TABLE'),
+    triggerState('trNewOff', 'DISABLE'),
+    // The changed ones, while they are disabled. Created under ANSI_NULLS OFF in the source: only
+    // that differs.
+    'SET ANSI_NULLS OFF;',
+    altered('trAnsi', 'CREATE_TABLE'),
+    'SET ANSI_NULLS ON;',
+    'SET QUOTED_IDENTIFIER ON;',
+    altered('trChanged', 'CREATE_TABLE, DROP_TABLE'),
+    // And only now, with nothing left to create or change: enabled, the ones the source has
+    // enabled. trOn among them, which differs in nothing else. Not trNewOff, not trOff.
+    triggerState('trNew', 'ENABLE'),
+    triggerState('trAnsi', 'ENABLE'),
+    triggerState('trChanged', 'ENABLE'),
+    triggerState('trOn', 'ENABLE'),
+  ]);
+  // Their own section, after the synonyms; the target's own one is left, its drop a comment.
+  assert.ok(s.sync.indexOf('-- Database triggers last') > s.sync.indexOf('-- Synonyms'), s.sync);
+  assert.ok(s.sync.indexOf('-- Database triggers last') > s.sync.indexOf('-- Triggers'), s.sync);
+  assert.ok(comments(s.sync).includes('-- DROP TRIGGER [trLegacy] ON DATABASE;'), s.sync);
+  assert.ok(!statements(s.sync).some((l) => l.includes('trLegacy')), s.sync);
+
+  assert.deepEqual(statements(s.rollback), [
+    // Before anything else: the sync script left the source's triggers enabled, and one of them
+    // may refuse every statement below. Disabled: the ones it created, the ones whose text it
+    // changed, and trOn, which it enabled.
+    triggerState('trNew', 'DISABLE'),
+    triggerState('trNewOff', 'DISABLE'),
+    triggerState('trAnsi', 'DISABLE'),
+    triggerState('trChanged', 'DISABLE'),
+    triggerState('trOn', 'DISABLE'),
+    // The created ones go.
+    'DROP TRIGGER IF EXISTS [trNew] ON DATABASE;',
+    'DROP TRIGGER IF EXISTS [trNewOff] ON DATABASE;',
+    // The changed ones get the text they had.
+    altered('trAnsi', 'CREATE_TABLE'),
+    altered('trChanged', 'CREATE_TABLE'),
+    // Enabled as before the sync script: trOff, which it disabled, among them. Not trOn.
+    triggerState('trAnsi', 'ENABLE'),
+    triggerState('trChanged', 'ENABLE'),
+    triggerState('trOff', 'ENABLE'),
+    // Then everything else.
+    'DROP TRIGGER IF EXISTS [dbo].[trNew];',
+    'DROP SYNONYM IF EXISTS [dbo].[synNew];',
+  ]);
+  assert.ok(s.rollback.indexOf('-- Database triggers first') > 0, s.rollback);
+  assert.ok(s.rollback.indexOf('-- Database triggers first') < s.rollback.indexOf('-- Created by the sync script: dropped'), s.rollback);
+  assert.ok(!s.rollback.includes('trLegacy'), s.rollback);
+});
+
+test('script: a database trigger with nothing to enable, alter or drop gets no statement it does not need', () => {
+  // Only a state differs, each way, and one new trigger that the source has disabled.
+  const side = (off: string, on: string) => snapshot().database('Thai_CI_AS').table('T')
+    .databaseTrigger('trOff', ddlTrigger('trOff', 'CREATE_TABLE'), off)
+    .databaseTrigger('trOn', ddlTrigger('trOn', 'CREATE_TABLE'), on)
+    .databaseTrigger("tr'odd]name", "CREATE TRIGGER [tr'odd]]name] ON DATABASE FOR CREATE_TABLE AS SET NOCOUNT ON;");
+  const source = side('DISABLED', 'ENABLED').databaseTrigger('trNewOff', ddlTrigger('trNewOff', 'CREATE_TABLE'), 'DISABLED');
+  const s = scriptsFor('database-triggers-state', source, side('ENABLED', 'DISABLED'));
+  assert.deepEqual(statements(s.sync), [
+    triggerState('trOff', 'DISABLE'),
+    ddlTrigger('trNewOff', 'CREATE_TABLE').replace('CREATE TRIGGER', 'CREATE OR ALTER TRIGGER'),
+    triggerState('trNewOff', 'DISABLE'),
+    triggerState('trOn', 'ENABLE'),
+  ]);
+  assert.deepEqual(statements(s.rollback), [
+    triggerState('trNewOff', 'DISABLE'),
+    triggerState('trOn', 'DISABLE'),
+    'DROP TRIGGER IF EXISTS [trNewOff] ON DATABASE;',
+    triggerState('trOff', 'ENABLE'),
+  ]);
+
+  // A name is written as a literal in the check and in brackets in the statement.
+  const odd = scriptsFor('database-triggers-name', side('ENABLED', 'ENABLED'),
+    snapshot().database('Thai_CI_AS').table('T')
+      .databaseTrigger('trOff', ddlTrigger('trOff', 'CREATE_TABLE'))
+      .databaseTrigger('trOn', ddlTrigger('trOn', 'CREATE_TABLE'))
+      .databaseTrigger("tr'odd]name", "CREATE TRIGGER [tr'odd]]name] ON DATABASE FOR DROP_TABLE AS SET NOCOUNT ON;"));
+  const first = statements(odd.sync)[0];
+  assert.equal(first, "IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'tr''odd]name') DISABLE TRIGGER [tr'odd]]name] ON DATABASE;");
+  assert.equal(statements(odd.sync).at(-1), "IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'tr''odd]name') ENABLE TRIGGER [tr'odd]]name] ON DATABASE;");
+});
+
+test('script: on a target read without VIEW DEFINITION a database trigger that is only in the source is a plain CREATE', () => {
+  const { source, target } = databaseTriggerSides();
+  const s = scriptsFor('database-triggers-incomplete', source, target.readWithoutViewDefinition());
+  const lines = statements(s.sync);
+  // A login without VIEW DEFINITION sees no database trigger at all: the one "only in the source"
+  // may be there. Plain CREATE fails then, instead of replacing it.
+  assert.ok(lines.includes(ddlTrigger('trNew', 'CREATE_TABLE')), s.sync);
+  assert.ok(lines.includes(ddlTrigger('trNewOff', 'CREATE_TABLE')), s.sync);
+  // And whether that one is enabled is not this script's to change: no statement disables or
+  // enables a trigger that is only in the source, in either script.
+  assert.ok(!lines.includes('DISABLE TRIGGER [trNewOff] ON DATABASE;'), s.sync);
+  assert.ok(comments(s.sync).includes('-- It is disabled in source. Run this only if the CREATE above succeeded: DISABLE TRIGGER [trNewOff] ON DATABASE;'), s.sync);
+  for (const script of [s.sync, s.rollback]) {
+    assert.ok(!statements(script).some((l) => /(?:DISABLE|ENABLE) TRIGGER \[trNew(?:Off)?\]/.test(l)), script);
+  }
+  // One that both sides have is still altered, disabled while it is.
+  const alter = lines.indexOf(ddlTrigger('trChanged', 'CREATE_TABLE, DROP_TABLE').replace('CREATE TRIGGER', 'CREATE OR ALTER TRIGGER'));
+  assert.ok(alter > 0, s.sync);
+  assert.ok(lines.indexOf(triggerState('trChanged', 'DISABLE')) >= 0 && lines.indexOf(triggerState('trChanged', 'DISABLE')) < alter, s.sync);
+  assert.ok(lines.indexOf(triggerState('trChanged', 'ENABLE')) > alter, s.sync);
+  // The rollback does not drop what may have been there before.
+  assert.ok(!statements(s.rollback).some((l) => l.startsWith('DROP TRIGGER')), s.rollback);
+  assert.ok(comments(s.rollback).includes('-- DROP TRIGGER IF EXISTS [trNew] ON DATABASE;'), s.rollback);
+});
+
+// ---------------------------------------------------------------------------------------------
+// The header of a script: what its reader is told before the first statement.
+// ---------------------------------------------------------------------------------------------
+
+// The comment lines above the USE of a script, as one text.
+function headerLines(script: string): string[] {
+  const lines = script.split('\n').map((l) => l.trimEnd());
+  const use = lines.findIndex((l) => l.startsWith('USE ['));
+  assert.ok(use > 0, script);
+  return lines.slice(0, use);
+}
+
+function header(script: string): string {
+  return headerLines(script).map((l) => l.replace(/^--\s?/, '').trim()).join(' ');
+}
+
+test('script: the header says what is left to do by hand and in which order things come', () => {
+  const side = snapshot().database('Thai_CI_AS').table('T').column('T', 'Id', {});
+  const s = scriptsFor('header', side, snapshot().database('Thai_CI_AS').table('T').column('T', 'Id', { Type: 'bigint' }));
+  for (const [name, script] of [['sync', s.sync], ['rollback', s.rollback]] as const) {
+    const text = header(script);
+    // ALTER COLUMN is active, but not for a column that a computed column uses: that change is a
+    // commented group to run by hand.
+    assert.match(text, /ALTER COLUMN statements are active/, name);
+    assert.match(text, /column that a computed column uses.*Msg 5074.*comment.*by hand/, name);
+    // A view the script alters gets its indexes again; those of the other views come after the views.
+    assert.match(text, /ALTER VIEW drops every index of a view/, name);
+    // The bullets are wrapped like the rest of the header (the three lines with the labels and
+    // the date are as long as the labels make them).
+    for (const line of headerLines(script).slice(3)) assert.ok(line.length <= 100, `${name}: ${line}`);
+  }
+  // Database triggers: last in a sync script and disabled until all of them are in place, first
+  // in a rollback script, which disables them before it drops or changes anything.
+  assert.match(header(s.sync), /Database triggers \(ON DATABASE\) come last\..*stay disabled until all of them are in place.*enabled at the very end/);
+  assert.match(header(s.rollback), /Database triggers \(ON DATABASE\) come first: .*disabled, dropped or put back, and only then enabled as they were before/);
+  assert.doesNotMatch(header(s.rollback), /come last/);
 });

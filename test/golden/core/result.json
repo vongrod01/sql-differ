@@ -38,9 +38,9 @@
     "compareColumnOrder": false
   },
   "counts": {
-    "onlyInSource": 20,
-    "onlyInTarget": 5,
-    "different": 14,
+    "onlyInSource": 25,
+    "onlyInTarget": 6,
+    "different": 18,
     "unverified": 0
   },
   "warnings": [],
@@ -69,8 +69,8 @@
     },
     {
       "Category": "Table",
-      "Source": 6,
-      "Target": 4,
+      "Source": 7,
+      "Target": 5,
       "OnlyInSource": 3,
       "OnlyInTarget": 1,
       "Different": 0,
@@ -78,8 +78,8 @@
     },
     {
       "Category": "Column",
-      "Source": 46,
-      "Target": 15,
+      "Source": 49,
+      "Target": 18,
       "OnlyInSource": 1,
       "OnlyInTarget": 1,
       "Different": 6,
@@ -87,11 +87,11 @@
     },
     {
       "Category": "Index",
-      "Source": 8,
-      "Target": 6,
-      "OnlyInSource": 1,
+      "Source": 15,
+      "Target": 10,
+      "OnlyInSource": 3,
       "OnlyInTarget": 1,
-      "Different": 1,
+      "Different": 2,
       "Unverified": 0
     },
     {
@@ -114,11 +114,11 @@
     },
     {
       "Category": "View",
-      "Source": 3,
-      "Target": 1,
-      "OnlyInSource": 2,
+      "Source": 6,
+      "Target": 3,
+      "OnlyInSource": 3,
       "OnlyInTarget": 0,
-      "Different": 1,
+      "Different": 2,
       "Unverified": 0
     },
     {
@@ -141,11 +141,11 @@
     },
     {
       "Category": "Trigger",
-      "Source": 2,
-      "Target": 1,
-      "OnlyInSource": 1,
-      "OnlyInTarget": 0,
-      "Different": 1,
+      "Source": 5,
+      "Target": 4,
+      "OnlyInSource": 2,
+      "OnlyInTarget": 1,
+      "Different": 3,
       "Unverified": 0
     },
     {
@@ -159,9 +159,9 @@
     },
     {
       "Category": "Sequence",
-      "Source": 2,
+      "Source": 3,
       "Target": 1,
-      "OnlyInSource": 1,
+      "OnlyInSource": 2,
       "OnlyInTarget": 0,
       "Different": 1,
       "Unverified": 0
@@ -338,6 +338,36 @@
       "TargetKey": "dbo.Orders|IX_Orders_CustomerId"
     },
     {
+      "Category": "Index",
+      "Object": "dbo.vSalesByRegion.IX_vSalesByRegion_Cnt",
+      "Status": "OnlyInSource",
+      "Detail": "Kind: INDEX; Type: NONCLUSTERED; Columns: Cnt",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.vSalesByRegion|IX_vSalesByRegion_Cnt",
+      "TargetKey": null
+    },
+    {
+      "Category": "Index",
+      "Object": "dbo.vSalesByRegion.IX_vSalesByRegion_Total",
+      "Status": "Different",
+      "Detail": "Include: source Cnt, target (none)",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.vSalesByRegion|IX_vSalesByRegion_Total",
+      "TargetKey": "dbo.vSalesByRegion|IX_vSalesByRegion_Total"
+    },
+    {
+      "Category": "Index",
+      "Object": "dbo.vSalesTotals.IX_vSalesTotals_Region",
+      "Status": "OnlyInSource",
+      "Detail": "Kind: INDEX; Type: NONCLUSTERED; Columns: Region",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.vSalesTotals|IX_vSalesTotals_Region",
+      "TargetKey": null
+    },
+    {
       "Category": "Foreign key",
       "Object": "dbo.Orders.FK_Orders_Customers",
       "Status": "OnlyInSource",
@@ -376,6 +406,26 @@
       "TargetDefinition": "CREATE VIEW dbo.vOrders\nAS\nSELECT o.Id, o.Name, o.Amount FROM dbo.Orders AS o;",
       "SourceKey": "dbo.vOrders",
       "TargetKey": "dbo.vOrders"
+    },
+    {
+      "Category": "View",
+      "Object": "dbo.vSalesBig",
+      "Status": "OnlyInSource",
+      "Detail": "Type: VIEW",
+      "SourceDefinition": "CREATE VIEW dbo.vSalesBig WITH SCHEMABINDING\nAS\nSELECT Id, Amount FROM dbo.Sales WHERE Amount > 1000;",
+      "TargetDefinition": null,
+      "SourceKey": "dbo.vSalesBig",
+      "TargetKey": null
+    },
+    {
+      "Category": "View",
+      "Object": "dbo.vSalesTotals",
+      "Status": "Different",
+      "Detail": "Definition differs",
+      "SourceDefinition": "-- Indexed views. ALTER VIEW (and so CREATE OR ALTER VIEW) drops every index of the view, without\n-- a word: a script that alters a view has to create its indexes again, the clustered one first.\n-- vSalesTotals: another definition, the same clustered index as the target and a new nonclustered\n-- one. vSalesByRegion: the view is the same; one index has another column list and one is new.\n-- vSalesBig: a new view with its clustered index.\nCREATE VIEW dbo.vSalesTotals WITH SCHEMABINDING\nAS\nSELECT Id, Region, Amount FROM dbo.Sales WHERE Amount >= 0;",
+      "TargetDefinition": "CREATE VIEW dbo.vSalesTotals WITH SCHEMABINDING\nAS\nSELECT Id, Region, Amount FROM dbo.Sales WHERE Amount > 0;",
+      "SourceKey": "dbo.vSalesTotals",
+      "TargetKey": "dbo.vSalesTotals"
     },
     {
       "Category": "View",
@@ -518,6 +568,46 @@
       "TargetKey": "dbo.trOrders_Insert"
     },
     {
+      "Category": "Trigger",
+      "Object": "trDdlChanged (database trigger)",
+      "Status": "Different",
+      "Detail": "Definition differs",
+      "SourceDefinition": "-- Database triggers: one for more events than in the target, one that is disabled here and\n-- otherwise the same, one that is new. The sync script writes them after everything else.\nCREATE TRIGGER trDdlChanged ON DATABASE FOR CREATE_SYNONYM, DROP_SYNONYM\nAS\nSET NOCOUNT ON;",
+      "TargetDefinition": "-- Database triggers (DDL triggers: ON DATABASE). They have no schema and are not in sys.objects.\n-- These do nothing, and fire on the synonyms that the fixtures and the scripts create and drop.\nCREATE TRIGGER trDdlChanged ON DATABASE FOR CREATE_SYNONYM\nAS\nSET NOCOUNT ON;",
+      "SourceKey": "(database trigger)|trDdlChanged",
+      "TargetKey": "(database trigger)|trDdlChanged"
+    },
+    {
+      "Category": "Trigger",
+      "Object": "trDdlLegacy (database trigger)",
+      "Status": "OnlyInTarget",
+      "Detail": "Type: SQL_TRIGGER; Table: DATABASE; State: ENABLED",
+      "SourceDefinition": null,
+      "TargetDefinition": "-- A database trigger that is only here: the sync script leaves it (its drop is a comment).\nCREATE TRIGGER trDdlLegacy ON DATABASE FOR DROP_SYNONYM\nAS\nSET NOCOUNT ON;",
+      "SourceKey": null,
+      "TargetKey": "(database trigger)|trDdlLegacy"
+    },
+    {
+      "Category": "Trigger",
+      "Object": "trDdlNew (database trigger)",
+      "Status": "OnlyInSource",
+      "Detail": "Type: SQL_TRIGGER; Table: DATABASE; State: ENABLED",
+      "SourceDefinition": "CREATE TRIGGER trDdlNew ON DATABASE FOR DROP_SYNONYM\nAS\nSET NOCOUNT ON;",
+      "TargetDefinition": null,
+      "SourceKey": "(database trigger)|trDdlNew",
+      "TargetKey": null
+    },
+    {
+      "Category": "Trigger",
+      "Object": "trDdlState (database trigger)",
+      "Status": "Different",
+      "Detail": "State: source DISABLED, target ENABLED",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "(database trigger)|trDdlState",
+      "TargetKey": "(database trigger)|trDdlState"
+    },
+    {
       "Category": "User-defined type",
       "Object": "dbo.tPhone",
       "Status": "OnlyInSource",
@@ -535,6 +625,16 @@
       "SourceDefinition": null,
       "TargetDefinition": null,
       "SourceKey": "dbo.tRows",
+      "TargetKey": null
+    },
+    {
+      "Category": "Sequence",
+      "Object": "dbo.seqBig",
+      "Status": "OnlyInSource",
+      "Detail": "DataType: decimal; Precision: 28; Start: 1; Increment: 1; Min: -9999999999999999999999999999; Max: 9999999999999999999999999999; Cycle: NO CYCLE; Cache: CACHE (default)",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": "dbo.seqBig",
       "TargetKey": null
     },
     {

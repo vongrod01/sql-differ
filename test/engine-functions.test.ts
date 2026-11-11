@@ -1,6 +1,9 @@
 // Single functions of the engine, called through test/support/Invoke-EngineFunction.ps1 (no database).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { ROOT } from './support/engine.js';
 import { callEngineFunction, engineValues } from './support/ps.js';
 
 test('engine function harness: arguments and results keep their text, errors come back per case', () => {
@@ -391,4 +394,167 @@ test('engine: reading a database and listing databases stop when another instanc
   const listed = engineValues('Test-DatabaseList', [['host\\DEMO,1433'], ['host\\EXAM,1433'], ['host,1433']], { setup: INSTANCE_STUBS }) as string[];
   assert.match(listed[0] ?? '', wrongInstance);
   assert.deepEqual(listed.slice(1), ['listed', 'listed']);
+});
+
+// ---------------------------------------------------------------------------------------------
+// Dates. Get-Date -Format follows the culture of the session: on a machine set to Thai, 'yyyy' is
+// the Buddhist year (2569 for 2026), which went into report headers, script headers and the names
+// of report folders. Every date the engine writes goes through Get-Timestamp, which does not.
+// ---------------------------------------------------------------------------------------------
+
+const THAI_CULTURE = `
+[System.Threading.Thread]::CurrentThread.CurrentCulture = [System.Globalization.CultureInfo]::GetCultureInfo('th-TH')
+function Test-Timestamp($Format) { return @{ engine = (Get-Timestamp $Format); control = (Get-Date -Format $Format) } }
+`;
+
+test('engine: dates are written in the Gregorian calendar whatever the culture of the session', () => {
+  const formats = ['yyyy', 'yyyy-MM-dd HH:mm:ss', 'yyyyMMdd_HHmmss', 's'];
+  const before = new Date().getFullYear();
+  const results = engineValues('Test-Timestamp', formats.map((f) => [f]), { setup: THAI_CULTURE }) as { engine: string; control: string }[];
+  const after = new Date().getFullYear();
+  const [year, long, stamp, sortable] = results.map((r) => r.engine);
+  // The control shows the session really is Thai: the same format through Get-Date is 543 years on.
+  assert.ok([before + 543, after + 543].includes(Number(results[0]?.control)), `Get-Date under th-TH: ${results[0]?.control}`);
+  assert.ok([before, after].includes(Number(year)), `Get-Timestamp 'yyyy': ${year}`);
+  assert.match(long ?? '', /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+  assert.match(stamp ?? '', /^\d{8}_\d{6}$/);
+  assert.match(sortable ?? '', /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/);
+  for (const value of [long, stamp, sortable]) assert.ok(value?.startsWith(String(year)), `${value} starts with the year ${year}`);
+});
+
+test('engine: no date is formatted with Get-Date', () => {
+  for (const file of ['Compare-Database.ps1', path.join('lib', 'SyncScript.ps1')]) {
+    const lines = readFileSync(path.join(ROOT, file), 'utf8').split(/\r?\n/);
+    const found = lines.flatMap((line, i) => (/Get-Date/i.test(line) ? [`${file}:${i + 1}: ${line.trim()}`] : []));
+    assert.deepEqual(found, [], 'use Get-Timestamp');
+  }
+});
+
+// ---------------------------------------------------------------------------------------------
+// Batch file names. Every database of a batch writes six files named after it into one folder,
+// next to the batch's own index.html / index.json and the web app's run.json, run.log and
+// heartbeat. A database called "index" used to overwrite the index of the batch, one called "run"
+// the app's run record, and "a.source.snapshot" the snapshot of database "a".
+// ---------------------------------------------------------------------------------------------
+
+const BATCH_NAMES = `
+$script:harnessUsed = New-BatchFileSet
+function Test-BaseName($Database) { return Get-BatchBaseName $Database $script:harnessUsed }
+function Test-UsedCount { return $script:harnessUsed.Count }
+`;
+
+test('engine: a batch numbers only the file names that would collide', () => {
+  // One folder: the cases share the set of names taken, in this order.
+  const cases: [database: string, baseName: string][] = [
+    // As before: the name itself, with what a file name cannot hold replaced.
+    ['report', 'report'],
+    ['sales 2024', 'sales_2024'],
+    ['ลูกค้า', 'ลูกค้า'],
+    // The second database that comes to the same file name.
+    ['sales_2024', 'sales_2024-2'],
+    ['sales/2024', 'sales_2024-3'],
+    // A database really called what an earlier one was numbered to.
+    ['sales_2024-2', 'sales_2024-2-2'],
+    // The files of the batch itself and of the web app (file names ignore case).
+    ['index', 'index-2'],
+    ['INDEX', 'INDEX-3'],
+    ['run', 'run-2'],
+    // Not taken: only heartbeat (no extension) and run.log are, and no database file is called that.
+    ['heartbeat', 'heartbeat'],
+    // "a.source.snapshot.json" is the snapshot of a, and would be the result of a.source.snapshot.
+    ['a', 'a'],
+    ['a.source.snapshot', 'a.source.snapshot-2'],
+    // The other way round: the later one moves, whichever it is.
+    ['b.target.snapshot', 'b.target.snapshot'],
+    ['b', 'b-2'],
+    // Windows device names, with any extension: a file called nul.html cannot be created.
+    ['nul', 'nul-2'],
+    ['COM1', 'COM1-2'],
+    ['Lpt9', 'Lpt9-2'],
+    // The device name is what stands before the first dot, so the number goes there.
+    ['con.x', 'con-2.x'],
+    ['aux.sales.2024', 'aux-2.sales.2024'],
+    // Only the whole word is a device.
+    ['console', 'console'],
+    ['com10', 'com10'],
+    ['null', 'null'],
+  ];
+  assert.deepEqual(engineValues('Test-BaseName', cases.map(([database]) => [database]), { setup: BATCH_NAMES }), cases.map(([, baseName]) => baseName));
+  // Five names taken from the start, then six files per database.
+  assert.deepEqual(engineValues('Test-UsedCount', [[]], { setup: BATCH_NAMES }), [5]);
+  const taken = engineValues('Test-UsedCount', [[]], { setup: `${BATCH_NAMES}\n[void](Test-BaseName 'a'); [void](Test-BaseName 'A')` });
+  assert.deepEqual(taken, [5 + 6 + 6]);
+});
+
+// ---------------------------------------------------------------------------------------------
+// Database triggers (CREATE TRIGGER ... ON DATABASE). No schema, and ON DATABASE is a keyword, not
+// a name: every statement about one is written differently from a table's trigger.
+// ---------------------------------------------------------------------------------------------
+
+// A database trigger as a snapshot has it.
+function databaseTriggerItem(definition: string, name: string): ModuleItem {
+  return {
+    Definition: definition,
+    Sql: { Schema: '', Name: name, ObjectType: 'TR', ParentSchema: '', ParentObject: '', Scope: 'DATABASE' },
+    Props: { Table: 'DATABASE' },
+  };
+}
+
+test('engine: the script of a database trigger keeps ON DATABASE and writes no schema', () => {
+  const key = '(database trigger)|trDdl';
+  checkModuleScripts([
+    ['as written', databaseTriggerItem('CREATE TRIGGER trDdl ON DATABASE FOR CREATE_SYNONYM\r\nAS\r\nSET NOCOUNT ON;', 'trDdl'), key,
+      'CREATE OR ALTER TRIGGER trDdl ON DATABASE FOR CREATE_SYNONYM\r\nAS\r\nSET NOCOUNT ON;'],
+    ['lower case, bracketed name', databaseTriggerItem('create trigger [trDdl] on database for DROP_SYNONYM as return', 'trDdl'), key,
+      'create OR ALTER trigger [trDdl] on database for DROP_SYNONYM as return'],
+    ['comments around the keyword', databaseTriggerItem('CREATE TRIGGER trDdl /*a*/ ON --b\r\n DATABASE FOR CREATE_TABLE AS RETURN', 'trDdl'), key,
+      'CREATE OR ALTER TRIGGER trDdl /*a*/ ON --b\r\n DATABASE FOR CREATE_TABLE AS RETURN'],
+    ['a name that needs quoting', databaseTriggerItem('CREATE TRIGGER [my trigger] ON DATABASE FOR CREATE_TABLE AS RETURN', 'my trigger'), '(database trigger)|my trigger',
+      'CREATE OR ALTER TRIGGER [my trigger] ON DATABASE FOR CREATE_TABLE AS RETURN'],
+    // The header spells the name another way than the catalog: the catalog's, quoted, no schema.
+    ['another case than the catalog', databaseTriggerItem('CREATE TRIGGER TRDDL ON DATABASE FOR CREATE_TABLE AS RETURN', 'trDdl'), key,
+      'CREATE OR ALTER TRIGGER [trDdl] ON DATABASE FOR CREATE_TABLE AS RETURN'],
+    ['a schema in the header', databaseTriggerItem('CREATE TRIGGER dbo.trDdl ON DATABASE FOR CREATE_TABLE AS RETURN', 'trDdl'), key,
+      'CREATE OR ALTER TRIGGER [trDdl] ON DATABASE FOR CREATE_TABLE AS RETURN'],
+    ['already CREATE OR ALTER', databaseTriggerItem('CREATE OR ALTER TRIGGER trDdl ON DATABASE FOR CREATE_TABLE AS RETURN', 'trDdl'), key,
+      'CREATE OR ALTER TRIGGER trDdl ON DATABASE FOR CREATE_TABLE AS RETURN'],
+  ], false);
+
+  checkModuleScripts([
+    ['plain CREATE', databaseTriggerItem('CREATE OR ALTER TRIGGER trDdl ON DATABASE FOR CREATE_TABLE AS RETURN', 'trDdl'), key,
+      'CREATE TRIGGER trDdl ON DATABASE FOR CREATE_TABLE AS RETURN'],
+  ], true);
+
+  for (const createOnly of [false, true]) {
+    checkModuleScripts([
+      // A table that is called DATABASE: the header of a table's trigger, not of this one.
+      ['a bracketed DATABASE', databaseTriggerItem('CREATE TRIGGER trDdl ON [DATABASE] AFTER INSERT AS RETURN', 'trDdl'), key, /does not read CREATE TRIGGER \.\.\. ON DATABASE/],
+      ['a quoted DATABASE', databaseTriggerItem('CREATE TRIGGER trDdl ON "DATABASE" AFTER INSERT AS RETURN', 'trDdl'), key, /does not read CREATE TRIGGER \.\.\. ON DATABASE/],
+      ['a schema before it', databaseTriggerItem('CREATE TRIGGER trDdl ON dbo.DATABASE AFTER INSERT AS RETURN', 'trDdl'), key, /does not read CREATE TRIGGER \.\.\. ON DATABASE/],
+      ['a server trigger', databaseTriggerItem('CREATE TRIGGER trDdl ON ALL SERVER FOR CREATE_DATABASE AS RETURN', 'trDdl'), key, /does not read CREATE TRIGGER \.\.\. ON DATABASE/],
+      ['no ON at all', databaseTriggerItem('CREATE TRIGGER trDdl FOR CREATE_TABLE AS RETURN', 'trDdl'), key, /does not read CREATE TRIGGER \.\.\. ON DATABASE/],
+      ['not a trigger', databaseTriggerItem('CREATE PROCEDURE trDdl AS RETURN', 'trDdl'), key, /does not read CREATE TRIGGER \.\.\. ON DATABASE/],
+      ['definition not readable', databaseTriggerItem(HIDDEN, 'trDdl'), key, /the source definition is not readable/],
+      ['no name', databaseTriggerItem('CREATE TRIGGER trDdl ON DATABASE FOR CREATE_TABLE AS RETURN', ''), key, /name of the object is missing/],
+    ], createOnly);
+  }
+});
+
+const DROP_WRAPPERS = `
+function Test-DropModule($Item, $IfExists) { return Get-DropModuleSql $Item -IfExists:([bool]$IfExists) }
+function Test-TriggerNames($Item) { return ('{0} ON {1}' -f (Get-ModuleName $Item), (Get-TriggerTarget $Item)) }
+`;
+
+test('engine: dropping, disabling and enabling a database trigger say ON DATABASE', () => {
+  const ddl = databaseTriggerItem('CREATE TRIGGER trDdl ON DATABASE FOR CREATE_TABLE AS RETURN', 'we]ird');
+  const onTable = moduleItem('CREATE TRIGGER dbo.tr ON dbo.t AFTER INSERT AS RETURN', 'dbo', 'tr', ['dbo', 't']);
+  const procedure = moduleItem('CREATE PROCEDURE dbo.p AS SELECT 1', 'dbo', 'p');
+  assert.deepEqual(engineValues('Test-DropModule', [[ddl, false], [ddl, true], [onTable, false], [onTable, true], [procedure, true]], { setup: DROP_WRAPPERS }), [
+    'DROP TRIGGER [we]]ird] ON DATABASE;',
+    'DROP TRIGGER IF EXISTS [we]]ird] ON DATABASE;',
+    'DROP TRIGGER [dbo].[tr];',
+    'DROP TRIGGER IF EXISTS [dbo].[tr];',
+    'DROP PROCEDURE IF EXISTS [dbo].[p];',
+  ]);
+  assert.deepEqual(engineValues('Test-TriggerNames', [[ddl], [onTable]], { setup: DROP_WRAPPERS }), ['[we]]ird] ON DATABASE', '[dbo].[tr] ON [dbo].[t]']);
 });

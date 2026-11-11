@@ -8,7 +8,8 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { ROOT, buildFixture, compare } from './support/engine.js';
 import { matchGolden, scrubFile } from './support/golden.js';
-import { DB_PREFIX, mustRunScriptFile, query, runScriptFile, skipWithoutServer } from './support/sql.js';
+import { CHILDREN_UNTOUCHED, UNTOUCHED, hiddenChildren, hiddenObjects, messageNumbers } from './support/incomplete.js';
+import { DB_PREFIX, mustRunScriptFile, runScriptFile, skipWithoutServer } from './support/sql.js';
 
 const skip = skipWithoutServer();
 const source = `${DB_PREFIX}incomplete_src`;
@@ -26,49 +27,13 @@ interface Snapshot {
   categories: Record<string, Record<string, SnapshotItem>>;
 }
 
-// The three target objects the comparison does not see. dbo.pGetOrder: has it its own text (from
-// the fixture's common.sql), the source's, or is it gone? dbo.trOrders_Insert, which is disabled
-// in the source: is it still enabled here? dbo.synOrders, which is for dbo.vOrders in the source:
-// is it still for dbo.Orders?
-function hiddenObjects(): string {
-  const run = query([
-    "SELECT CONCAT('pGetOrder: ', ISNULL((SELECT CASE WHEN definition LIKE '%SELECT Id, Name, Amount FROM dbo.Orders%' THEN 'its own text' ELSE 'the text of the source' END",
-    "FROM sys.sql_modules WHERE object_id = OBJECT_ID(N'dbo.pGetOrder')), 'dropped'),",
-    "'; trOrders_Insert: ', ISNULL((SELECT CASE WHEN is_disabled = 1 THEN 'disabled' ELSE 'enabled' END FROM sys.triggers WHERE name = N'trOrders_Insert'), 'dropped'),",
-    "'; synOrders: ', ISNULL((SELECT base_object_name FROM sys.synonyms WHERE name = N'synOrders'), 'dropped'))",
-  ].join(' '), target);
-  assert.ok(run.ok, run.output);
-  return run.output.trim();
-}
-
-const UNTOUCHED = 'pGetOrder: its own text; trOrders_Insert: enabled; synOrders: [dbo].[Orders]';
-
-// What is on the two target tables whose contents the comparison cannot see: the check
-// constraints of dbo.Customers (its unnamed check reads without an expression) and everything on
-// dbo.Hidden (the whole table is invisible).
-function hiddenChildren(): string[] {
-  const run = query([
-    "SELECT CONCAT('check ', OBJECT_NAME(parent_object_id), '.', CASE WHEN is_system_named = 1 THEN '(unnamed)' ELSE name END, ': ', definition)",
-    "FROM sys.check_constraints WHERE parent_object_id IN (OBJECT_ID(N'dbo.Customers'), OBJECT_ID(N'dbo.Hidden'))",
-    "UNION ALL SELECT CONCAT('index ', OBJECT_NAME(object_id), '.', name) FROM sys.indexes WHERE object_id = OBJECT_ID(N'dbo.Hidden') AND type > 0",
-  ].join(' '), target);
-  assert.ok(run.ok, run.output);
-  return run.output.trim().split(/\r?\n/).sort();
-}
-
-const CHILDREN_UNTOUCHED = ['check Customers.(unnamed): (len([Name])>(0))', 'check Hidden.(unnamed): ([V]>(0))', 'index Hidden.PK_Hidden'];
-
-function messageNumbers(output: string): string[] {
-  return [...output.matchAll(/^Msg (\d+),/gm)].map((m) => m[1] ?? '');
-}
-
 test('engine: incomplete (a target object the login cannot see is neither replaced nor dropped)', { skip }, async (t) => {
   buildFixture('core', source, target);
   for (const [file, database] of [['source.sql', source], ['target.sql', target]] as const) {
     mustRunScriptFile(path.join(ROOT, 'test', 'fixtures', 'incomplete', file), database);
   }
-  assert.equal(hiddenObjects(), UNTOUCHED, 'the fixture is not what this test expects');
-  assert.deepEqual(hiddenChildren(), CHILDREN_UNTOUCHED, 'the fixture is not what this test expects');
+  assert.equal(hiddenObjects(target), UNTOUCHED, 'the fixture is not what this test expects');
+  assert.deepEqual(hiddenChildren(target), CHILDREN_UNTOUCHED, 'the fixture is not what this test expects');
 
   // The target as a login without VIEW DEFINITION reads it: flagged, and without a procedure, a
   // trigger and a synonym that are really there (and differ from the source's).
@@ -119,20 +84,20 @@ test('engine: incomplete (a target object the login cannot see is neither replac
     // synonym, which CREATE SYNONYM does not replace).
     const run = runScriptFile(before.files.sync, undefined, { continueOnError: true });
     assert.deepEqual(messageNumbers(run.output), ['2714', '2714', '2714', '2714'], run.output);
-    assert.equal(hiddenObjects(), UNTOUCHED);
+    assert.equal(hiddenObjects(target), UNTOUCHED);
   });
 
   // The CREATE TABLE of dbo.Hidden failed, and the source's index and checks must not land on the
   // table that is there instead. The unnamed check of dbo.Customers must not be added a second
   // time (it would be, at every run: nothing can pair it with the one that is there).
   await t.test('the sync script adds nothing to a table it did not create, and no second copy of an unnamed check', () => {
-    assert.deepEqual(hiddenChildren(), CHILDREN_UNTOUCHED);
+    assert.deepEqual(hiddenChildren(target), CHILDREN_UNTOUCHED);
   });
 
   await t.test('the rollback script runs without errors and does not drop them', () => {
     const run = runScriptFile(before.files.rollback);
     assert.ok(run.ok, run.output);
-    assert.equal(hiddenObjects(), UNTOUCHED);
-    assert.deepEqual(hiddenChildren(), CHILDREN_UNTOUCHED);
+    assert.equal(hiddenObjects(target), UNTOUCHED);
+    assert.deepEqual(hiddenChildren(target), CHILDREN_UNTOUCHED);
   });
 });

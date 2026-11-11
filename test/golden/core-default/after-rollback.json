@@ -42,8 +42,8 @@
   "summary": [
     {
       "Category": "Table",
-      "Source": 4,
-      "Target": 7,
+      "Source": 5,
+      "Target": 8,
       "OnlyInSource": 0,
       "OnlyInTarget": 3,
       "Different": 0,
@@ -51,8 +51,8 @@
     },
     {
       "Category": "Column",
-      "Source": 15,
-      "Target": 49,
+      "Source": 18,
+      "Target": 52,
       "OnlyInSource": 0,
       "OnlyInTarget": 1,
       "Different": 0,
@@ -60,8 +60,8 @@
     },
     {
       "Category": "View",
-      "Source": 1,
-      "Target": 1,
+      "Source": 3,
+      "Target": 3,
       "OnlyInSource": 0,
       "OnlyInTarget": 0,
       "Different": 0,

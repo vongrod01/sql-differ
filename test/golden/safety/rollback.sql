@@ -6,12 +6,20 @@
 -- schema back as it was read during the comparison. REVIEW IT BEFORE RUNNING.
 -- - Nothing in this file has been executed by database-diff.
 -- - It assumes the target changed only through the sync script since the comparison.
+-- - Database triggers (ON DATABASE) come first: the ones the sync script created or changed are
+--   disabled, dropped or put back, and only then enabled as they were before. An enabled one
+--   fires on the statements after it and may refuse them.
 -- - Procedures, views, functions, triggers, synonyms, indexes and constraints the sync script
---   created are dropped first, with IF EXISTS so a sync script that stopped part way is fine.
+--   created are dropped next, with IF EXISTS so a sync script that stopped part way is fine.
 -- - Tables, columns, sequences, types and schemas it created are commented out at the end:
 --   dropping them loses the data written since.
 -- - Changed objects get their earlier definition back. ALTER COLUMN statements are active:
---   check them for data loss (narrower types, NOT NULL).
+--   check them for data loss (narrower types, NOT NULL). Except the change of a column that a
+--   computed column uses: SQL Server refuses it (Msg 5074), so it is written as a group of
+--   comments to run by hand (those computed columns dropped, the change, the columns added
+--   again).
+-- - A view that is altered back gets the indexes it had created again right after it (ALTER
+--   VIEW drops every index of a view). The indexes of the other views come after the views.
 -- - Objects only in the target are not here: the sync script leaves them (its drops are
 --   commented out). Schemas, types and sequences it created only when missing are left in place.
 -- - Only a backup brings back dropped data.

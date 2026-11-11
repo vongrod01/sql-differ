@@ -48,8 +48,35 @@ CREATE SEQUENCE dbo.seqInvoice AS int START WITH 1 INCREMENT BY 1;
 GO
 CREATE SYNONYM dbo.synOrders FOR dbo.Orders;
 GO
+-- Views that carry indexes (indexed views). The indexes themselves differ per side: see
+-- source.sql and target.sql.
+CREATE TABLE dbo.Sales (
+    Id int NOT NULL CONSTRAINT PK_Sales PRIMARY KEY,
+    Region varchar(10) NOT NULL,
+    Amount int NOT NULL
+);
+GO
+CREATE VIEW dbo.vSalesByRegion WITH SCHEMABINDING
+AS
+SELECT Region, SUM(Amount) AS Total, COUNT_BIG(*) AS Cnt FROM dbo.Sales GROUP BY Region;
+GO
+CREATE VIEW dbo.vSalesTotals WITH SCHEMABINDING
+AS
+SELECT Id, Region, Amount FROM dbo.Sales WHERE Amount > 0;
+GO
 -- Data that must survive sync + rollback.
 INSERT INTO dbo.Customers (Name, Email) VALUES (N'ลูกค้า ทดสอบ', 'test@example.com');
 INSERT INTO dbo.Orders (Id, CustomerId, Name, Amount) VALUES (1, 1, N'first', 5.00);
 INSERT INTO dbo.Codes (Id, Code) VALUES (1, 'A1');
+INSERT INTO dbo.Sales (Id, Region, Amount) VALUES (1, 'north', 10), (2, 'north', 5), (3, 'south', 2000);
+GO
+-- Database triggers (DDL triggers: ON DATABASE). They have no schema and are not in sys.objects.
+-- These do nothing, and fire on the synonyms that the fixtures and the scripts create and drop.
+CREATE TRIGGER trDdlChanged ON DATABASE FOR CREATE_SYNONYM
+AS
+SET NOCOUNT ON;
+GO
+CREATE TRIGGER trDdlState ON DATABASE FOR CREATE_SYNONYM
+AS
+SET NOCOUNT ON;
 GO

@@ -27,3 +27,14 @@ CREATE PROCEDURE dbo.pAnsiOff @Name nvarchar(50)
 AS
 SELECT Id FROM dbo.Orders WHERE Name = @Name;
 GO
+-- Indexed views as they are in production: both views of common.sql have their clustered index,
+-- and vSalesByRegion a nonclustered one that the source has with another column list.
+CREATE UNIQUE CLUSTERED INDEX CIX_vSalesByRegion ON dbo.vSalesByRegion (Region);
+CREATE NONCLUSTERED INDEX IX_vSalesByRegion_Total ON dbo.vSalesByRegion (Total);
+CREATE UNIQUE CLUSTERED INDEX CIX_vSalesTotals ON dbo.vSalesTotals (Id);
+GO
+-- A database trigger that is only here: the sync script leaves it (its drop is a comment).
+CREATE TRIGGER trDdlLegacy ON DATABASE FOR DROP_SYNONYM
+AS
+SET NOCOUNT ON;
+GO

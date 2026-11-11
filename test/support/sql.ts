@@ -61,6 +61,20 @@ export function query(sql: string, database = 'master'): SqlRun {
   return sqlcmd(['-d', database, '-h', '-1', '-W', '-Q', `SET NOCOUNT ON; ${sql}`]);
 }
 
+// Runs batches that must not appear on a command line (they hold a password): the text goes to
+// sqlcmd over stdin. Batches are separated by GO lines. `secret` is taken out of the output that
+// comes back, so a message built from it cannot show the password either.
+export function runSqlFromStdin(sql: string, secret: string, database = 'master'): SqlRun {
+  const run = spawnSync('sqlcmd', ['-S', TEST_SERVER, '-E', '-b', '-I', '-d', database, '-f', 'i:65001,o:65001'], {
+    input: `${sql}\nGO\n`,
+    encoding: 'utf8',
+    windowsHide: true,
+    timeout: 120_000,
+  });
+  const output = `${run.stdout ?? ''}${run.stderr ?? ''}${run.error ? String(run.error) : ''}`;
+  return { ok: run.status === 0, output: secret ? output.split(secret).join('<secret>') : output };
+}
+
 // SQL expression: an nvarchar value as the hex of its UTF-16LE bytes.
 export function unicodeHex(expression: string): string {
   return `CONVERT(varchar(max), CAST(${expression} AS varbinary(max)), 2)`;
@@ -98,6 +112,11 @@ export function recreateDatabase(name: string): void {
     ...dropStatements(name),
     `CREATE DATABASE [${name}] COLLATE Thai_CI_AS;`,
     `ALTER DATABASE [${name}] SET COMPATIBILITY_LEVEL = 140;`,
+    // LocalDB creates databases with AUTO_CLOSE ON: one is shut down when its last connection
+    // closes and started again at the next look, and while it starts it reads as RECOVERING. A
+    // test file that lists databases at that moment (the test files run in parallel) then finds
+    // another file's database "not accessible" (seen 2026-11-11: -ListDatabases and a batch).
+    `ALTER DATABASE [${name}] SET AUTO_CLOSE OFF;`,
   ].join('\n')]);
   if (!run.ok) throw new Error(`could not create ${name}:\n${run.output}`);
 }
@@ -109,11 +128,13 @@ export function dropDatabase(name: string): void {
   if (!run.ok) throw new Error(`could not drop ${name}:\n${run.output}`);
 }
 
-// What a script that ran in the wrong database leaves there: objects, schemas, types.
+// What a script that ran in the wrong database leaves there: objects, schemas, types, and
+// database triggers (which are not in sys.objects).
 export const USER_OBJECT_COUNT = [
   'SELECT (SELECT COUNT(*) FROM sys.objects WHERE is_ms_shipped = 0)',
   '+ (SELECT COUNT(*) FROM sys.schemas WHERE schema_id > 4 AND schema_id < 16384)',
   '+ (SELECT COUNT(*) FROM sys.types WHERE is_user_defined = 1)',
+  '+ (SELECT COUNT(*) FROM sys.triggers WHERE parent_class = 0)',
 ].join(' ');
 
 export interface ScriptOptions {

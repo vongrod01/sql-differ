@@ -9,6 +9,7 @@
   },
   "scripts": {
     "start": "node app/server.js --open",
+    "dev": "node --watch-path=app/server.js --watch-path=app/lib app/server.js --open",
     "typecheck": "tsc",
     "test": "node --import tsx --test \"test/**/*.test.ts\"",
     "test:update-golden": "node --import tsx scripts/update-golden.ts"

@@ -7,7 +7,16 @@
 -- - Nothing in this file has been executed by database-diff.
 -- - Statements that drop tables, columns or other objects are commented out at the end.
 -- - ALTER COLUMN statements are active: check them for data loss (narrower types, NOT NULL).
+--   Except the change of a column that a computed column uses: SQL Server refuses it (Msg
+--   5074), so it is written as a group of comments to run by hand (those computed columns
+--   dropped, the change, the columns added again).
 -- - Objects are ordered by kind, not by dependency; rerun a failed part after the rest.
+-- - A view this script alters gets the indexes the source has on it created again right after
+--   it (ALTER VIEW drops every index of a view). The indexes of the other views come after
+--   the views.
+-- - Database triggers (ON DATABASE) come last. The ones this script creates or changes stay
+--   disabled until all of them are in place, and the ones the source has enabled are enabled at
+--   the very end: an enabled one fires on the statements after it and may refuse them.
 -- - Uses CREATE OR ALTER, which needs SQL Server 2016 SP1 or later on the target.
 -- - It starts with USE of the target database. If that fails (wrong server, no access), nothing
 --   after it is executed, so no statement runs in another database.
@@ -55,6 +64,8 @@ GO
 -- ==========================================================================================
 -- Sequences
 -- ==========================================================================================
+CREATE SEQUENCE [dbo].[seqBig] AS decimal(28,0) START WITH 1 INCREMENT BY 1 MINVALUE -9999999999999999999999999999 MAXVALUE 9999999999999999999999999999 NO CYCLE CACHE;
+GO
 CREATE SEQUENCE [dbo].[seqShipment] AS bigint START WITH 1000 INCREMENT BY 1 MINVALUE -9223372036854775808 MAXVALUE 9223372036854775807 NO CYCLE CACHE;
 GO
 ALTER SEQUENCE [dbo].[seqInvoice] INCREMENT BY 10 MINVALUE -2147483648 MAXVALUE 2147483647 NO CYCLE CACHE;  -- data type and start value are not changed
@@ -197,6 +208,16 @@ GO
 -- ==========================================================================================
 -- Views
 -- ==========================================================================================
+-- dbo.vSalesBig: only in source
+GO
+CREATE OR ALTER VIEW dbo.vSalesBig WITH SCHEMABINDING
+AS
+SELECT Id, Amount FROM dbo.Sales WHERE Amount > 1000;
+
+GO
+-- The indexes dbo.vSalesBig has in the source:
+CREATE UNIQUE CLUSTERED INDEX [CIX_vSalesBig] ON [dbo].[vSalesBig] ([Id]);
+GO
 -- rpt.vDailyTotal: only in source
 GO
 CREATE OR ALTER VIEW rpt.vDailyTotal
@@ -219,6 +240,35 @@ CREATE OR ALTER VIEW dbo.vOrders
 AS
 SELECT o.Id, o.CustomerId, o.Name, o.Amount FROM dbo.Orders AS o;
 
+GO
+-- dbo.vSalesTotals: Definition differs
+GO
+-- Indexed views. ALTER VIEW (and so CREATE OR ALTER VIEW) drops every index of the view, without
+-- a word: a script that alters a view has to create its indexes again, the clustered one first.
+-- vSalesTotals: another definition, the same clustered index as the target and a new nonclustered
+-- one. vSalesByRegion: the view is the same; one index has another column list and one is new.
+-- vSalesBig: a new view with its clustered index.
+CREATE OR ALTER VIEW dbo.vSalesTotals WITH SCHEMABINDING
+AS
+SELECT Id, Region, Amount FROM dbo.Sales WHERE Amount >= 0;
+
+GO
+-- ALTER VIEW drops every index of a view. The indexes dbo.vSalesTotals has in the source are created again:
+CREATE UNIQUE CLUSTERED INDEX [CIX_vSalesTotals] ON [dbo].[vSalesTotals] ([Id]);
+GO
+CREATE NONCLUSTERED INDEX [IX_vSalesTotals_Region] ON [dbo].[vSalesTotals] ([Region]);
+GO
+
+-- ==========================================================================================
+-- Indexes on views
+-- ==========================================================================================
+CREATE NONCLUSTERED INDEX [IX_vSalesByRegion_Cnt] ON [dbo].[vSalesByRegion] ([Cnt]);
+GO
+-- dbo.vSalesByRegion.IX_vSalesByRegion_Total: Include: source Cnt, target (none)
+BEGIN TRANSACTION;
+DROP INDEX [IX_vSalesByRegion_Total] ON [dbo].[vSalesByRegion];
+CREATE NONCLUSTERED INDEX [IX_vSalesByRegion_Total] ON [dbo].[vSalesByRegion] ([Total]) INCLUDE ([Cnt]);
+COMMIT TRANSACTION;
 GO
 
 -- ==========================================================================================
@@ -313,9 +363,44 @@ CREATE SYNONYM [dbo].[synOrders] FOR [dbo].[vOrders];
 GO
 
 -- ==========================================================================================
+-- Database triggers last: disabled until all of them are in place (an enabled one fires on the statements after it)
+-- ==========================================================================================
+-- Disabled before they are changed: an enabled one fires on the statements of this section, also on its own ALTER.
+IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trDdlChanged') DISABLE TRIGGER [trDdlChanged] ON DATABASE;
+GO
+IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trDdlState') DISABLE TRIGGER [trDdlState] ON DATABASE;
+GO
+-- trDdlNew (database trigger): only in source
+GO
+CREATE OR ALTER TRIGGER trDdlNew ON DATABASE FOR DROP_SYNONYM
+AS
+SET NOCOUNT ON;
+
+GO
+IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trDdlNew') DISABLE TRIGGER [trDdlNew] ON DATABASE;
+GO
+-- trDdlChanged (database trigger): Definition differs
+GO
+-- Database triggers: one for more events than in the target, one that is disabled here and
+-- otherwise the same, one that is new. The sync script writes them after everything else.
+CREATE OR ALTER TRIGGER trDdlChanged ON DATABASE FOR CREATE_SYNONYM, DROP_SYNONYM
+AS
+SET NOCOUNT ON;
+
+GO
+-- trDdlState (database trigger): State: source DISABLED, target ENABLED
+-- Disabled at the start of this section.
+-- Enabled now that all of them are in place: the ones the source has enabled.
+IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trDdlNew') ENABLE TRIGGER [trDdlNew] ON DATABASE;
+GO
+IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trDdlChanged') ENABLE TRIGGER [trDdlChanged] ON DATABASE;
+GO
+
+-- ==========================================================================================
 -- Only in target: NOT dropped. Uncomment a line only after checking nothing still needs it (data is lost)
 -- ==========================================================================================
 -- DROP INDEX [IX_Customers_Name] ON [dbo].[Customers];
+-- DROP TRIGGER [trDdlLegacy] ON DATABASE;
 -- DROP PROCEDURE [dbo].[pLegacyCleanup];
 -- DROP PROCEDURE [dbo].[pOldName];
 -- ALTER TABLE [dbo].[Orders] DROP COLUMN [LegacyCode];

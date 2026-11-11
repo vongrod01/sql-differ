@@ -6,7 +6,8 @@
     Reads the catalog views of a source and a target database (read-only: SELECT on sys.* only)
     and compares database settings, schemas, tables, columns, indexes / primary keys / unique
     constraints, foreign keys, check constraints, views, stored procedures, functions, triggers,
-    user-defined types, sequences and synonyms.
+    user-defined types, sequences and synonyms. The indexes of views (indexed views) are compared
+    as indexes, and database triggers (ON DATABASE) as triggers.
 
     Prints a summary per category, writes an HTML report (module definitions get a line diff),
     and sets the exit code: 0 = no differences, 1 = differences found, 2 = error.
@@ -252,7 +253,18 @@ $IgnoredProps = @{}
 if ($IgnoreCollation) { $IgnoredProps['Collation'] = $true }
 if (-not $CompareColumnOrder) { $IgnoredProps['Ordinal'] = $true }
 
+# What a snapshot of this engine holds. Version 2 (2026-11-11) added the indexes of views and
+# database triggers. A snapshot file of version 1 does not have them, which is not the same as
+# the database having none: they are compared only when both sides were read as version 2.
+$SnapshotVersion = 2
+
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+
+# Every date the engine writes (reports, scripts, snapshots, the names of report files) goes
+# through here. The date cmdlet with -Format follows the culture of the session: on a machine set
+# to Thai, 'yyyy' is the Buddhist year (2569 for 2026).
+$Invariant = [System.Globalization.CultureInfo]::InvariantCulture
+function Get-Timestamp([string]$Format) { return [DateTime]::Now.ToString($Format, $Invariant) }
 
 # The web app reads the console log as UTF-8.
 if ($env:DATABASE_DIFF_UTF8 -eq '1') { [Console]::OutputEncoding = $Utf8NoBom }
@@ -310,9 +322,13 @@ WHERE t.is_ms_shipped = 0
   AND {0}
 '@ -f ($NotToolObject -f 't')
 
+# sys.types is joined with LEFT JOIN: a login without VIEW DEFINITION sees the columns of a table
+# it may select from, but not the row of a user-defined type it has no permission on. With an
+# inner join such a column disappeared, and read as a column the database does not have. Its type
+# reads as not readable instead, so the column is compared without its type.
 $Sql.Columns = @'
 SELECT s.name AS SchemaName, t.name AS TableName, c.name AS ColumnName, c.column_id AS Ordinal,
-       {0} AS DataType,
+       ISNULL({0}, '(not readable)') AS DataType,
        CASE WHEN c.is_nullable = 1 THEN 'NULL' ELSE 'NOT NULL' END AS Nullable,
        CASE WHEN c.is_identity = 1
             THEN 'IDENTITY(' + CAST(ic.seed_value AS varchar(40)) + ',' + CAST(ic.increment_value AS varchar(40)) + ')'
@@ -331,7 +347,7 @@ SELECT s.name AS SchemaName, t.name AS TableName, c.name AS ColumnName, c.column
 FROM sys.columns c
 JOIN sys.tables t ON t.object_id = c.object_id
 JOIN sys.schemas s ON s.schema_id = t.schema_id
-JOIN sys.types ty ON ty.user_type_id = c.user_type_id
+LEFT JOIN sys.types ty ON ty.user_type_id = c.user_type_id
 LEFT JOIN sys.identity_columns ic ON ic.object_id = c.object_id AND ic.column_id = c.column_id
 LEFT JOIN sys.computed_columns cc ON cc.object_id = c.object_id AND cc.column_id = c.column_id
 LEFT JOIN sys.default_constraints dc ON dc.object_id = c.default_object_id
@@ -339,6 +355,8 @@ WHERE t.is_ms_shipped = 0
   AND {1}
 '@ -f $ColumnTypeSql, ($NotToolObject -f 't')
 
+# The indexes of tables and of views (an indexed view: a unique clustered index, and nonclustered
+# ones on top of it). A view's index is an item like a table's, with the view as its parent.
 $Sql.Indexes = @'
 SELECT s.name AS SchemaName, t.name AS TableName, i.name AS IndexName, i.type_desc AS IndexType,
        i.is_primary_key AS IsPrimaryKey, i.is_unique AS IsUnique, i.is_unique_constraint AS IsUniqueConstraint,
@@ -350,12 +368,12 @@ SELECT s.name AS SchemaName, t.name AS TableName, i.name AS IndexName, i.type_de
        ISNULL(ic.is_descending_key, 0) AS IsDescending,
        ISNULL(ic.is_included_column, 0) AS IsIncluded
 FROM sys.indexes i
-JOIN sys.tables t ON t.object_id = i.object_id
+JOIN sys.objects t ON t.object_id = i.object_id
 JOIN sys.schemas s ON s.schema_id = t.schema_id
 LEFT JOIN sys.key_constraints kc ON kc.parent_object_id = i.object_id AND kc.unique_index_id = i.index_id
 LEFT JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id
 LEFT JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
-WHERE t.is_ms_shipped = 0 AND i.type > 0 AND i.is_hypothetical = 0
+WHERE t.is_ms_shipped = 0 AND t.type IN ('U', 'V') AND i.type > 0 AND i.is_hypothetical = 0
   AND {0}
 ORDER BY s.name, t.name, i.index_id, ic.key_ordinal, ic.index_column_id
 '@ -f ($NotToolObject -f 't')
@@ -411,6 +429,23 @@ WHERE o.is_ms_shipped = 0
   AND o.type IN ('P', 'PC', 'V', 'FN', 'IF', 'TF', 'FS', 'FT', 'TR')
   AND {0}
 '@ -f ($NotToolObject -f 'o')
+
+# Database triggers (CREATE TRIGGER ... ON DATABASE: DDL triggers). They have no schema and no
+# row in sys.objects, so the query above does not see them.
+$Sql.DatabaseTriggers = @'
+SELECT tr.name AS TriggerName, tr.type_desc AS TypeDesc,
+       CASE WHEN tr.is_disabled = 1 THEN 'DISABLED' ELSE 'ENABLED' END AS TriggerState,
+       m.definition AS Definition,
+       CASE WHEN m.definition IS NULL THEN 1 ELSE 0 END AS IsHidden,
+       CASE WHEN m.object_id IS NULL THEN NULL
+            ELSE CASE WHEN m.uses_ansi_nulls = 0 THEN 'ANSI_NULLS OFF' ELSE '' END
+               + CASE WHEN m.uses_ansi_nulls = 0 AND m.uses_quoted_identifier = 0 THEN ', ' ELSE '' END
+               + CASE WHEN m.uses_quoted_identifier = 0 THEN 'QUOTED_IDENTIFIER OFF' ELSE '' END
+       END AS SetOptions
+FROM sys.triggers tr
+LEFT JOIN sys.sql_modules m ON m.object_id = tr.object_id
+WHERE tr.parent_class = 0 AND tr.is_ms_shipped = 0
+'@
 
 $Sql.AliasTypes = @'
 SELECT s.name AS SchemaName, ty.name AS TypeName,
@@ -478,8 +513,12 @@ JOIN sys.check_constraints ck ON ck.parent_object_id = tt.type_table_object_id
 ORDER BY s.name, tt.name, ck.object_id
 '@
 
+# Precision: only for a sequence of the built-in decimal or numeric type, where it is part of the
+# type (the scale of a sequence is always 0). NULL for every other type, also for an alias type.
 $Sql.Sequences = @'
 SELECT s.name AS SchemaName, sq.name AS SequenceName, TYPE_NAME(sq.user_type_id) AS DataType,
+       CASE WHEN sq.user_type_id = sq.system_type_id AND TYPE_NAME(sq.system_type_id) IN ('decimal', 'numeric')
+            THEN sq.precision END AS Precision,
        CAST(sq.start_value AS varchar(50)) AS StartValue,
        CAST(sq.increment AS varchar(50)) AS Increment,
        CAST(sq.minimum_value AS varchar(50)) AS MinValue,
@@ -702,10 +741,10 @@ function Get-SchemaSnapshot {
     $snap = @{}
     foreach ($category in $CategoryOrder) { $snap[$category] = @{} }
     # ServerName is filled in by Read-SideSnapshot, which knows the endpoint.
-    $snap['Meta'] = @{ CanViewDefinition = $true; LoginName = ''; ServerName = '' }
+    $snap['Meta'] = @{ CanViewDefinition = $true; LoginName = ''; ServerName = ''; Version = $SnapshotVersion }
 
     foreach ($r in (Invoke-SqlQuery $Connection $Sql.Database)) {
-        $snap['Meta'] = @{ CanViewDefinition = ([int]$r.CanViewDefinition -eq 1); LoginName = [string]$r.LoginName; ServerName = '' }
+        $snap['Meta'] = @{ CanViewDefinition = ([int]$r.CanViewDefinition -eq 1); LoginName = [string]$r.LoginName; ServerName = ''; Version = $SnapshotVersion }
         $props = [ordered]@{ CompatibilityLevel = [string]$r.CompatibilityLevel; Collation = [string]$r.Collation }
         $snap['Database']['(database)'] = New-SchemaItem '(database)' $props
     }
@@ -899,6 +938,20 @@ function Get-SchemaSnapshot {
         $snap[$category][$key] = New-SchemaItem $key $props '' $definition -Sql $sqlParts
     }
 
+    # Database triggers are items of the Trigger category. They have no schema, so their key is
+    # not schema.name: the prefix keeps one apart from a table's trigger of the same name (both
+    # can exist). Table says DATABASE where a table's trigger names its table, and Scope tells the
+    # scripts that this one is created, dropped and disabled "ON DATABASE".
+    foreach ($r in (Invoke-SqlQuery $Connection $Sql.DatabaseTriggers)) {
+        $name = [string]$r.TriggerName
+        $props = [ordered]@{ Type = [string]$r.TypeDesc; Table = 'DATABASE'; State = [string]$r.TriggerState }
+        if ($r.SetOptions -isnot [System.DBNull]) { $props.SetOptions = [string]$r.SetOptions }
+        if ([int]$r.IsHidden) { $definition = $HiddenDefinition }
+        else { $definition = [string]$r.Definition }
+        $sqlParts = @{ Schema = ''; Name = $name; ObjectType = 'TR'; ParentSchema = ''; ParentObject = ''; Scope = 'DATABASE' }
+        $snap['Trigger']['(database trigger)|' + $name] = New-SchemaItem ($name + ' (database trigger)') $props '' $definition -Sql $sqlParts
+    }
+
     foreach ($r in (Invoke-SqlQuery $Connection $Sql.AliasTypes)) {
         $key = '{0}.{1}' -f $r.SchemaName, $r.TypeName
         $sqlParts = @{ Schema = [string]$r.SchemaName; Name = [string]$r.TypeName }
@@ -1004,15 +1057,17 @@ function Get-SchemaSnapshot {
 
     foreach ($r in (Invoke-SqlQuery $Connection $Sql.Sequences)) {
         $key = '{0}.{1}' -f $r.SchemaName, $r.SequenceName
-        $props = [ordered]@{
-            DataType  = [string]$r.DataType
-            Start     = [string]$r.StartValue
-            Increment = [string]$r.Increment
-            Min       = [string]$r.MinValue
-            Max       = [string]$r.MaxValue
-            Cycle     = [string]$r.Cycle
-            Cache     = [string]$r.Cache
-        }
+        $props = [ordered]@{ DataType = [string]$r.DataType }
+        # decimal and numeric only: "decimal" alone is decimal(18,0), and the limits of a wider
+        # sequence do not fit that (Msg 11708). Left out for every other type, and missing in
+        # snapshots taken before 2026-11-11: a prop missing on one side is not compared.
+        if ($r.Precision -isnot [System.DBNull]) { $props['Precision'] = [string]$r.Precision }
+        $props['Start'] = [string]$r.StartValue
+        $props['Increment'] = [string]$r.Increment
+        $props['Min'] = [string]$r.MinValue
+        $props['Max'] = [string]$r.MaxValue
+        $props['Cycle'] = [string]$r.Cycle
+        $props['Cache'] = [string]$r.Cache
         $snap['Sequence'][$key] = New-SchemaItem $key $props -Sql @{ Schema = [string]$r.SchemaName; Name = [string]$r.SequenceName }
     }
 
@@ -1287,17 +1342,6 @@ function ConvertTo-JsLiteral($Value) {
     return '"' + $text + '"'
 }
 
-function Get-OptionText {
-    $options = @()
-    if ($IgnoreWhitespace) { $options += 'ignore whitespace' }
-    if ($IgnoreCase) { $options += 'ignore case' }
-    if ($IgnoreCollation) { $options += 'ignore collation' }
-    if ($CompareColumnOrder) { $options += 'compare column order' }
-    $text = 'Compared: ' + ($SelectedCategories -join ', ')
-    if ($options.Count -gt 0) { $text += ' | Options: ' + ($options -join ', ') }
-    return $text
-}
-
 # Fills __PLACEHOLDER__ markers in one pass, so text inside a value (a database named
 # "__DATA_JSON__", say) is never replaced again.
 function Expand-Template([string]$Template, [hashtable]$Values) {
@@ -1403,8 +1447,8 @@ function Export-SchemaSnapshot([string]$Path, $Snap, [string]$ServerLabel, [stri
     foreach ($category in $CategoryOrder) { $categories[$category] = $Snap[$category] }
     Write-JsonFile $Path ([ordered]@{
         format            = 'database-diff-snapshot'
-        version           = 1
-        captured          = (Get-Date -Format 's')
+        version           = [int]$Snap['Meta'].Version
+        captured          = (Get-Timestamp 's')
         server            = $ServerLabel
         serverName        = [string]$Snap['Meta'].ServerName
         database          = $Database
@@ -1459,8 +1503,9 @@ function Import-SchemaSnapshot([string]$Path) {
         }
         $snap[$category] = $set
     }
-    # serverName: snapshots saved before 2026-11-11 do not have it.
-    $snap['Meta'] = @{ CanViewDefinition = [bool]$doc['canViewDefinition']; LoginName = [string]$doc['login']; ServerName = [string]$doc['serverName'] }
+    # serverName: snapshots saved before 2026-11-11 do not have it. version: what the engine that
+    # saved the file read (see $SnapshotVersion); 0 when the file does not say.
+    $snap['Meta'] = @{ CanViewDefinition = [bool]$doc['canViewDefinition']; LoginName = [string]$doc['login']; ServerName = [string]$doc['serverName']; Version = [int]$doc['version'] }
     return @{
         Snap     = $snap
         Server   = [string]$doc['server']
@@ -1479,7 +1524,7 @@ function Write-JsonReport([string]$Path, $Result, $SourceSnap, $TargetSnap) {
     Write-JsonFile $Path ([ordered]@{
         format    = 'database-diff-result'
         version   = 1
-        generated = (Get-Date -Format 's')
+        generated = (Get-Timestamp 's')
         source    = [ordered]@{
             label             = $Result.SourceLabel
             serverName        = [string]$SourceSnap['Meta'].ServerName
@@ -1516,7 +1561,39 @@ function Write-JsonReport([string]$Path, $Result, $SourceSnap, $TargetSnap) {
     })
 }
 
+# The templates are UTF-8 (they hold the Thai text of the reports); ReadAllText reads a file
+# without a byte order mark as UTF-8.
 $ReportTemplate = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'templates\report.html'))
+
+# The table or view a difference belongs to, for the HTML report, which shows everything of one
+# table together: 'table' or 'view', then the snapshot key of that table or view. A table and a
+# view are their own group. Nothing ($null) for what belongs to neither: procedures, functions,
+# types, sequences, synonyms, schemas, database triggers. Taken from the snapshot items (the
+# Parent of a column, index or constraint; the Table property of a trigger), never from the
+# name that is shown: a name can hold dots.
+function Get-DiffGroup($Diff, $SourceSnap, $TargetSnap) {
+    $category = [string]$Diff.Category
+    if ($null -ne $Diff.SourceKey) { $key = [string]$Diff.SourceKey; $own = $SourceSnap; $other = $TargetSnap }
+    else { $key = [string]$Diff.TargetKey; $own = $TargetSnap; $other = $SourceSnap }
+    if ($category -eq 'Table') { return @('table', $key) }
+    if ($category -eq 'View') { return @('view', $key) }
+    $item = $own[$category][$key]
+    if ($null -eq $item) { return $null }
+    if ($category -eq 'Trigger') {
+        if (Test-DatabaseScope $item) { return $null }
+        $parent = [string]$item.Props['Table']
+    }
+    elseif ($TableChildCategories -contains $category) { $parent = [string]$item.Parent }
+    else { return $null }
+    if (-not $parent) { return $null }
+    # What the parent is on the side the item was read from; the other side when that side does
+    # not have it (a trigger on a table that is not among the tables read is taken as a table's).
+    foreach ($snap in @($own, $other)) {
+        if ($snap['Table'].ContainsKey($parent)) { return @('table', $parent) }
+        if ($snap['View'].ContainsKey($parent)) { return @('view', $parent) }
+    }
+    return @('table', $parent)
+}
 
 function Write-HtmlReport {
     param(
@@ -1525,10 +1602,17 @@ function Write-HtmlReport {
         [string]$TargetLabel,
         $Diffs,
         $Summary,
-        [string[]]$Warnings = @()
+        [string[]]$Warnings = @(),
+        $SourceSnap,
+        $TargetSnap
     )
 
-    $optionText = Get-OptionText
+    # The sides read without VIEW DEFINITION, as [side, login] pairs: the report explains in its
+    # own words what that means (the warnings are the same sentences as in the scripts).
+    $noViewDefinition = @(foreach ($side in @(@('source', $SourceSnap), @('target', $TargetSnap))) {
+        $sideMeta = $side[1]['Meta']
+        if (-not $sideMeta.CanViewDefinition) { ConvertTo-JsArray @($side[0], [string]$sideMeta.LoginName) }
+    }) -join ','
 
     $summaryJs = @($Summary | ForEach-Object {
         '[' + (@(
@@ -1539,18 +1623,26 @@ function Write-HtmlReport {
     $meta = '{' + (@(
         '"source":' + (ConvertTo-JsLiteral $SourceLabel)
         '"target":' + (ConvertTo-JsLiteral $TargetLabel)
-        '"generated":' + (ConvertTo-JsLiteral (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'))
-        '"options":' + (ConvertTo-JsLiteral $optionText)
+        '"generated":' + (ConvertTo-JsLiteral (Get-Timestamp 'yyyy-MM-dd HH:mm:ss'))
         '"ignoreWhitespace":' + (ConvertTo-JsLiteral ([bool]$IgnoreWhitespace))
         '"ignoreCase":' + (ConvertTo-JsLiteral ([bool]$IgnoreCase))
+        '"ignoreCollation":' + (ConvertTo-JsLiteral ([bool]$IgnoreCollation))
+        '"compareColumnOrder":' + (ConvertTo-JsLiteral ([bool]$CompareColumnOrder))
         '"categories":' + (ConvertTo-JsArray $SelectedCategories)
         '"perspective":' + (ConvertTo-JsLiteral $Perspective)
         '"warnings":' + (ConvertTo-JsArray @($Warnings))
+        '"noViewDefinition":[' + $noViewDefinition + ']'
         '"summary":[' + $summaryJs + ']'
     ) -join ',') + '}'
 
+    # One row per difference: category, object, status, detail, source definition, target
+    # definition, and last its group (see Get-DiffGroup) as [kind, key] or null. Only the report
+    # has the group: the result file and the difference records stay as they are.
     $data = '[' + (@($Diffs | ForEach-Object {
-        ConvertTo-JsArray @($_.Category, $_.Object, $_.Status, $_.Detail, $_.SourceDefinition, $_.TargetDefinition)
+        $row = ConvertTo-JsArray @($_.Category, $_.Object, $_.Status, $_.Detail, $_.SourceDefinition, $_.TargetDefinition)
+        $group = Get-DiffGroup $_ $SourceSnap $TargetSnap
+        if ($null -eq $group) { $groupJs = 'null' } else { $groupJs = ConvertTo-JsArray @($group) }
+        $row.Substring(0, $row.Length - 1) + ',' + $groupJs + ']'
     }) -join ",`n") + ']'
 
     $html = Expand-Template $ReportTemplate @{ '__META_JSON__' = $meta; '__DATA_JSON__' = $data }
@@ -1640,6 +1732,23 @@ function Read-SideSnapshot([hashtable]$Side) {
     return $snap
 }
 
+# True for a database trigger (ON DATABASE): an item of the Trigger category with that scope.
+# Name parts come as a hashtable (live snapshot) or a Dictionary (snapshot loaded from JSON).
+function Test-DatabaseScope($Item) {
+    if ($null -eq $Item -or $null -eq $Item.Sql) { return $false }
+    return $Item.Sql.ContainsKey('Scope') -and [string]$Item.Sql['Scope'] -eq 'DATABASE'
+}
+
+# The items of a set without the database triggers, for a comparison in which one side never
+# read them.
+function Get-ItemsWithoutDatabaseScope($Items) {
+    $kept = @{}
+    foreach ($key in @($Items.get_Keys())) {
+        if (-not (Test-DatabaseScope $Items[$key])) { $kept[$key] = $Items[$key] }
+    }
+    return $kept
+}
+
 function Invoke-DatabaseComparison {
     param(
         [hashtable]$SourceSide,
@@ -1657,12 +1766,39 @@ function Invoke-DatabaseComparison {
         if ($targetSnap['Table'].ContainsKey($key)) { $commonTables[$key] = $true }
     }
 
+    # The indexes of views and database triggers are read since snapshot version 2. A side that
+    # comes from an older snapshot file has neither, and that must not read as "the other side
+    # has them and this one does not": they are compared only when both sides were read.
+    $bothRead = ([int]$sourceSnap['Meta'].Version -ge 2) -and ([int]$targetSnap['Meta'].Version -ge 2)
+
+    # An index belongs to a table or to a view. Like a table's, a view's indexes are compared only
+    # when the view is on both sides: a view on one side only is reported once, under View.
+    $indexParents = @{}
+    foreach ($key in $commonTables.get_Keys()) { $indexParents[$key] = $true }
+    if ($bothRead) {
+        foreach ($key in $sourceSnap['View'].get_Keys()) {
+            if ($targetSnap['View'].ContainsKey($key)) { $indexParents[$key] = $true }
+        }
+    }
+
     $diffs = New-Object System.Collections.Generic.List[object]
     foreach ($category in $SelectedCategories) {
-        if ($TableChildCategories -contains $category) { $parents = $commonTables } else { $parents = $null }
-        foreach ($record in (Compare-SchemaSet $category $sourceSnap[$category] $targetSnap[$category] $parents)) {
+        if ($category -eq 'Index') { $parents = $indexParents }
+        elseif ($TableChildCategories -contains $category) { $parents = $commonTables }
+        else { $parents = $null }
+        $sourceSet = $sourceSnap[$category]
+        $targetSet = $targetSnap[$category]
+        if ($category -eq 'Trigger' -and -not $bothRead) {
+            $sourceSet = Get-ItemsWithoutDatabaseScope $sourceSet
+            $targetSet = Get-ItemsWithoutDatabaseScope $targetSet
+        }
+        foreach ($record in (Compare-SchemaSet $category $sourceSet $targetSet $parents)) {
             $diffs.Add($record)
         }
+    }
+    if (-not $bothRead -and ($SelectedCategories -contains 'Index' -or $SelectedCategories -contains 'Trigger')) {
+        # Not a warning: the warnings of a result mean "no VIEW DEFINITION" to the web app.
+        Write-Host 'Note: one side is a snapshot saved before the engine read the indexes of views and database triggers. Those are not compared in this run.'
     }
 
     $summary = foreach ($category in $SelectedCategories) {
@@ -1688,7 +1824,7 @@ function Invoke-DatabaseComparison {
         }
     }
 
-    Write-HtmlReport $ReportPath $SourceSide.Label $TargetSide.Label $diffs $summary $warnings
+    Write-HtmlReport $ReportPath $SourceSide.Label $TargetSide.Label $diffs $summary $warnings $sourceSnap $targetSnap
 
     # A target read without VIEW DEFINITION hides objects, so "only in source" can mean "there, but
     # not visible": the scripts then neither replace nor drop such an object. Taken from the real
@@ -1815,63 +1951,90 @@ function Write-IndexReport {
         $NoAccess = @()
     )
 
-    $enc = { param($text) [System.Net.WebUtility]::HtmlEncode([string]$text) }
-    $cell = {
-        param($count, $class)
-        if ($count) { '<td class="{0}">{1}</td>' -f $class, $count } else { '<td class="zero">0</td>' }
-    }
-
-    $rows = foreach ($r in $Results) {
-        if ($r.Error) {
-            '<tr><td>{0}</td><td class="zero">-</td><td class="zero">-</td><td class="zero">-</td><td class="zero">-</td><td class="err">Error: {1}</td></tr>' -f (& $enc $r.Database), (& $enc $r.Error)
-            continue
+    # The page is built in the browser from this data, like the report of one database: the text
+    # of the page is in the template (templates\index.html), which can hold what this file cannot.
+    # The arrays are built before the hashtable literal (see Write-JsonReport).
+    $rows = [object[]]@($Results | ForEach-Object {
+        # The sides read without VIEW DEFINITION, from the warnings of the comparison.
+        $sides = [object[]]@($_.Warnings | ForEach-Object { if ($_ -match 'in (source|target) database') { $Matches[1] } })
+        [ordered]@{
+            database     = [string]$_.Database
+            report       = [string]$_.Report
+            error        = [string]$_.Error
+            onlyInSource = [int]$_.OnlyInSource
+            onlyInTarget = [int]$_.OnlyInTarget
+            different    = [int]$_.Different
+            unverified   = [int]$_.Unverified
+            incomplete   = $sides
         }
-        $total = $r.OnlyInSource + $r.OnlyInTarget + $r.Different
-        if ($r.Warnings.Count -gt 0) { $result = '{0} differences' -f $total }
-        elseif ($total -eq 0 -and $r.Unverified -eq 0) { $result = '<span class="ok">Identical</span>' }
-        elseif ($total -eq 0) { $result = 'No differences in what could be compared' }
-        else { $result = '{0} differences' -f $total }
-        $sides = @($r.Warnings | ForEach-Object { if ($_ -match 'in (source|target) database') { $Matches[1] } })
-        if ($sides) { $result += '<span class="warn-text">Incomplete: no VIEW DEFINITION on {0}</span>' -f ($sides -join ' and ') }
-        '<tr><td><a href="{0}">{1}</a></td>{2}{3}{4}{5}<td>{6}</td></tr>' -f (& $enc $r.Report), (& $enc $r.Database),
-            (& $cell $r.OnlyInSource 'add'), (& $cell $r.OnlyInTarget 'del'), (& $cell $r.Different 'chg'), (& $cell $r.Unverified 'unk'), $result
-    }
+    })
+    $categories = [object[]]@($SelectedCategories)
+    $onlySourceList = [object[]]@($OnlyOnSourceServer | Where-Object { $_ })
+    $onlyTargetList = [object[]]@($OnlyOnTargetServer | Where-Object { $_ })
+    $noAccessList = [object[]]@($NoAccess)
+    $index = ConvertTo-JsonText ([ordered]@{
+        source       = $SourceLabel
+        target       = $TargetLabel
+        generated    = (Get-Timestamp 'yyyy-MM-dd HH:mm:ss')
+        categories   = $categories
+        options      = [ordered]@{
+            ignoreWhitespace   = [bool]$IgnoreWhitespace
+            ignoreCase         = [bool]$IgnoreCase
+            ignoreCollation    = [bool]$IgnoreCollation
+            compareColumnOrder = [bool]$CompareColumnOrder
+        }
+        rows         = $rows
+        onlyOnSource = $onlySourceList
+        onlyOnTarget = $onlyTargetList
+        noAccess     = $noAccessList
+    })
 
-    $banner = ''
-    $incomplete = @($Results | Where-Object { $_.Warnings.Count -gt 0 })
-    if ($incomplete.Count -gt 0) {
-        $banner = ('<div class="warn"><b>Incomplete comparison for {0} of {1} databases</b>' +
-            'The login has no VIEW DEFINITION permission there: objects it cannot access are invisible (they show as "only in" the other side) ' +
-            'and definitions read as empty (they show as "cannot compare"). Grant VIEW DEFINITION (or VIEW ANY DEFINITION) to get a complete result.</div>') -f $incomplete.Count, $Results.Count
-    }
-
-    $extra = ''
-    if ($OnlyOnSourceServer) {
-        $extra += '  <h2>Databases only on the source server</h2><div class="names">{0}</div>' -f (& $enc ($OnlyOnSourceServer -join ', '))
-    }
-    if ($OnlyOnTargetServer) {
-        $extra += "`n" + ('  <h2>Databases only on the target server</h2><div class="names">{0}</div>' -f (& $enc ($OnlyOnTargetServer -join ', ')))
-    }
-    if (@($NoAccess).Count -gt 0) {
-        $names = @($NoAccess | ForEach-Object {
-            $sides = @()
-            if (-not $_.source) { $sides += 'source' }
-            if (-not $_.target) { $sides += 'target' }
-            '{0} (no access on {1})' -f $_.database, ($sides -join ' and ')
-        }) -join ', '
-        $extra += "`n" + ('  <h2>On both servers but the login cannot open them (not compared)</h2><div class="names">{0}</div>' -f (& $enc $names))
-    }
-
-    $html = Expand-Template $IndexTemplate @{
-        '__SOURCE__'    = (& $enc $SourceLabel)
-        '__TARGET__'    = (& $enc $TargetLabel)
-        '__GENERATED__' = (Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
-        '__OPTIONS__'   = (& $enc (Get-OptionText))
-        '__ROWS__'      = (@($rows) -join "`n")
-        '__EXTRA__'     = $extra
-        '__BANNER__'    = $banner
-    }
+    # Every string in it went through ConvertTo-JsLiteral, which writes < > & as escapes: nothing
+    # in a database name or an error message can close the script element of the page.
+    $html = Expand-Template $IndexTemplate @{ '__INDEX_JSON__' = $index }
     [System.IO.File]::WriteAllText($Path, $html, (New-Object System.Text.UTF8Encoding($false)))
+}
+
+# The files a batch writes for one database, as endings of its base name.
+$BatchFileSuffixes = @('.html', '.json', '.sync.sql', '.rollback.sql', '.source.snapshot.json', '.target.snapshot.json')
+
+# What Windows reads as a device whatever extension follows: nul.html cannot be created. Tested
+# against the part of a name before its first dot. Precompiled: used for every database of a batch.
+$BatchDeviceName = New-Object System.Text.RegularExpressions.Regex('\A(?:CON|PRN|AUX|NUL|COM[0-9]|LPT[0-9])\z', 'IgnoreCase')
+
+# The file names taken in the folder of a batch, compared as Windows does (ignoring case). From
+# the start: the index of the batch, and what the web app keeps in the same folder (run.json,
+# run.log, heartbeat: see app/lib/runs.js).
+function New-BatchFileSet {
+    $set = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($name in @('index.html', 'index.json', 'run.json', 'run.log', 'heartbeat')) { [void]$set.Add($name) }
+    # The comma keeps the set from being unrolled into its (five) elements on the way out.
+    return , $set
+}
+
+# The base name of the files of one database in a batch: its name with every character a file
+# name cannot hold replaced, as it always was. Numbered (-2, -3, ...) only when one of its files
+# is taken already ("sales 2024" after "sales_2024"; a database called "index" or "run";
+# "a.source.snapshot", whose result would be the snapshot of "a") or the name is a Windows device.
+# The files of the name returned are added to $Used.
+function Get-BatchBaseName([string]$Database, $Used) {
+    $baseName = $Database -replace '[^\w.-]', '_'
+    $dot = $baseName.IndexOf('.')
+    if ($dot -lt 0) { $dot = $baseName.Length }
+    $isDevice = $BatchDeviceName.IsMatch($baseName.Substring(0, $dot))
+    $candidate = $baseName
+    for ($n = 1; ; $n++) {
+        if ($n -gt 1) {
+            # A device name is the part before the first dot, so that is where its number goes:
+            # "con.x-2" would still be the console.
+            if ($isDevice) { $candidate = $baseName.Insert($dot, ('-{0}' -f $n)) } else { $candidate = '{0}-{1}' -f $baseName, $n }
+        }
+        $free = -not ($isDevice -and $n -eq 1)
+        foreach ($suffix in $BatchFileSuffixes) { if ($Used.Contains($candidate + $suffix)) { $free = $false; break } }
+        if (-not $free) { continue }
+        foreach ($suffix in $BatchFileSuffixes) { [void]$Used.Add($candidate + $suffix) }
+        return $candidate
+    }
 }
 
 $exitCode = 0
@@ -1904,7 +2067,7 @@ try {
     $batch = $AllDatabases -or $Databases
     if ($batch -and ($SourceSnapshot -or $TargetSnapshot)) { throw '-SourceSnapshot / -TargetSnapshot work with a single comparison only.' }
     if (-not $batch -and -not $SourceDatabase -and -not $SourceSnapshot) { throw 'Specify -SourceDatabase, -Databases or -AllDatabases.' }
-    $stamp = Get-Date -Format 'yyyyMMdd_HHmmss'
+    $stamp = Get-Timestamp 'yyyyMMdd_HHmmss'
     $timer = [System.Diagnostics.Stopwatch]::StartNew()
 
     if (-not $batch) {
@@ -1979,14 +2142,11 @@ try {
         Write-Host ('Databases to compare: {0}' -f $names.Count)
 
         $index = 0
-        $usedBaseNames = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+        $usedFiles = New-BatchFileSet
         $results = foreach ($db in $names) {
             $index++
-            # "sales 2024" and "sales_2024" would share a file name; number the later ones.
-            $baseName = $db -replace '[^\w.-]', '_'
-            $candidate = $baseName
-            for ($n = 2; -not $usedBaseNames.Add($candidate); $n++) { $candidate = '{0}-{1}' -f $baseName, $n }
-            $baseName = $candidate
+            # "sales 2024" and "sales_2024" would share a file name; the later one is numbered.
+            $baseName = Get-BatchBaseName $db $usedFiles
             $file = $baseName + '.html'
             $prefix = '[{0}/{1}] {2}' -f $index, $names.Count, $db
             try {
@@ -2052,7 +2212,7 @@ try {
         Write-JsonFile (Join-Path $OutputPath 'index.json') ([ordered]@{
             format       = 'database-diff-batch'
             version      = 1
-            generated    = (Get-Date -Format 's')
+            generated    = (Get-Timestamp 's')
             source       = Get-ServerLabel $source
             target       = Get-ServerLabel $target
             databases    = $databaseRows

@@ -39,7 +39,7 @@
   },
   "counts": {
     "onlyInSource": 0,
-    "onlyInTarget": 9,
+    "onlyInTarget": 10,
     "different": 0,
     "unverified": 0
   },
@@ -69,8 +69,8 @@
     },
     {
       "Category": "Table",
-      "Source": 4,
-      "Target": 7,
+      "Source": 5,
+      "Target": 8,
       "OnlyInSource": 0,
       "OnlyInTarget": 3,
       "Different": 0,
@@ -78,8 +78,8 @@
     },
     {
       "Category": "Column",
-      "Source": 15,
-      "Target": 49,
+      "Source": 18,
+      "Target": 52,
       "OnlyInSource": 0,
       "OnlyInTarget": 1,
       "Different": 0,
@@ -87,8 +87,8 @@
     },
     {
       "Category": "Index",
-      "Source": 6,
-      "Target": 9,
+      "Source": 10,
+      "Target": 13,
       "OnlyInSource": 0,
       "OnlyInTarget": 0,
       "Different": 0,
@@ -114,8 +114,8 @@
     },
     {
       "Category": "View",
-      "Source": 1,
-      "Target": 1,
+      "Source": 3,
+      "Target": 3,
       "OnlyInSource": 0,
       "OnlyInTarget": 0,
       "Different": 0,
@@ -141,8 +141,8 @@
     },
     {
       "Category": "Trigger",
-      "Source": 1,
-      "Target": 1,
+      "Source": 4,
+      "Target": 4,
       "OnlyInSource": 0,
       "OnlyInTarget": 0,
       "Different": 0,
@@ -160,9 +160,9 @@
     {
       "Category": "Sequence",
       "Source": 1,
-      "Target": 2,
+      "Target": 3,
       "OnlyInSource": 0,
-      "OnlyInTarget": 1,
+      "OnlyInTarget": 2,
       "Different": 0,
       "Unverified": 0
     },
@@ -256,6 +256,16 @@
       "TargetDefinition": null,
       "SourceKey": null,
       "TargetKey": "dbo.tRows"
+    },
+    {
+      "Category": "Sequence",
+      "Object": "dbo.seqBig",
+      "Status": "OnlyInTarget",
+      "Detail": "DataType: decimal; Precision: 28; Start: 1; Increment: 1; Min: -9999999999999999999999999999; Max: 9999999999999999999999999999; Cycle: NO CYCLE; Cache: CACHE (default)",
+      "SourceDefinition": null,
+      "TargetDefinition": null,
+      "SourceKey": null,
+      "TargetKey": "dbo.seqBig"
     },
     {
       "Category": "Sequence",

@@ -73,6 +73,9 @@ export interface CompareOptions {
   options?: string[];
   // Value of -Categories. Default: All.
   categories?: string;
+  // Path of a connection profile for the target (-TargetProfile): another login on the test
+  // server. Without it the target is read with the same connection as the source.
+  targetProfile?: string;
 }
 
 // One single-database comparison on the test server with saved snapshots; every category unless
@@ -98,7 +101,7 @@ export function compare(o: CompareOptions): Comparison {
     if (file !== o.sourceSnapshot && file !== o.targetSnapshot) rmSync(file, { force: true });
   }
   const run = runEngine([
-    '-SourceServer', TEST_SERVER, ...sourceArgs, ...targetArgs,
+    '-SourceServer', TEST_SERVER, ...sourceArgs, ...targetArgs, ...(o.targetProfile ? ['-TargetProfile', o.targetProfile] : []),
     '-Categories', o.categories ?? 'All', '-SaveSnapshots', '-OutputPath', `${base}.html`, ...(o.options ?? []),
   ]);
   if (!existsSync(files.json)) throw new Error(`engine wrote no result (exit ${run.exitCode}):\n${run.log}`);

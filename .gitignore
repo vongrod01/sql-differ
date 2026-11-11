@@ -5,3 +5,6 @@ node_modules/
 
 # Engine test output (inspect after a failing run)
 test/.out/
+
+# Design-tool working files
+.impeccable/

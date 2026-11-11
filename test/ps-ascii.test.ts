@@ -24,3 +24,39 @@ test('PowerShell sources are pure ASCII', () => {
     assert.equal(at, -1, `${path.relative(ROOT, file)} has a non-ASCII byte at offset ${at}`);
   }
 });
+
+// Files with the given extension under dir; folders named in `skip` (paths relative to the
+// repository root, with forward slashes) are left out.
+function sourceFiles(dir: string, extension: string, skip: string[] = []): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (skip.includes(path.relative(ROOT, full).replace(/\\/g, '/'))) return [];
+      return sourceFiles(full, extension, skip);
+    }
+    return entry.name.endsWith(extension) ? [full] : [];
+  });
+}
+
+// A byte order mark, a line separator or a paragraph separator typed into a source file cannot be
+// seen in an editor or a diff, and each means something: a BOM inside a regular expression literal
+// is the character it matches, and U+2028 / U+2029 end a line in JavaScript. They are written as
+// escapes instead. Built from code points here, so this file holds none of them itself.
+test('JavaScript and TypeScript sources hold no invisible BOM or line separator characters', () => {
+  const invisible = [0xfeff, 0x2028, 0x2029].map((code) => String.fromCharCode(code));
+  const files = [
+    ...sourceFiles(path.join(ROOT, 'app'), '.js'),
+    ...sourceFiles(path.join(ROOT, 'test'), '.ts', ['test/golden', 'test/.out']),
+    ...sourceFiles(path.join(ROOT, 'scripts'), '.ts'),
+  ];
+  assert.ok(files.length >= 20, `expected the app, test and script sources, found ${files.length}`);
+  const found: string[] = [];
+  for (const file of files) {
+    const text = readFileSync(file, 'utf8');
+    for (const character of invisible) {
+      const at = text.indexOf(character);
+      if (at !== -1) found.push(`${path.relative(ROOT, file)}: U+${character.charCodeAt(0).toString(16).toUpperCase()} at offset ${at}`);
+    }
+  }
+  assert.deepEqual(found, []);
+});
