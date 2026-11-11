@@ -253,7 +253,9 @@ async function specForm(root, initial, opts = {}) {
       const accessible = result.databases.filter((d) => d.hasAccess !== false);
       const noAccess = result.databases.length - accessible.length;
       const noView = accessible.filter((d) => !d.canViewDefinition).length;
-      info.innerHTML = `${esc(result.edition)} ${esc(result.version)} &middot; login ${esc(result.login)}` +
+      info.innerHTML = `${esc(result.edition)} ${esc(result.version)}` +
+        (result.serverName ? ` &middot; ${esc(result.serverName)}` : '') + ` &middot; login ${esc(result.login)}` +
+        instanceMismatchHtml(result) +
         (noAccess ? `<div class="warn-text">login นี้เข้าได้ ${accessible.length} จาก ${result.databases.length} ฐาน (ฐานที่เข้าไม่ได้แสดงไว้แต่เลือกไม่ได้)</div>` : '') +
         (noView ? `<div class="warn-text">ไม่มีสิทธิ์ VIEW DEFINITION ใน ${noView} ฐานที่เข้าได้ ผลเทียบของฐานเหล่านั้นจะไม่ครบ</div>` : '');
     } catch (err) {
@@ -734,14 +736,22 @@ async function pageSchedules() {
   load();
 }
 
+// "host\NAME,port": SQL Server connects by the port and ignores NAME, so another instance on the
+// same host can answer. The engine compares NAME with the instance that actually answered.
+function instanceMismatchHtml(r) {
+  if (!r.instanceMismatch) return '';
+  return `<div class="warn-text">ต่อได้ instance ${esc(r.instance)} ไม่ใช่ ${esc(r.requestedInstance)} ที่ตั้งไว้: ` +
+    `เมื่อใส่ port ด้วย SQL Server จะต่อตาม port โดยไม่ดูชื่อ instance ให้แก้ server นี้ ลบ port ออก หรือใส่ port จริงของ ${esc(r.requestedInstance)}</div>`;
+}
+
 function testResultHtml(r) {
   const accessible = r.databases.filter((d) => d.hasAccess !== false);
   const noView = accessible.filter((d) => !d.canViewDefinition).length;
-  const limited = noView || accessible.length < r.databases.length;
+  const limited = noView || accessible.length < r.databases.length || r.instanceMismatch;
   return `<div class="notice ${limited ? 'warn' : 'ok'}">
-    <b>เชื่อมต่อได้</b> &middot; ${esc(r.edition)} ${esc(r.version)} &middot; collation ${esc(r.collation)}<br>
+    <b>เชื่อมต่อได้</b>${r.serverName ? ` ${esc(r.serverName)}` : ''} &middot; ${esc(r.edition)} ${esc(r.version)} &middot; collation ${esc(r.collation)}<br>
     login: ${esc(r.login)} &middot; เข้าได้ ${accessible.length} จาก ${r.databases.length} ฐาน &middot; VIEW ANY DEFINITION: ${r.viewAnyDefinition ? 'มี' : 'ไม่มี'}
-    ${noView ? `<br>ไม่มีสิทธิ์ VIEW DEFINITION ใน ${noView} ฐานที่เข้าได้: ผลเทียบของฐานเหล่านั้นจะไม่ครบ` : ''}</div>`;
+    ${noView ? `<br>ไม่มีสิทธิ์ VIEW DEFINITION ใน ${noView} ฐานที่เข้าได้: ผลเทียบของฐานเหล่านั้นจะไม่ครบ` : ''}${instanceMismatchHtml(r)}</div>`;
 }
 
 async function pageServers() {
@@ -795,6 +805,7 @@ async function pageServers() {
         <label class="field sql-only"><span>User</span><input type="text" id="s-user" value="${esc(v.user)}" autocomplete="off"></label>
         <label class="field sql-only"><span>Password</span><input type="password" id="s-password" autocomplete="new-password" placeholder="${s && s.hasPassword ? 'เว้นว่าง = ใช้รหัสเดิม' : ''}"></label>
       </div>
+      <div id="s-hint"></div>
       <label class="check"><input type="checkbox" id="s-encrypt"${v.encrypt ? ' checked' : ''}>Encrypt connection</label>
       <label class="check"><input type="checkbox" id="s-trust"${v.trustServerCertificate ? ' checked' : ''}>Trust server certificate (self-signed)</label>
       <div id="s-result"></div>
@@ -803,6 +814,21 @@ async function pageServers() {
     const applyAuth = () => editor.querySelectorAll('.sql-only').forEach((e) => { e.hidden = auth.value !== 'sql'; });
     auth.addEventListener('change', applyAuth);
     applyAuth();
+    // Same rule as the engine's Get-RequestedInstance: a named instance plus a port.
+    const serverInput = document.getElementById('s-server');
+    const portInput = document.getElementById('s-port');
+    const applyHint = () => {
+      const m = /^\s*(?:tcp:)?[^\\,]+\\([^\\,]+?)\s*$/i.exec(serverInput.value);
+      const named = m && !/^\s*\(localdb\)/i.test(serverInput.value) ? m[1] : '';
+      document.getElementById('s-hint').innerHTML = named && portInput.value.trim()
+        ? `<p class="warn-text">ใส่ทั้งชื่อ instance (${esc(named)}) และ port: SQL Server จะต่อตาม port โดยไม่ดูชื่อ instance ` +
+          `ถ้า port ${esc(portInput.value.trim())} ไม่ใช่ของ ${esc(named)} จะได้ instance อื่นบนเครื่องเดียวกันแทน ` +
+          `เว้น port ว่างไว้ ให้หา instance จากชื่อ (ผ่าน SQL Browser) หรือใส่ port จริงของ ${esc(named)}</p>`
+        : '';
+    };
+    serverInput.addEventListener('input', applyHint);
+    portInput.addEventListener('input', applyHint);
+    applyHint();
     const read = () => ({
       id: s ? s.id : undefined,
       name: document.getElementById('s-name').value,

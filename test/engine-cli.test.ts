@@ -19,8 +19,16 @@ test('engine: -ListDatabases prints the server facts and databases as JSON', { s
   recreateDatabase(database);
   const run = runEngine(['-ListDatabases', '-SourceServer', TEST_SERVER]);
   assert.equal(run.exitCode, 0, run.log);
-  const info = JSON.parse(run.stdout) as { server: string; databases: { name: string; hasAccess: boolean; canViewDefinition: boolean }[] };
+  const info = JSON.parse(run.stdout) as {
+    server: string; serverName: string; instance: string; requestedInstance: string; instanceMismatch: boolean;
+    databases: { name: string; hasAccess: boolean; canViewDefinition: boolean }[];
+  };
   assert.equal(info.server, TEST_SERVER);
+  assert.ok(info.serverName, 'serverName is the instance that answered');
+  assert.ok(info.instance);
+  // No port in the address, so the instance name cannot be bypassed.
+  assert.equal(info.requestedInstance, '');
+  assert.equal(info.instanceMismatch, false);
   assert.deepEqual(info.databases.find((d) => d.name === database), { name: database, hasAccess: true, canViewDefinition: true, state: 'ONLINE' });
 });
 

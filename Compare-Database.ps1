@@ -455,6 +455,8 @@ $Sql.ServerInfo = @'
 SELECT CAST(SERVERPROPERTY('ProductVersion') AS nvarchar(128)) AS Version,
        CAST(SERVERPROPERTY('Edition') AS nvarchar(128)) AS Edition,
        CAST(SERVERPROPERTY('Collation') AS nvarchar(128)) AS Collation,
+       CAST(SERVERPROPERTY('ServerName') AS nvarchar(128)) AS ServerName,
+       CAST(ISNULL(SERVERPROPERTY('InstanceName'), 'MSSQLSERVER') AS nvarchar(128)) AS InstanceName,
        SUSER_SNAME() AS LoginName,
        HAS_PERMS_BY_NAME(NULL, NULL, 'VIEW ANY DEFINITION') AS ViewAnyDefinition
 '@
@@ -1530,6 +1532,14 @@ function Get-DatabaseList([hashtable]$Endpoint) {
     }
 }
 
+# The instance named in an address that also has a port ("host\NAME,1433"). SqlClient ignores the
+# name when a port is given and connects to whatever listens on that port, which can be another
+# instance on the same host. Without a port the name is resolved by SQL Browser, so it cannot miss.
+function Get-RequestedInstance([string]$Server) {
+    if ($Server -match '^\s*(?:tcp:)?[^\\,]+\\([^\\,]+?)\s*,\s*\d+\s*$') { return $Matches[1] }
+    return ''
+}
+
 # Server facts and the database list as JSON on stdout, for the web app (also a connection test).
 function Write-DatabaseList([hashtable]$Endpoint) {
     $connection = Open-SqlConnection $Endpoint 'master'
@@ -1547,8 +1557,13 @@ function Write-DatabaseList([hashtable]$Endpoint) {
     finally {
         $connection.Dispose()
     }
+    $requested = Get-RequestedInstance $Endpoint.Server
     Write-JsonStdout ([ordered]@{
         server            = Get-ServerLabel $Endpoint
+        serverName        = [string]$info.ServerName
+        instance          = [string]$info.InstanceName
+        requestedInstance = $requested
+        instanceMismatch  = [bool]($requested -and $requested -ne [string]$info.InstanceName)
         version           = [string]$info.Version
         edition           = [string]$info.Edition
         collation         = [string]$info.Collation
