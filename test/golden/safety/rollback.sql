@@ -7,8 +7,10 @@
 -- - Nothing in this file has been executed by database-diff.
 -- - It assumes the target changed only through the sync script since the comparison.
 -- - Database triggers (ON DATABASE) come first: the ones the sync script created or changed are
---   disabled, dropped or put back, and only then enabled as they were before. An enabled one
---   fires on the statements after it and may refuse them.
+--   disabled, then dropped or put back. The ones that were enabled before the sync script
+--   are enabled again by the last statements of this file: an enabled one fires on the
+--   statements after it and may refuse them. If the script stops part way they stay
+--   disabled: run it again, or its last section.
 -- - Procedures, views, functions, triggers, synonyms, indexes and constraints the sync script
 --   created are dropped next, with IF EXISTS so a sync script that stopped part way is fine.
 -- - Tables, columns, sequences, types and schemas it created are commented out at the end:

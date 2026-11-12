@@ -14,9 +14,14 @@
 -- - A view this script alters gets the indexes the source has on it created again right after
 --   it (ALTER VIEW drops every index of a view). The indexes of the other views come after
 --   the views.
--- - Database triggers (ON DATABASE) come last. The ones this script creates or changes stay
---   disabled until all of them are in place, and the ones the source has enabled are enabled at
---   the very end: an enabled one fires on the statements after it and may refuse them.
+-- - Database triggers (ON DATABASE): the ones this script changes or enables are disabled by
+--   its first statements, and changed and enabled by its last: an enabled one fires on the
+--   statements after it and may refuse them. Until then they are disabled for every session,
+--   not only this one: a trigger among them that records DDL (an audit trigger) records
+--   nothing while this script runs. The new ones are created by the last statements too; for
+--   those, and for running this script again, see INCOMPLETE COMPARISON below.
+-- - A database trigger this script does not touch stays enabled: if it refuses DDL, disable it
+--   by hand before running this script.
 -- - Uses CREATE OR ALTER, which needs SQL Server 2016 SP1 or later on the target.
 -- - It starts with USE of the target database. If that fails (wrong server, no access), nothing
 --   after it is executed, so no statement runs in another database.
@@ -33,6 +38,20 @@
 --   source (when that table is there already its CREATE TABLE fails, and they would be added
 --   to the table that is there), and unnamed checks that are only in the source (the target's
 --   unnamed checks cannot be read, so the same check may be there under a generated name).
+-- - A database trigger that is only in the source is disabled and enabled by this script only
+--   when this run created it: before each CREATE the script notes in a temporary table
+--   (#database_diff_created) whether the trigger was missing. One that was there already,
+--   hidden from the comparison, is left as it is, enabled or not. If such a trigger refuses
+--   DDL, disable it by hand before running this script.
+-- - Msg 2714 is therefore expected on this target. Do not run this script with stop-on-error
+--   (sqlcmd -b): it would stop at the first one, and leave the database triggers it created
+--   or was changing disabled. For each trigger it disables, the script prints the statement
+--   that enables it again (USE ...; ENABLE TRIGGER ... ON DATABASE). If it did stop part way:
+--   run it again to its end, then run those statements for the triggers it created (a changed
+--   one is enabled by that run itself). Only a run in the same session (query window) still
+--   has the notes and enables them itself; in another session the script prints a warning for
+--   each of them it finds disabled, also for one that was disabled all along: enable only what
+--   the stopped run said it created.
 --
 -- WARNING: Login <login> has no VIEW DEFINITION permission in target database ddtest_incomplete_tgt: objects it cannot access are invisible and definitions read as empty, so this comparison is incomplete.
 USE [ddtest_incomplete_tgt];
@@ -46,6 +65,15 @@ GO
 SET ANSI_NULLS ON;
 SET QUOTED_IDENTIFIER ON;
 SET XACT_ABORT ON;
+GO
+
+-- ==========================================================================================
+-- Database triggers first: disabled until the last section of this script creates, changes and enables them
+-- ==========================================================================================
+-- Disabled before anything else: an enabled one fires on every statement of this script and may refuse it. Not the new ones, which may be triggers that were there all along: see INCOMPLETE COMPARISON at the top.
+IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trDdlChanged' AND is_disabled = 0) BEGIN DISABLE TRIGGER [trDdlChanged] ON DATABASE; PRINT N'database-diff: ' + QUOTENAME(DB_NAME()) + N': database trigger [trDdlChanged] is disabled until the last statements of this script enable it again. If the script stops before them: run it again to its end, or run: USE ' + QUOTENAME(DB_NAME()) + N'; ENABLE TRIGGER [trDdlChanged] ON DATABASE;'; END
+GO
+IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trDdlState' AND is_disabled = 0) BEGIN DISABLE TRIGGER [trDdlState] ON DATABASE; PRINT N'database-diff: ' + QUOTENAME(DB_NAME()) + N': database trigger [trDdlState] is disabled, as the source has it, and stays so. To have it enabled as it was, run: USE ' + QUOTENAME(DB_NAME()) + N'; ENABLE TRIGGER [trDdlState] ON DATABASE;'; END
 GO
 
 -- ==========================================================================================
@@ -400,18 +428,19 @@ GO
 -- ==========================================================================================
 -- Database triggers last: disabled until all of them are in place (an enabled one fires on the statements after it)
 -- ==========================================================================================
--- Disabled before they are changed: an enabled one fires on the statements of this section, also on its own ALTER.
-IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trDdlChanged') DISABLE TRIGGER [trDdlChanged] ON DATABASE;
-GO
-IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trDdlState') DISABLE TRIGGER [trDdlState] ON DATABASE;
+-- The comparison of the target is incomplete: a trigger that is only in the source may be there already, hidden. This script disables and enables only the ones it creates: before each CREATE it notes in a temporary table of this session whether the trigger was missing. When running only a part of this section, run this batch and the batch before a CREATE with it.
+IF OBJECT_ID(N'tempdb..#database_diff_created') IS NULL CREATE TABLE #database_diff_created (database_id int NOT NULL, name nvarchar(128) COLLATE Latin1_General_BIN2 NOT NULL);
 GO
 -- trDdlNew (database trigger): only in source
 -- Plain CREATE, because the comparison of the target is incomplete: if it fails with Msg 2714, the object is there already. Compare it with the source by hand.
+IF NOT EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trDdlNew') INSERT INTO #database_diff_created (database_id, name) VALUES (DB_ID(), N'trDdlNew');
 GO
 CREATE TRIGGER trDdlNew ON DATABASE FOR DROP_SYNONYM
 AS
 SET NOCOUNT ON;
 
+GO
+IF EXISTS (SELECT 1 FROM #database_diff_created WHERE database_id = DB_ID() AND name = N'trDdlNew') AND EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trDdlNew') BEGIN DISABLE TRIGGER [trDdlNew] ON DATABASE; PRINT N'database-diff: ' + QUOTENAME(DB_NAME()) + N': database trigger [trDdlNew] is created, and disabled until the last statements of this script enable it. If the script stops before them: run it again to its end, then run: USE ' + QUOTENAME(DB_NAME()) + N'; ENABLE TRIGGER [trDdlNew] ON DATABASE;'; END
 GO
 -- trDdlChanged (database trigger): Definition differs
 GO
@@ -423,9 +452,14 @@ SET NOCOUNT ON;
 
 GO
 -- trDdlState (database trigger): State: source DISABLED, target ENABLED
--- Disabled at the start of this section.
--- Enabled now that all of them are in place: the ones the source has enabled.
+-- Disabled by the first statements of this script.
+-- Enabled now that all of them are in place: the ones the source has enabled. Of the new ones only those this run created; a warning is printed for one that was there already and is disabled: it may have been disabled all along, or an earlier run that stopped part way created it.
+IF EXISTS (SELECT 1 FROM #database_diff_created WHERE database_id = DB_ID() AND name = N'trDdlNew') AND EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trDdlNew') ENABLE TRIGGER [trDdlNew] ON DATABASE;
+IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trDdlNew' AND is_disabled = 1) AND NOT EXISTS (SELECT 1 FROM #database_diff_created WHERE database_id = DB_ID() AND name = N'trDdlNew') PRINT N'database-diff: ' + QUOTENAME(DB_NAME()) + N': WARNING: database trigger [trDdlNew] is disabled, and this run did not create it: it was there before this run. It may have been disabled all along. If an earlier run of this script stopped part way, the lines that run printed list what it created: only if this trigger is among them, run: USE ' + QUOTENAME(DB_NAME()) + N'; ENABLE TRIGGER [trDdlNew] ON DATABASE;';
+GO
 IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trDdlChanged') ENABLE TRIGGER [trDdlChanged] ON DATABASE;
+GO
+IF OBJECT_ID(N'tempdb..#database_diff_created') IS NOT NULL DROP TABLE #database_diff_created;
 GO
 
 -- ==========================================================================================

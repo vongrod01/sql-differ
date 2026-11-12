@@ -109,7 +109,7 @@ function createIndexCore() {
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   // The same four words as in the report of one database (templates/report.html).
   const KIND = [
-    { key: 'onlyInSource', cls: 'add', sym: '+', t: 'ต้องเพิ่ม', d: 'ต้นแบบมี แต่ปลายทางยังไม่มี sync จะสร้างให้' },
+    { key: 'onlyInSource', cls: 'add', sym: '+', t: 'ต้องเพิ่ม', d: 'ต้นแบบมี แต่ปลายทางยังไม่มี sync จะสร้างให้ ยกเว้นส่วนที่ไฟล์ sync เขียนไว้เป็นหมายเหตุให้ทำเอง' },
     { key: 'onlyInTarget', cls: 'del', sym: '−', t: 'มีเกิน', d: 'ปลายทางมีแต่ต้นแบบไม่มี sync ไม่ลบให้ แค่เขียนคำสั่งลบไว้เป็นหมายเหตุ' },
     { key: 'different', cls: 'chg', sym: '~', t: 'ต้องแก้', d: 'มีทั้งคู่แต่ไม่เหมือนกัน sync จะแก้ปลายทางให้ตรงต้นแบบ ยกเว้นส่วนที่ไฟล์ sync เขียนไว้เป็นหมายเหตุให้ทำเอง' },
     { key: 'unverified', cls: 'unk', sym: '?', t: 'ตรวจไม่ได้', d: 'อ่านค่าไม่ได้ (ไม่มีสิทธิ์ หรือถูกเข้ารหัส) จึงเทียบไม่ได้ และไม่เขียนคำสั่งให้' }

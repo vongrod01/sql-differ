@@ -976,10 +976,12 @@ test('script: on a target read without VIEW DEFINITION the indexes of a new view
 
 // ---------------------------------------------------------------------------------------------
 // Scripts for database triggers. An enabled DDL trigger fires on the statements that come after
-// it, and may refuse them. The sync script writes the database triggers after everything else and
-// keeps them disabled until all of them are in place; the rollback script starts with them:
-// disabled, dropped or put back, then enabled as they were. (With real triggers that refuse
-// statements: test/engine-ddlguard.test.ts.)
+// it, and may refuse them. The sync script disables the ones it creates, changes or enables with
+// its first statements (a run before this one may have left them enabled), writes them after
+// everything else and enables them at its very end; the rollback script starts with them:
+// disabled, then dropped or put back. It enables the ones that were enabled before the sync
+// script with its last statements, when nothing is left for them to refuse. (With real triggers
+// that refuse statements: test/engine-ddlguard.test.ts.)
 // ---------------------------------------------------------------------------------------------
 
 function ddlTrigger(name: string, events: string): string {
@@ -989,6 +991,17 @@ function ddlTrigger(name: string, events: string): string {
 // DISABLE or ENABLE of a database trigger as the scripts write it: only when the trigger is there.
 function triggerState(name: string, action: 'DISABLE' | 'ENABLE'): string {
   return `IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'${name}') ${action} TRIGGER [${name}] ON DATABASE;`;
+}
+
+// The first statements of a sync script: a database trigger it manages is disabled when it is
+// there and enabled, and the run prints the statement that enables it again (with its database,
+// found when it runs: see printed() further down).
+const HELD = 'is disabled until the last statements of this script enable it again. If the script stops before them: run it again to its end, or run:';
+const OFF = 'is disabled, as the source has it, and stays so. To have it enabled as it was, run:';
+const NEW_HELD = 'is created, and disabled until the last statements of this script enable it. If the script stops before them: run it again to its end, or run:';
+function disabledLoud(name: string, text: string): string {
+  return `IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'${name}' AND is_disabled = 0) BEGIN DISABLE TRIGGER [${name}] ON DATABASE; ` +
+    `PRINT N'database-diff: ' + QUOTENAME(DB_NAME()) + N': database trigger [${name}] ${text} USE ' + QUOTENAME(DB_NAME()) + N'; ENABLE TRIGGER [${name}] ON DATABASE;'; END`;
 }
 
 function databaseTriggerSides() {
@@ -1017,19 +1030,27 @@ test('script: database triggers are written last and kept disabled until all are
   const altered = (name: string, events: string) => ddlTrigger(name, events).replace('CREATE TRIGGER', 'CREATE OR ALTER TRIGGER');
 
   assert.deepEqual(statements(s.sync), [
+    // Before anything else: every database trigger the script creates, changes or enables is
+    // disabled. The new ones too: on a first run they are not there, on a second the first has
+    // created and enabled them, and one of them may refuse what follows. And trOn, of which
+    // only the state differs: the first run enabled it.
+    // Each says so as it is disabled, with the statement that enables it again: a run that
+    // stops before its end (an error under stop-on-error) leaves them disabled.
+    disabledLoud('trNew', HELD),
+    disabledLoud('trNewOff', OFF),
+    disabledLoud('trAnsi', HELD),
+    disabledLoud('trChanged', HELD),
+    disabledLoud('trOff', OFF),
+    disabledLoud('trOn', HELD),
     // The trigger of the table, with the triggers of tables. (A new trigger is enabled as well
     // as created: CREATE OR ALTER on one that is there and disabled would leave it disabled.)
     'CREATE OR ALTER TRIGGER dbo.trNew ON dbo.T AFTER INSERT AS RETURN',
     'ENABLE TRIGGER [dbo].[trNew] ON [dbo].[T];',
     'CREATE SYNONYM [dbo].[synNew] FOR [dbo].[T];',
-    // Then the database triggers. First the ones that are there and get another text (an
-    // enabled trigger fires on its own ALTER) or have to be disabled: disabled.
-    triggerState('trAnsi', 'DISABLE'),
-    triggerState('trChanged', 'DISABLE'),
-    triggerState('trOff', 'DISABLE'),
-    // The new ones: each disabled as soon as it is created, also the one the source has enabled.
+    // Then the database triggers, last. The new ones: each disabled as soon as it is created
+    // (CREATE makes it enabled), also the one the source has enabled.
     altered('trNew', 'CREATE_TABLE'),
-    triggerState('trNew', 'DISABLE'),
+    disabledLoud('trNew', NEW_HELD),
     altered('trNewOff', 'CREATE_TABLE'),
     triggerState('trNewOff', 'DISABLE'),
     // The changed ones, while they are disabled. Created under ANSI_NULLS OFF in the source: only
@@ -1046,7 +1067,10 @@ test('script: database triggers are written last and kept disabled until all are
     triggerState('trChanged', 'ENABLE'),
     triggerState('trOn', 'ENABLE'),
   ]);
-  // Their own section, after the synonyms; the target's own one is left, its drop a comment.
+  // Two sections of their own: the first of the script, and the one after the synonyms. The
+  // target's own trigger is left, its drop a comment.
+  const firstSection = s.sync.split('\n').find((l) => /^-- [A-Z]/.test(l) && s.sync.indexOf(l) > s.sync.indexOf('SET XACT_ABORT ON;'));
+  assert.match(firstSection ?? '', /^-- Database triggers first: /, s.sync);
   assert.ok(s.sync.indexOf('-- Database triggers last') > s.sync.indexOf('-- Synonyms'), s.sync);
   assert.ok(s.sync.indexOf('-- Database triggers last') > s.sync.indexOf('-- Triggers'), s.sync);
   assert.ok(comments(s.sync).includes('-- DROP TRIGGER [trLegacy] ON DATABASE;'), s.sync);
@@ -1055,11 +1079,13 @@ test('script: database triggers are written last and kept disabled until all are
   assert.deepEqual(statements(s.rollback), [
     // Before anything else: the sync script left the source's triggers enabled, and one of them
     // may refuse every statement below. Disabled: the ones it created, the ones whose text it
-    // changed, and trOn, which it enabled.
+    // changed, trOn, which it enabled, and trOff, which this script enables at its end (a second
+    // run of this script meets it enabled).
     triggerState('trNew', 'DISABLE'),
     triggerState('trNewOff', 'DISABLE'),
     triggerState('trAnsi', 'DISABLE'),
     triggerState('trChanged', 'DISABLE'),
+    triggerState('trOff', 'DISABLE'),
     triggerState('trOn', 'DISABLE'),
     // The created ones go.
     'DROP TRIGGER IF EXISTS [trNew] ON DATABASE;',
@@ -1067,20 +1093,48 @@ test('script: database triggers are written last and kept disabled until all are
     // The changed ones get the text they had.
     altered('trAnsi', 'CREATE_TABLE'),
     altered('trChanged', 'CREATE_TABLE'),
-    // Enabled as before the sync script: trOff, which it disabled, among them. Not trOn.
+    // Then everything else, while they are all still disabled: one of them may be the target's
+    // own guard, which would refuse these.
+    'DROP TRIGGER IF EXISTS [dbo].[trNew];',
+    'DROP SYNONYM IF EXISTS [dbo].[synNew];',
+    // The last statements: enabled as before the sync script, trOff, which it disabled, among
+    // them. Not trOn.
     triggerState('trAnsi', 'ENABLE'),
     triggerState('trChanged', 'ENABLE'),
     triggerState('trOff', 'ENABLE'),
-    // Then everything else.
-    'DROP TRIGGER IF EXISTS [dbo].[trNew];',
-    'DROP SYNONYM IF EXISTS [dbo].[synNew];',
   ]);
   assert.ok(s.rollback.indexOf('-- Database triggers first') > 0, s.rollback);
   assert.ok(s.rollback.indexOf('-- Database triggers first') < s.rollback.indexOf('-- Created by the sync script: dropped'), s.rollback);
+  assert.ok(s.rollback.indexOf('-- Database triggers, enabled again') > s.rollback.indexOf('-- Created by the sync script: dropped'), s.rollback);
   assert.ok(!s.rollback.includes('trLegacy'), s.rollback);
 });
 
-test('script: a database trigger with nothing to enable, alter or drop gets no statement it does not need', () => {
+test('script: a rollback enables database triggers after everything else, its commented-out drops included', () => {
+  // The target's own guard, enabled on both sides with another text, and a table and a view the
+  // sync script creates: the rollback drops the view, and leaves the drop of the table as a
+  // comment for a person to uncomment.
+  const side = (events: string) => snapshot().database('Thai_CI_AS').table('T').databaseTrigger('trGuard', ddlTrigger('trGuard', events));
+  const source = side('DROP_TABLE, DROP_VIEW').table('Added').column('Added', 'Id', {})
+    .module('View', 'vAdded', 'V', 'VIEW', 'CREATE VIEW dbo.vAdded AS SELECT 1 AS One');
+  const s = scriptsFor('database-triggers-rollback-order', source, side('DROP_TABLE'));
+  assert.deepEqual(statements(s.rollback), [
+    triggerState('trGuard', 'DISABLE'),
+    ddlTrigger('trGuard', 'DROP_TABLE').replace('CREATE TRIGGER', 'CREATE OR ALTER TRIGGER'),
+    'DROP VIEW IF EXISTS [dbo].[vAdded];',
+    triggerState('trGuard', 'ENABLE'),
+  ]);
+  const lines = s.rollback.split('\n');
+  const enable = lines.indexOf(triggerState('trGuard', 'ENABLE'));
+  // After the drop that is left as a comment: uncommented, it runs while the guard is disabled.
+  assert.ok(enable > lines.indexOf('-- DROP TABLE [dbo].[Added];') && lines.indexOf('-- DROP TABLE [dbo].[Added];') > 0, s.rollback);
+  // And nothing but the end of the script follows it.
+  assert.deepEqual(lines.slice(enable + 1).filter((l) => l.trim()), ['GO', '-- End of script: ends the NOEXEC that a failed database check at the top turned on.', 'SET NOEXEC OFF;', 'GO'], s.rollback);
+  // The sync script: the guard is disabled by its first statement, enabled by its last.
+  assert.equal(statements(s.sync)[0], disabledLoud('trGuard', HELD));
+  assert.equal(statements(s.sync).at(-1), triggerState('trGuard', 'ENABLE'));
+});
+
+test('script: a database trigger of which only the state differs is disabled first and enabled last, whichever way it differs', () => {
   // Only a state differs, each way, and one new trigger that the source has disabled.
   const side = (off: string, on: string) => snapshot().database('Thai_CI_AS').table('T')
     .databaseTrigger('trOff', ddlTrigger('trOff', 'CREATE_TABLE'), off)
@@ -1089,17 +1143,29 @@ test('script: a database trigger with nothing to enable, alter or drop gets no s
   const source = side('DISABLED', 'ENABLED').databaseTrigger('trNewOff', ddlTrigger('trNewOff', 'CREATE_TABLE'), 'DISABLED');
   const s = scriptsFor('database-triggers-state', source, side('ENABLED', 'DISABLED'));
   assert.deepEqual(statements(s.sync), [
-    triggerState('trOff', 'DISABLE'),
+    // First: the new one (not there at a first run), the one to disable, and the one to enable:
+    // a first run finds trOn disabled, a second run finds it enabled by the first.
+    disabledLoud('trNewOff', OFF),
+    disabledLoud('trOff', OFF),
+    disabledLoud('trOn', HELD),
+    // Last.
     ddlTrigger('trNewOff', 'CREATE_TABLE').replace('CREATE TRIGGER', 'CREATE OR ALTER TRIGGER'),
     triggerState('trNewOff', 'DISABLE'),
     triggerState('trOn', 'ENABLE'),
   ]);
   assert.deepEqual(statements(s.rollback), [
+    // First, trOff as well: this script enables it at its end, and may be run again.
     triggerState('trNewOff', 'DISABLE'),
+    triggerState('trOff', 'DISABLE'),
     triggerState('trOn', 'DISABLE'),
     'DROP TRIGGER IF EXISTS [trNewOff] ON DATABASE;',
     triggerState('trOff', 'ENABLE'),
   ]);
+  // The line of a trigger of which only the state differs says where its statements are.
+  assert.ok(comments(s.sync).includes('-- Enabled at the end of this section.'), s.sync);
+  assert.ok(comments(s.sync).includes('-- Disabled by the first statements of this script.'), s.sync);
+  assert.ok(comments(s.rollback).includes('-- Enabled by the last statements of this script.'), s.rollback);
+  assert.ok(comments(s.rollback).includes('-- Disabled at the start of this section.'), s.rollback);
 
   // A name is written as a literal in the check and in brackets in the statement.
   const odd = scriptsFor('database-triggers-name', side('ENABLED', 'ENABLED'),
@@ -1108,33 +1174,199 @@ test('script: a database trigger with nothing to enable, alter or drop gets no s
       .databaseTrigger('trOn', ddlTrigger('trOn', 'CREATE_TABLE'))
       .databaseTrigger("tr'odd]name", "CREATE TRIGGER [tr'odd]]name] ON DATABASE FOR DROP_TABLE AS SET NOCOUNT ON;"));
   const first = statements(odd.sync)[0];
-  assert.equal(first, "IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'tr''odd]name') DISABLE TRIGGER [tr'odd]]name] ON DATABASE;");
+  assert.ok(first?.startsWith("IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'tr''odd]name' AND is_disabled = 0) BEGIN DISABLE TRIGGER [tr'odd]]name] ON DATABASE; PRINT N'database-diff: ' + QUOTENAME(DB_NAME()) + N': database trigger [tr''odd]]name] is disabled until "), first);
+  assert.ok(first?.endsWith(" run: USE ' + QUOTENAME(DB_NAME()) + N'; ENABLE TRIGGER [tr''odd]]name] ON DATABASE;'; END"), first);
   assert.equal(statements(odd.sync).at(-1), "IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'tr''odd]name') ENABLE TRIGGER [tr'odd]]name] ON DATABASE;");
 });
 
-test('script: on a target read without VIEW DEFINITION a database trigger that is only in the source is a plain CREATE', () => {
+// On a target read without VIEW DEFINITION the scripts keep notes in a temporary table of the
+// session that runs them (see $CreatedTriggersTable in lib/SyncScript.ps1). As they write them:
+const CREATED = '#database_diff_created';
+const DISABLED = '#database_diff_disabled';
+
+function noteTable(table: string): string {
+  return `IF OBJECT_ID(N'tempdb..${table}') IS NULL CREATE TABLE ${table} (database_id int NOT NULL, name nvarchar(128) COLLATE Latin1_General_BIN2 NOT NULL);`;
+}
+
+function dropNoteTable(table: string): string {
+  return `IF OBJECT_ID(N'tempdb..${table}') IS NOT NULL DROP TABLE ${table};`;
+}
+
+// Before a CREATE: the trigger is noted when it is not there.
+function noteMissing(name: string): string {
+  return `IF NOT EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'${name}') INSERT INTO ${CREATED} (database_id, name) VALUES (DB_ID(), N'${name}');`;
+}
+
+// DISABLE or ENABLE only for a trigger that is noted in table.
+function notedState(name: string, table: string, action: 'DISABLE' | 'ENABLE'): string {
+  return `IF EXISTS (SELECT 1 FROM ${table} WHERE database_id = DB_ID() AND name = N'${name}') AND EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'${name}') ${action} TRIGGER [${name}] ON DATABASE;`;
+}
+
+// What a script prints about a database trigger: the database it runs in (found when it runs: a
+// combined script has many, and their triggers share names), the text, and the statement to
+// run, which names that database too (a new query window is in another one).
+function printed(name: string, text: string): string {
+  return `PRINT N'database-diff: ' + QUOTENAME(DB_NAME()) + N': ${text} USE ' + QUOTENAME(DB_NAME()) + N'; ENABLE TRIGGER [${name}] ON DATABASE;';`;
+}
+
+// A trigger that is enabled is noted and disabled, and the run says how to enable it again
+// should the script stop before it does so itself.
+function disableAndNote(name: string): string {
+  return `IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'${name}' AND is_disabled = 0) BEGIN INSERT INTO ${DISABLED} (database_id, name) VALUES (DB_ID(), N'${name}'); DISABLE TRIGGER [${name}] ON DATABASE; ` +
+    `${printed(name, `database trigger [${name}] is disabled while this script runs; its last statements enable it again. If the script stops before them, run:`)} END`;
+}
+
+// A trigger this run of the sync script created (it is noted) is disabled, and the run says how
+// to enable it should the script stop before its last statements.
+function disableCreated(name: string): string {
+  return `IF EXISTS (SELECT 1 FROM ${CREATED} WHERE database_id = DB_ID() AND name = N'${name}') AND EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'${name}') BEGIN DISABLE TRIGGER [${name}] ON DATABASE; ` +
+    `${printed(name, `database trigger [${name}] is created, and disabled until the last statements of this script enable it. If the script stops before them: run it again to its end, then run:`)} END`;
+}
+
+// At the end of a script: a trigger that is disabled and not noted in table gets a warning. One
+// wording per script, the same for every trigger: why it is disabled, the script cannot know.
+function warnDisabled(name: string, table: string): string {
+  const text = table === CREATED
+    ? `WARNING: database trigger [${name}] is disabled, and this run did not create it: it was there before this run. It may have been disabled all along. If an earlier run of this script stopped part way, the lines that run printed list what it created: only if this trigger is among them, run:`
+    : `WARNING: database trigger [${name}] is disabled, and this run did not disable it. It may have been disabled all along. If an earlier run of this script stopped part way, the lines that run printed list what it disabled: only if this trigger is among them, run:`;
+  return `IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'${name}' AND is_disabled = 1) AND NOT EXISTS (SELECT 1 FROM ${table} WHERE database_id = DB_ID() AND name = N'${name}') ${printed(name, text)}`;
+}
+
+test('script: the statement a script prints to enable a database trigger is right for any name', () => {
+  // A quote ends a literal and a bracket a name: both are doubled where they must be, so that
+  // what is printed is the statement as it has to be run.
+  const odd = "tr'odd]name";
+  const source = snapshot().database('Thai_CI_AS').table('T').databaseTrigger(odd, "CREATE TRIGGER [tr'odd]]name] ON DATABASE FOR CREATE_TABLE AS SET NOCOUNT ON;");
+  const s = scriptsFor('database-triggers-incomplete-name', source, snapshot().database('Thai_CI_AS').table('T').readWithoutViewDefinition());
+  const toRun = " run: USE ' + QUOTENAME(DB_NAME()) + N'; ENABLE TRIGGER [tr''odd]]name] ON DATABASE;';";
+  assert.equal(statements(s.sync).filter((l) => l.includes(toRun)).length, 2, s.sync);
+  assert.equal(statements(s.rollback).filter((l) => l.includes(toRun)).length, 2, s.rollback);
+  const prints = [...statements(s.sync), ...statements(s.rollback)].filter((l) => l.includes('PRINT '));
+  assert.equal(prints.length, 4);
+  for (const line of prints) {
+    // The database is not written into the script: it is the one the statement runs in.
+    assert.match(line, /PRINT N'database-diff: ' \+ QUOTENAME\(DB_NAME\(\)\) \+ N': (?:WARNING: )?database trigger \[tr''odd\]\]name\] is /, line);
+    assert.ok(line.includes(toRun), line);
+    assert.ok(!line.includes('target_db') && !line.includes('source_db'), line);
+  }
+});
+
+test('script: on a target read without VIEW DEFINITION a new database trigger is a plain CREATE, disabled and enabled only when this run created it', () => {
   const { source, target } = databaseTriggerSides();
   const s = scriptsFor('database-triggers-incomplete', source, target.readWithoutViewDefinition());
+  const altered = (name: string, events: string) => ddlTrigger(name, events).replace('CREATE TRIGGER', 'CREATE OR ALTER TRIGGER');
   const lines = statements(s.sync);
   // A login without VIEW DEFINITION sees no database trigger at all: the one "only in the source"
-  // may be there. Plain CREATE fails then, instead of replacing it.
-  assert.ok(lines.includes(ddlTrigger('trNew', 'CREATE_TABLE')), s.sync);
-  assert.ok(lines.includes(ddlTrigger('trNewOff', 'CREATE_TABLE')), s.sync);
-  // And whether that one is enabled is not this script's to change: no statement disables or
-  // enables a trigger that is only in the source, in either script.
-  assert.ok(!lines.includes('DISABLE TRIGGER [trNewOff] ON DATABASE;'), s.sync);
-  assert.ok(comments(s.sync).includes('-- It is disabled in source. Run this only if the CREATE above succeeded: DISABLE TRIGGER [trNewOff] ON DATABASE;'), s.sync);
+  // may be there. Plain CREATE fails then, instead of replacing it. And whether that one is
+  // enabled is not this script's to change: before the CREATE the script notes whether the
+  // trigger was missing, and it disables (an enabled one fires on the statements after it) and
+  // enables only a trigger that is noted.
+  // The ones both sides have are disabled by the first statements, as on any target: they are
+  // the target's, and were compared. Not the new ones: one of those may be a trigger that was
+  // there all along, and is touched only with a note of this run.
+  assert.deepEqual(lines.slice(0, 4), [
+    disabledLoud('trAnsi', HELD),
+    disabledLoud('trChanged', HELD),
+    disabledLoud('trOff', OFF),
+    disabledLoud('trOn', HELD),
+  ]);
+  assert.deepEqual(lines.slice(lines.indexOf(noteTable(CREATED))), [
+    noteTable(CREATED),
+    noteMissing('trNew'),
+    ddlTrigger('trNew', 'CREATE_TABLE'),
+    // With the statement that enables it, printed for the case that the script stops before
+    // its end. Not for trNewOff, which stays disabled.
+    disableCreated('trNew'),
+    noteMissing('trNewOff'),
+    ddlTrigger('trNewOff', 'CREATE_TABLE'),
+    notedState('trNewOff', CREATED, 'DISABLE'),
+    'SET ANSI_NULLS OFF;',
+    altered('trAnsi', 'CREATE_TABLE'),
+    'SET ANSI_NULLS ON;',
+    'SET QUOTED_IDENTIFIER ON;',
+    altered('trChanged', 'CREATE_TABLE, DROP_TABLE'),
+    // Enabled at the end: trNew when this run created it. Not trNewOff, which the source has
+    // disabled.
+    notedState('trNew', CREATED, 'ENABLE'),
+    // Disabled, and not created by this run: a run before this one may have created it and
+    // stopped. Said, not guessed at.
+    warnDisabled('trNew', CREATED),
+    triggerState('trAnsi', 'ENABLE'),
+    triggerState('trChanged', 'ENABLE'),
+    triggerState('trOn', 'ENABLE'),
+    dropNoteTable(CREATED),
+  ]);
+  assert.ok(lines.indexOf(noteTable(CREATED)) > 0, s.sync);
+  // Nothing touches a new trigger without looking at the notes first.
   for (const script of [s.sync, s.rollback]) {
-    assert.ok(!statements(script).some((l) => /(?:DISABLE|ENABLE) TRIGGER \[trNew(?:Off)?\]/.test(l)), script);
+    for (const line of statements(script).filter((l) => /(?:DISABLE|ENABLE) TRIGGER \[trNew(?:Off)?\]/.test(l))) assert.match(line, /#database_diff_(?:created|disabled)/, script);
   }
-  // One that both sides have is still altered, disabled while it is.
-  const alter = lines.indexOf(ddlTrigger('trChanged', 'CREATE_TABLE, DROP_TABLE').replace('CREATE TRIGGER', 'CREATE OR ALTER TRIGGER'));
-  assert.ok(alter > 0, s.sync);
-  assert.ok(lines.indexOf(triggerState('trChanged', 'DISABLE')) >= 0 && lines.indexOf(triggerState('trChanged', 'DISABLE')) < alter, s.sync);
-  assert.ok(lines.indexOf(triggerState('trChanged', 'ENABLE')) > alter, s.sync);
-  // The rollback does not drop what may have been there before.
-  assert.ok(!statements(s.rollback).some((l) => l.startsWith('DROP TRIGGER')), s.rollback);
-  assert.ok(comments(s.rollback).includes('-- DROP TRIGGER IF EXISTS [trNew] ON DATABASE;'), s.rollback);
+  assert.ok(!comments(s.sync).some((l) => l.includes('It is disabled in source') && l.includes('ON DATABASE')), s.sync);
+
+  // The rollback cannot know which of the two the sync script created. It does not drop them:
+  // the enabled ones are disabled while it runs, noted, and enabled again by its last statements.
+  assert.deepEqual(statements(s.rollback), [
+    noteTable(DISABLED),
+    disableAndNote('trNew'),
+    disableAndNote('trNewOff'),
+    triggerState('trAnsi', 'DISABLE'),
+    triggerState('trChanged', 'DISABLE'),
+    triggerState('trOff', 'DISABLE'),
+    triggerState('trOn', 'DISABLE'),
+    altered('trAnsi', 'CREATE_TABLE'),
+    altered('trChanged', 'CREATE_TABLE'),
+    triggerState('trAnsi', 'ENABLE'),
+    triggerState('trChanged', 'ENABLE'),
+    triggerState('trOff', 'ENABLE'),
+    notedState('trNew', DISABLED, 'ENABLE'),
+    // Disabled, and not by this run: a warning, in the same words for the one the source has
+    // enabled and the one it has disabled (what the source has says nothing of a trigger that
+    // may have been in the target all along).
+    warnDisabled('trNew', DISABLED),
+    notedState('trNewOff', DISABLED, 'ENABLE'),
+    warnDisabled('trNewOff', DISABLED),
+    dropNoteTable(DISABLED),
+  ]);
+  const rollback = s.rollback.split('\n');
+  const drop = rollback.indexOf('-- DROP TRIGGER IF EXISTS [trNew] ON DATABASE;');
+  // The drop is a comment, between the statement that disables the trigger and the one that
+  // enables it again: uncommented, it is not refused by the trigger itself.
+  assert.ok(drop > rollback.indexOf(disableAndNote('trNew')) && drop < rollback.indexOf(notedState('trNew', DISABLED, 'ENABLE')), s.rollback);
+  assert.ok(comments(s.rollback).some((l) => l.includes('the drop of a database trigger meets it disabled')), s.rollback);
+
+  // Both headers say so, in lines as long as the others.
+  assert.match(header(s.sync), /A database trigger that is only in the source is disabled and enabled by this script only when this run created it: .*#database_diff_created.*One that was there already, hidden from the comparison, is left as it is, enabled or not/);
+  assert.match(header(s.rollback), /Nor can this script tell which database triggers the sync script created\. .*disabled first .*#database_diff_disabled.*enabled again by the last statements, after the commented-out drops\. That also happens to one that was there before the sync script: it ends as it started/);
+  // A script that stops part way leaves triggers disabled, and its notes do not outlive the
+  // session. Both headers say what to do then; the sync script also how not to get there (an
+  // object that is there already is an error it expects, and stop-on-error stops at the first).
+  assert.match(header(s.sync), /Msg 2714 is therefore expected on this target\. Do not run this script with stop-on-error \(sqlcmd -b\): it would stop at the first one, and leave the database triggers it created or was changing disabled\./);
+  assert.match(header(s.sync), /For each trigger it disables, the script prints the statement that enables it again \(USE \.\.\.; ENABLE TRIGGER \.\.\. ON DATABASE\)\. If it did stop part way: run it again to its end, then run those statements for the triggers it created \(a changed one is enabled by that run itself\)\./);
+  assert.match(header(s.sync), /Only a run in the same session \(query window\) still has the notes and enables them itself; in another session the script prints a warning for each of them it finds disabled, also for one that was disabled all along: enable only what the stopped run said it created\./);
+  assert.match(header(s.rollback), /If this script stops part way, those triggers stay disabled, the target's own among them, and the notes are gone with the session\. For each trigger it disables, the script prints the statement that enables it again \(USE \.\.\.; ENABLE TRIGGER \.\.\. ON DATABASE\)\. Then: run the script again to its end, and run those statements\./);
+  assert.match(header(s.rollback), /in another session the script cannot know what the stopped run disabled\. It prints a warning for each trigger it finds disabled, also for one that was disabled all along: enable only what the stopped run listed\./);
+  // On such a target the sync script does not say that it can simply be run again: the new
+  // triggers a run before it created are not disabled by its first statements.
+  assert.match(header(s.sync), /Database triggers \(ON DATABASE\): the ones this script changes or enables are disabled by its first statements, and changed and enabled by its last: .*The new ones are created by the last statements too; for those, and for running this script again, see INCOMPLETE COMPARISON below\./);
+  assert.doesNotMatch(header(s.sync), /can be run again after a run of it/);
+  assert.match(header(s.sync), /Until then they are disabled for every session, not only this one: a trigger among them that records DDL \(an audit trigger\) records nothing while this script runs\./);
+  // "Run it again, or its last section" is right only where the script itself knows what to
+  // enable: on a target read in full.
+  assert.doesNotMatch(header(s.rollback), /run it again, or its last section/);
+  assert.match(header(s.rollback), /If the script stops part way they stay disabled: see the INCOMPLETE COMPARISON lines below for what to do then\./);
+  for (const script of [s.sync, s.rollback]) {
+    for (const line of headerLines(script).slice(3).filter((l) => !l.startsWith('-- WARNING: '))) assert.ok(line.length <= 100, line);
+  }
+
+  // A target read in full has no notes: nothing in its scripts names the temporary tables,
+  // and nothing is printed. Its rollback knows what to enable, in any session.
+  const complete = scriptsFor('database-triggers', databaseTriggerSides().source, databaseTriggerSides().target);
+  assert.doesNotMatch(complete.sync + complete.rollback, /#database_diff_/);
+  // What its sync script prints is what it disables with its first statements, and each new
+  // trigger after its CREATE: never a warning.
+  assert.doesNotMatch(complete.sync, /WARNING/);
+  assert.doesNotMatch(complete.rollback, /PRINT /);
+  assert.match(header(complete.rollback), /If the script stops part way they stay disabled: run it again, or its last section\./);
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -1168,9 +1400,20 @@ test('script: the header says what is left to do by hand and in which order thin
     // the date are as long as the labels make them).
     for (const line of headerLines(script).slice(3)) assert.ok(line.length <= 100, `${name}: ${line}`);
   }
-  // Database triggers: last in a sync script and disabled until all of them are in place, first
-  // in a rollback script, which disables them before it drops or changes anything.
-  assert.match(header(s.sync), /Database triggers \(ON DATABASE\) come last\..*stay disabled until all of them are in place.*enabled at the very end/);
-  assert.match(header(s.rollback), /Database triggers \(ON DATABASE\) come first: .*disabled, dropped or put back, and only then enabled as they were before/);
+  // Database triggers: a sync script disables the ones it creates, changes or enables with its
+  // first statements and writes them last, so it can be run again; a rollback script starts
+  // with them, disables them before it drops or changes anything and enables them again with
+  // its last statements.
+  assert.match(header(s.sync), /Database triggers \(ON DATABASE\): the ones this script creates, changes or enables are disabled by its first statements, and created, changed and enabled by its last: an enabled one fires on the statements after it and may refuse them\./);
+  // A second run is not silent: what the first created is there, and CREATE says so.
+  assert.match(header(s.sync), /So the script can be run again after a run of it that completed or stopped part way: what that run enabled is disabled first, and what it created is reported as there already \(Msg 2714, Msg 1913 and the like\)\./);
+  // Not with stop-on-error: that ends the run at the first such message, after the triggers were
+  // disabled. What the script prints then, and what to do.
+  assert.match(header(s.sync), /Do not run it with stop-on-error \(sqlcmd -b\): it would stop at the first such message, or at any other error, with those triggers disabled\. For each trigger it disables, the script prints the statement that enables it again \(USE \.\.\.; ENABLE TRIGGER \.\.\. ON DATABASE\)\. If it stopped part way: run it again to its end, or run those statements to have the triggers enabled again\./);
+  // Disabled means for everyone: what that is for a trigger that records DDL.
+  assert.match(header(s.sync), /Until then they are disabled for every session, not only this one: a trigger among them that records DDL \(an audit trigger\) records nothing while this script runs\./);
+  assert.match(header(s.sync), /A database trigger this script does not touch stays enabled: if it refuses DDL, disable it by hand before running this script\./);
+  assert.match(header(s.rollback), /Database triggers \(ON DATABASE\) come first: .*disabled, then dropped or put back\. .*enabled before the sync script are enabled again by the last statements of this file/);
+  assert.match(header(s.rollback), /If the script stops part way they stay disabled: run it again/);
   assert.doesNotMatch(header(s.rollback), /come last/);
 });

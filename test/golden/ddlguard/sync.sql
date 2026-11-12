@@ -14,9 +14,20 @@
 -- - A view this script alters gets the indexes the source has on it created again right after
 --   it (ALTER VIEW drops every index of a view). The indexes of the other views come after
 --   the views.
--- - Database triggers (ON DATABASE) come last. The ones this script creates or changes stay
---   disabled until all of them are in place, and the ones the source has enabled are enabled at
---   the very end: an enabled one fires on the statements after it and may refuse them.
+-- - Database triggers (ON DATABASE): the ones this script creates, changes or enables are
+--   disabled by its first statements, and created, changed and enabled by its last: an enabled
+--   one fires on the statements after it and may refuse them. Until then they are disabled for
+--   every session, not only this one: a trigger among them that records DDL (an audit trigger)
+--   records nothing while this script runs.
+-- - So the script can be run again after a run of it that completed or stopped part way: what
+--   that run enabled is disabled first, and what it created is reported as there already (Msg
+--   2714, Msg 1913 and the like). Do not run it with stop-on-error (sqlcmd -b): it would stop
+--   at the first such message, or at any other error, with those triggers disabled. For each
+--   trigger it disables, the script prints the statement that enables it again (USE ...;
+--   ENABLE TRIGGER ... ON DATABASE). If it stopped part way: run it again to its end, or run
+--   those statements to have the triggers enabled again.
+-- - A database trigger this script does not touch stays enabled: if it refuses DDL, disable it
+--   by hand before running this script.
 -- - Uses CREATE OR ALTER, which needs SQL Server 2016 SP1 or later on the target.
 -- - It starts with USE of the target database. If that fails (wrong server, no access), nothing
 --   after it is executed, so no statement runs in another database.
@@ -38,6 +49,25 @@ SET XACT_ABORT ON;
 GO
 
 -- ==========================================================================================
+-- Database triggers first: disabled until the last section of this script creates, changes and enables them
+-- ==========================================================================================
+-- Disabled before anything else: an enabled one fires on every statement of this script and may refuse it. Also the ones a run of this script before this one created or enabled, so that the script can be run again.
+IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trAaa' AND is_disabled = 0) BEGIN DISABLE TRIGGER [trAaa] ON DATABASE; PRINT N'database-diff: ' + QUOTENAME(DB_NAME()) + N': database trigger [trAaa] is disabled until the last statements of this script enable it again. If the script stops before them: run it again to its end, or run: USE ' + QUOTENAME(DB_NAME()) + N'; ENABLE TRIGGER [trAaa] ON DATABASE;'; END
+GO
+IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trBlock' AND is_disabled = 0) BEGIN DISABLE TRIGGER [trBlock] ON DATABASE; PRINT N'database-diff: ' + QUOTENAME(DB_NAME()) + N': database trigger [trBlock] is disabled until the last statements of this script enable it again. If the script stops before them: run it again to its end, or run: USE ' + QUOTENAME(DB_NAME()) + N'; ENABLE TRIGGER [trBlock] ON DATABASE;'; END
+GO
+IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trZeta' AND is_disabled = 0) BEGIN DISABLE TRIGGER [trZeta] ON DATABASE; PRINT N'database-diff: ' + QUOTENAME(DB_NAME()) + N': database trigger [trZeta] is disabled until the last statements of this script enable it again. If the script stops before them: run it again to its end, or run: USE ' + QUOTENAME(DB_NAME()) + N'; ENABLE TRIGGER [trZeta] ON DATABASE;'; END
+GO
+IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trGuard' AND is_disabled = 0) BEGIN DISABLE TRIGGER [trGuard] ON DATABASE; PRINT N'database-diff: ' + QUOTENAME(DB_NAME()) + N': database trigger [trGuard] is disabled until the last statements of this script enable it again. If the script stops before them: run it again to its end, or run: USE ' + QUOTENAME(DB_NAME()) + N'; ENABLE TRIGGER [trGuard] ON DATABASE;'; END
+GO
+IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trHold' AND is_disabled = 0) BEGIN DISABLE TRIGGER [trHold] ON DATABASE; PRINT N'database-diff: ' + QUOTENAME(DB_NAME()) + N': database trigger [trHold] is disabled, as the source has it, and stays so. To have it enabled as it was, run: USE ' + QUOTENAME(DB_NAME()) + N'; ENABLE TRIGGER [trHold] ON DATABASE;'; END
+GO
+IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trNoDrop' AND is_disabled = 0) BEGIN DISABLE TRIGGER [trNoDrop] ON DATABASE; PRINT N'database-diff: ' + QUOTENAME(DB_NAME()) + N': database trigger [trNoDrop] is disabled until the last statements of this script enable it again. If the script stops before them: run it again to its end, or run: USE ' + QUOTENAME(DB_NAME()) + N'; ENABLE TRIGGER [trNoDrop] ON DATABASE;'; END
+GO
+IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trSelf' AND is_disabled = 0) BEGIN DISABLE TRIGGER [trSelf] ON DATABASE; PRINT N'database-diff: ' + QUOTENAME(DB_NAME()) + N': database trigger [trSelf] is disabled until the last statements of this script enable it again. If the script stops before them: run it again to its end, or run: USE ' + QUOTENAME(DB_NAME()) + N'; ENABLE TRIGGER [trSelf] ON DATABASE;'; END
+GO
+
+-- ==========================================================================================
 -- Indexes, primary keys and unique constraints
 -- ==========================================================================================
 CREATE NONCLUSTERED INDEX [IX_Items_Name] ON [dbo].[Items] ([Name]);
@@ -55,16 +85,13 @@ GO
 -- ==========================================================================================
 -- Database triggers last: disabled until all of them are in place (an enabled one fires on the statements after it)
 -- ==========================================================================================
--- Disabled before they are changed: an enabled one fires on the statements of this section, also on its own ALTER.
-IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trSelf') DISABLE TRIGGER [trSelf] ON DATABASE;
-GO
 -- trAaa (database trigger): only in source
 GO
 -- By name these two sort before and after the two triggers that refuse statements.
 CREATE OR ALTER TRIGGER trAaa ON DATABASE FOR CREATE_SYNONYM AS BEGIN SET NOCOUNT ON; END
 
 GO
-IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trAaa') DISABLE TRIGGER [trAaa] ON DATABASE;
+IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trAaa' AND is_disabled = 0) BEGIN DISABLE TRIGGER [trAaa] ON DATABASE; PRINT N'database-diff: ' + QUOTENAME(DB_NAME()) + N': database trigger [trAaa] is created, and disabled until the last statements of this script enable it. If the script stops before them: run it again to its end, or run: USE ' + QUOTENAME(DB_NAME()) + N'; ENABLE TRIGGER [trAaa] ON DATABASE;'; END
 GO
 -- trBlock (database trigger): only in source
 GO
@@ -77,17 +104,29 @@ BEGIN
 END
 
 GO
-IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trBlock') DISABLE TRIGGER [trBlock] ON DATABASE;
+IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trBlock' AND is_disabled = 0) BEGIN DISABLE TRIGGER [trBlock] ON DATABASE; PRINT N'database-diff: ' + QUOTENAME(DB_NAME()) + N': database trigger [trBlock] is created, and disabled until the last statements of this script enable it. If the script stops before them: run it again to its end, or run: USE ' + QUOTENAME(DB_NAME()) + N'; ENABLE TRIGGER [trBlock] ON DATABASE;'; END
 GO
 -- trZeta (database trigger): only in source
 GO
 CREATE OR ALTER TRIGGER trZeta ON DATABASE FOR DROP_SYNONYM AS BEGIN SET NOCOUNT ON; END
 
 GO
-IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trZeta') DISABLE TRIGGER [trZeta] ON DATABASE;
+IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trZeta' AND is_disabled = 0) BEGIN DISABLE TRIGGER [trZeta] ON DATABASE; PRINT N'database-diff: ' + QUOTENAME(DB_NAME()) + N': database trigger [trZeta] is created, and disabled until the last statements of this script enable it. If the script stops before them: run it again to its end, or run: USE ' + QUOTENAME(DB_NAME()) + N'; ENABLE TRIGGER [trZeta] ON DATABASE;'; END
 GO
 -- trGuard (database trigger): State: source ENABLED, target DISABLED
 -- Enabled at the end of this section.
+-- trHold (database trigger): State: source DISABLED, target ENABLED
+-- Disabled by the first statements of this script.
+-- trNoDrop (database trigger): Definition differs
+GO
+CREATE OR ALTER TRIGGER trNoDrop ON DATABASE FOR DROP_PROCEDURE, DROP_INDEX
+AS
+BEGIN
+    RAISERROR('trNoDrop: nothing is dropped here (source)', 16, 1);
+    ROLLBACK;
+END
+
+GO
 -- trSelf (database trigger): Definition differs
 GO
 CREATE OR ALTER TRIGGER trSelf ON DATABASE FOR ALTER_TRIGGER
@@ -106,6 +145,8 @@ GO
 IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trZeta') ENABLE TRIGGER [trZeta] ON DATABASE;
 GO
 IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trGuard') ENABLE TRIGGER [trGuard] ON DATABASE;
+GO
+IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trNoDrop') ENABLE TRIGGER [trNoDrop] ON DATABASE;
 GO
 IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trSelf') ENABLE TRIGGER [trSelf] ON DATABASE;
 GO

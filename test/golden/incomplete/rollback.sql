@@ -7,8 +7,10 @@
 -- - Nothing in this file has been executed by database-diff.
 -- - It assumes the target changed only through the sync script since the comparison.
 -- - Database triggers (ON DATABASE) come first: the ones the sync script created or changed are
---   disabled, dropped or put back, and only then enabled as they were before. An enabled one
---   fires on the statements after it and may refuse them.
+--   disabled, then dropped or put back. The ones that were enabled before the sync script
+--   are enabled again by the last statements of this file: an enabled one fires on the
+--   statements after it and may refuse them. If the script stops part way they stay
+--   disabled: see the INCOMPLETE COMPARISON lines below for what to do then.
 -- - Procedures, views, functions, triggers, synonyms, indexes and constraints the sync script
 --   created are dropped next, with IF EXISTS so a sync script that stopped part way is fine.
 -- - Tables, columns, sequences, types and schemas it created are commented out at the end:
@@ -35,6 +37,19 @@
 --   an object the sync script was to create may have been there before (its CREATE then
 --   failed). The drops of procedures, views, functions, triggers and synonyms are therefore
 --   commented out at the end: uncomment only those the sync script really created.
+-- - Nor can this script tell which database triggers the sync script created. Each one that is
+--   only in the source and enabled when this script starts is disabled first (it may refuse
+--   the statements of this script), noted in a temporary table (#database_diff_disabled), and
+--   enabled again by the last statements, after the commented-out drops. That also happens to
+--   one that was there before the sync script: it ends as it started.
+-- - If this script stops part way, those triggers stay disabled, the target's own among them,
+--   and the notes are gone with the session. For each trigger it disables, the script prints
+--   the statement that enables it again (USE ...; ENABLE TRIGGER ... ON DATABASE). Then: run
+--   the script again to its end, and run those statements. Only a run in the same session
+--   (query window) still has the notes and enables them itself; in another session the
+--   script cannot know what the stopped run disabled. It prints a warning for each trigger it
+--   finds disabled, also for one that was disabled all along: enable only what the stopped
+--   run listed.
 --
 -- WARNING: Login <login> has no VIEW DEFINITION permission in target database ddtest_incomplete_tgt: objects it cannot access are invisible and definitions read as empty, so this comparison is incomplete.
 USE [ddtest_incomplete_tgt];
@@ -51,10 +66,17 @@ SET XACT_ABORT ON;
 GO
 
 -- ==========================================================================================
--- Database triggers first: disabled, dropped or put back, then enabled as they were before the sync script
+-- Database triggers first: disabled, then dropped or put back (enabled again by the last statements of this script)
 -- ==========================================================================================
+-- The comparison of the target is incomplete: this script cannot tell which of these the sync script created, and one that is enabled may refuse the statements below. The enabled ones are disabled, noted in a temporary table of this session, and enabled again by the last statements of this script.
+IF OBJECT_ID(N'tempdb..#database_diff_disabled') IS NULL CREATE TABLE #database_diff_disabled (database_id int NOT NULL, name nvarchar(128) COLLATE Latin1_General_BIN2 NOT NULL);
+GO
+IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trDdlNew' AND is_disabled = 0) BEGIN INSERT INTO #database_diff_disabled (database_id, name) VALUES (DB_ID(), N'trDdlNew'); DISABLE TRIGGER [trDdlNew] ON DATABASE; PRINT N'database-diff: ' + QUOTENAME(DB_NAME()) + N': database trigger [trDdlNew] is disabled while this script runs; its last statements enable it again. If the script stops before them, run: USE ' + QUOTENAME(DB_NAME()) + N'; ENABLE TRIGGER [trDdlNew] ON DATABASE;'; END
+GO
 -- Disabled before anything else: the sync script left them enabled, and an enabled one may refuse the statements of this script.
 IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trDdlChanged') DISABLE TRIGGER [trDdlChanged] ON DATABASE;
+GO
+IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trDdlState') DISABLE TRIGGER [trDdlState] ON DATABASE;
 GO
 -- trDdlChanged (database trigger): Definition differs
 GO
@@ -66,12 +88,7 @@ SET NOCOUNT ON;
 
 GO
 -- trDdlState (database trigger): State: source DISABLED, target ENABLED
--- Enabled at the end of this section.
--- Enabled again: the ones that were enabled before the sync script.
-IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trDdlChanged') ENABLE TRIGGER [trDdlChanged] ON DATABASE;
-GO
-IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trDdlState') ENABLE TRIGGER [trDdlState] ON DATABASE;
-GO
+-- Enabled by the last statements of this script.
 
 -- ==========================================================================================
 -- Created by the sync script: dropped
@@ -201,6 +218,7 @@ GO
 -- Created by the sync script: NOT dropped. Uncomment a line only after checking nothing still needs it (data is lost)
 -- ==========================================================================================
 -- The comparison of the target is incomplete: one of the next objects may have been there before the sync script (its CREATE then failed with Msg 2714). Uncomment only those the sync script created:
+-- (Run with this whole file, the drop of a database trigger meets it disabled: see the first and the last section. Run on its own, an enabled trigger may refuse its own DROP: disable it first.)
 -- DROP TRIGGER IF EXISTS [trDdlNew] ON DATABASE;
 -- DROP TRIGGER IF EXISTS [dbo].[trAudit];
 -- DROP TRIGGER IF EXISTS [dbo].[trOrders_Insert];
@@ -224,6 +242,21 @@ GO
 -- DROP TYPE [dbo].[tPhone];
 -- DROP TYPE [dbo].[tRows];
 -- DROP SCHEMA [rpt];
+
+-- ==========================================================================================
+-- Database triggers, enabled again: the ones that were enabled before the sync script, and the ones this script disabled at its start
+-- ==========================================================================================
+-- Last, when nothing is left for them to refuse: an enabled one fires on the statements after it.
+IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trDdlChanged') ENABLE TRIGGER [trDdlChanged] ON DATABASE;
+GO
+IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trDdlState') ENABLE TRIGGER [trDdlState] ON DATABASE;
+GO
+-- The ones noted at the start of this script (enabled then, and the sync script may have created them): enabled again when they are still there. A warning is printed for one that is disabled without a note of this run: it may have been disabled all along, or an earlier run that stopped part way disabled it.
+IF EXISTS (SELECT 1 FROM #database_diff_disabled WHERE database_id = DB_ID() AND name = N'trDdlNew') AND EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trDdlNew') ENABLE TRIGGER [trDdlNew] ON DATABASE;
+IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trDdlNew' AND is_disabled = 1) AND NOT EXISTS (SELECT 1 FROM #database_diff_disabled WHERE database_id = DB_ID() AND name = N'trDdlNew') PRINT N'database-diff: ' + QUOTENAME(DB_NAME()) + N': WARNING: database trigger [trDdlNew] is disabled, and this run did not disable it. It may have been disabled all along. If an earlier run of this script stopped part way, the lines that run printed list what it disabled: only if this trigger is among them, run: USE ' + QUOTENAME(DB_NAME()) + N'; ENABLE TRIGGER [trDdlNew] ON DATABASE;';
+GO
+IF OBJECT_ID(N'tempdb..#database_diff_disabled') IS NOT NULL DROP TABLE #database_diff_disabled;
+GO
 
 -- End of script: ends the NOEXEC that a failed database check at the top turned on.
 SET NOEXEC OFF;

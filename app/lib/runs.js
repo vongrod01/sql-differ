@@ -101,22 +101,170 @@ function list() {
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 }
 
-// A file that another program has open for a moment (a virus scanner, a report in an editor)
-// is tried a few more times before a delete gives up.
-const REMOVE_OPTIONS = { recursive: true, force: true, maxRetries: 3, retryDelay: 100 };
+// A file that is open for a moment only (a virus scanner looking at it, a report this server is
+// sending to a browser) is tried a few more times before a delete gives up.
+const REMOVE_RETRIES = 3;
+const REMOVE_RETRY_MS = 100;
+const REMOVE_OPTIONS = { recursive: true, force: true, maxRetries: REMOVE_RETRIES, retryDelay: REMOVE_RETRY_MS };
+// What Windows answers when a file or folder is in use by a program.
+const IN_USE = ['EPERM', 'EBUSY', 'EACCES'];
 
-function remove(id) {
+// A run on its way out: its folder under a name that is not a run id, so nothing lists it,
+// serves its files, offers its snapshots or prunes it. sweepDeleted removes what is left of one.
+const DELETED_PREFIX = 'deleted-';
+const DELETED_FOLDER = /^deleted-\d{8}-\d{6}-[a-f0-9]{4}$/;
+
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+// Deletes a run, whole or not at all. Both ways of calling it (remove, removeWhenFree) return
+// { leftover }: true when the run is gone from the history but files of it are still on disk
+// for sweepDeleted to remove.
+//
+// A file that another program has open cannot be deleted on Windows, and a delete that goes file
+// by file stops there: the run stayed in the history as "done" with its report, scripts and
+// snapshots gone (dead links, a drift baseline that was no longer there), or, deleted in another
+// order, as a folder without a run.json that nothing recognised any more.
+// So the folder is renamed first. Windows refuses to rename a folder while any file in it is
+// open, whatever way it was opened, and refuses as a whole: nothing changes (checked on Windows
+// 11: a file opened with every sharing mode, also by this process itself, EPERM at once). A
+// rename that fails therefore leaves the run exactly as it was, and the caller is told why.
+// Once renamed, the run is gone for every reader in one step, and its files are deleted. Should
+// that fail (a program opened a file at that moment, the process was stopped), the folder keeps
+// its other name: putting the run back would bring back a run with files missing. sweepDeleted
+// removes it when the server starts and with the daily clean-up (not under npm run dev, where
+// nothing is deleted: see retention.schedule).
+
+// What the page is told when a delete does not go through: Thai, as the page is, short, with the
+// code of the error and without a path. What happened, in English and in full, is for the console
+// of the server: the error carries it as "detail" where the caller prints it (an "in use" is
+// tried again first), and it is printed here where the error is not expected.
+const DELETE_MESSAGES = {
+  inUse: (code) => `ลบ run นี้ไม่ได้ และยังไม่มีอะไรถูกลบ: มีโปรแกรมอื่นเปิดไฟล์ใน folder ของ run นี้อยู่ (${code}) ปิดรายงาน script หรือ log ของ run นี้ที่เปิดค้างไว้ แล้วกดลบอีกครั้ง`,
+  leftoverInUse: (folder, code) => `ลบ run นี้ไม่ได้ และยังไม่มีอะไรถูกลบ: folder ${folder} ที่การลบครั้งก่อนทิ้งไว้ถูกโปรแกรมอื่นเปิดใช้อยู่ (${code}) จึงขวางการลบ ปิดโปรแกรมที่เปิดไฟล์ใน folder นั้น แล้วกดลบอีกครั้ง`,
+  running: 'ลบ run นี้ยังไม่ได้: run ยังทำงานอยู่ รอให้เสร็จก่อนแล้วกดลบอีกครั้ง',
+  unknown: 'ไม่พบ run นี้ อาจถูกลบไปแล้ว โหลดหน้าประวัติใหม่เพื่อดูรายการล่าสุด',
+  failed: (code) => `ลบ run นี้ไม่สำเร็จ (${code || 'UNKNOWN'}) ดูรายละเอียดได้ที่ console ของ server`,
+};
+
+// The first step, tried once: the folder of the run gets its other name. Returns that folder.
+// Throws an error for the page: "not there", "in progress", "in use" (marked inUse: worth
+// another try a moment later; its detail is the English of it), or a short one without the
+// paths that the real error names, which goes to the console instead.
+function renameAway(id) {
   // readMeta also covers runs of other processes (scheduled jobs) and marks dead ones interrupted.
-  if (live.has(id) || readMeta(id).status === 'running') throw httpError(409, 'The run is still in progress');
-  const dir = runDir(id);
-  // run.json goes last. A delete that stops part way (a file in use cannot be deleted on
-  // Windows) then leaves a run that is still one: the history page lists it and the next
-  // clean-up tries again. Without its run.json the folder would be nothing anyone recognises.
-  for (const name of fs.readdirSync(dir)) {
-    if (name.toLowerCase() !== 'run.json') fs.rmSync(path.join(dir, name), REMOVE_OPTIONS);
+  // A run that is not there (deleted in another tab, or by the clean-up, since the page was
+  // loaded) gets the answer of this route, not the English one that readMeta has for the others.
+  let meta;
+  try {
+    meta = readMeta(id);
+  } catch (err) {
+    if (err.status === 404) throw Object.assign(httpError(404, DELETE_MESSAGES.unknown), { detail: 'there is no such run' });
+    throw err;
   }
-  fs.rmSync(path.join(dir, 'run.json'), REMOVE_OPTIONS);
-  fs.rmSync(dir, REMOVE_OPTIONS);
+  if (live.has(id) || meta.status === 'running') throw Object.assign(httpError(409, DELETE_MESSAGES.running), { detail: 'the run is still in progress' });
+  const dir = runDir(id);
+  const gone = path.join(config.RUNS, DELETED_PREFIX + id);
+  // What an earlier delete of a folder of this id left (a delete that could not finish, under
+  // npm run dev where nothing sweeps; a run folder copied back by hand): it would be in the way
+  // of the rename. When it cannot go, that is what the page is told: it is not the run that has
+  // a file open, and looking for an open report of the run would find none.
+  if (fs.existsSync(gone)) {
+    try {
+      // One try, without the waits of REMOVE_OPTIONS: the callers come back for more (remove,
+      // removeWhenFree), and a request must not keep the server waiting in between.
+      fs.rmSync(gone, { recursive: true, force: true });
+    } catch (err) {
+      if (IN_USE.includes(err.code)) {
+        throw Object.assign(httpError(409, DELETE_MESSAGES.leftoverInUse(path.basename(gone), err.code)), {
+          inUse: true,
+          detail: `the folder ${path.basename(gone)}, which an earlier delete left behind, is in use by another program (${err.code}) and is in the way`,
+        });
+      }
+      console.error(`run ${id} could not be deleted, ${path.basename(gone)} is in the way: ${err.stack || err.message}`);
+      throw httpError(500, DELETE_MESSAGES.failed(err.code));
+    }
+  }
+  try {
+    fs.renameSync(dir, gone);
+  } catch (err) {
+    if (IN_USE.includes(err.code)) {
+      throw Object.assign(httpError(409, DELETE_MESSAGES.inUse(err.code)), { inUse: true, detail: `a file in its folder is in use by another program (${err.code})` });
+    }
+    console.error(`run ${id} could not be deleted: ${err.stack || err.message}`);
+    throw httpError(500, DELETE_MESSAGES.failed(err.code));
+  }
+  return gone;
+}
+
+// The second step: the files go. It does not throw: the run is gone already.
+function deleteRenamed(id, gone) {
+  try {
+    fs.rmSync(gone, REMOVE_OPTIONS);
+  } catch (err) {
+    console.error(`run ${id} is deleted, but not all of its files yet (${err.code || err.message}): ${path.basename(gone)} is removed when the server starts or with the daily clean-up (not under npm run dev)`);
+    return { leftover: true };
+  }
+  return { leftover: false };
+}
+
+// For the clean-up of old runs, which is not asynchronous. Between tries this process waits and
+// does nothing else: time for another program to let go of a file. Not for a file this server is
+// sending itself, which it cannot finish sending while it waits here (a request uses
+// removeWhenFree). A run that stays in use is kept, and the next clean-up tries again.
+function remove(id) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return deleteRenamed(id, renameAway(id));
+    } catch (err) {
+      if (!err.inUse || attempt >= REMOVE_RETRIES) throw err;
+      sleepSync(REMOVE_RETRY_MS);
+    }
+  }
+}
+
+// For a request (the delete button of the history page). Between tries the server goes on with
+// its other work, so a report or a script of this run that it is sending at that moment can be
+// sent to its end and closed. (With a wait that blocks, the folder stayed in use for as long as
+// the wait lasted: about 430 ms, then "in use", for a file that was free a moment later.)
+async function removeWhenFree(id) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return deleteRenamed(id, renameAway(id));
+    } catch (err) {
+      // Given up: what the page gets is Thai, the console gets the English of it, once.
+      if (err.inUse && attempt >= REMOVE_RETRIES) console.error(`run ${id} was not deleted: ${err.detail}`);
+      if (!err.inUse || attempt >= REMOVE_RETRIES) throw err;
+      await new Promise((resolve) => setTimeout(resolve, REMOVE_RETRY_MS));
+    }
+  }
+}
+
+// Removes the folders that a delete left under their "deleted-" name (see remove). Returns the
+// names it removed. Only a real folder of exactly that kind of name: a link or a junction is
+// somebody's own arrangement. One that still cannot be deleted stays for the next time.
+function sweepDeleted() {
+  let entries = [];
+  try {
+    entries = fs.readdirSync(config.RUNS, { withFileTypes: true });
+  } catch (err) {
+    if (err.code !== 'ENOENT') throw err;
+  }
+  const removed = [];
+  for (const entry of entries) {
+    if (!DELETED_FOLDER.test(entry.name)) continue;
+    const dir = path.join(config.RUNS, entry.name);
+    try {
+      const stat = fs.lstatSync(dir);
+      if (stat.isSymbolicLink() || !stat.isDirectory()) continue;
+      fs.rmSync(dir, REMOVE_OPTIONS);
+      removed.push(entry.name);
+    } catch (err) {
+      console.error(`${entry.name} (what is left of a deleted run) could not be removed yet: ${err.code || err.message}`);
+    }
+  }
+  return removed;
 }
 
 function snapshotPath(ref) {
@@ -503,4 +651,4 @@ function combinedScript(id, kind) {
   return { name: `batch-${id}.${kind}.sql`, text: '\uFEFF' + out.join('\r\n') + '\r\n' };
 }
 
-module.exports = { start, recordFailure, list, readMeta, remove, readLog, subscribe, listSnapshots, file, combinedScript, runDir, normalizeSpec, RUN_ID, CATEGORIES, DEFAULT_CATEGORIES };
+module.exports = { start, recordFailure, list, readMeta, remove, removeWhenFree, sweepDeleted, readLog, subscribe, listSnapshots, file, combinedScript, runDir, normalizeSpec, RUN_ID, CATEGORIES, DEFAULT_CATEGORIES };

@@ -41,7 +41,7 @@ function kindWords(kind) {
     };
   }
   return {
-    source: { cls: 'tgt', label: 'ต้องเพิ่ม', hint: 'ต้นแบบมี แต่ปลายทางยังไม่มี sync จะสร้างให้' },
+    source: { cls: 'tgt', label: 'ต้องเพิ่ม', hint: 'ต้นแบบมี แต่ปลายทางยังไม่มี sync จะสร้างให้ ยกเว้นส่วนที่ไฟล์ sync เขียนไว้เป็นหมายเหตุให้ทำเอง' },
     target: { cls: 'src', label: 'มีเกิน', hint: 'ปลายทางมีแต่ต้นแบบไม่มี sync ไม่ลบให้ แค่เขียนคำสั่งลบไว้เป็นหมายเหตุ' },
     different: { cls: 'chg', label: 'ต้องแก้', hint: 'มีทั้งคู่แต่ไม่เหมือนกัน sync จะแก้ปลายทางให้ตรงต้นแบบ ยกเว้นส่วนที่ไฟล์ sync เขียนไว้เป็นหมายเหตุให้ทำเอง' },
     unverified: { cls: 'unk', label: 'ตรวจไม่ได้', hint: 'อ่านค่าไม่ได้ (ไม่มีสิทธิ์ หรือถูกเข้ารหัส) จึงเทียบไม่ได้ และไม่เขียนคำสั่งให้' },
@@ -609,7 +609,16 @@ async function pageHistory() {
     if (del) {
       e.stopPropagation();
       armDelete(del, async () => {
-        try { await api('DELETE', `/api/runs/${del.dataset.delete}`); del.closest('tr').remove(); } catch (err) { alertInline(target, err); }
+        // A run with a file in use is refused whole (the server says why): its row stays, with
+        // everything it links to. leftover: the run is gone, some of its files not yet.
+        // What an earlier click said (a refusal, say) is no longer what happened last.
+        const said = () => target.querySelectorAll(':scope > .notice').forEach((n) => n.remove());
+        try {
+          const done = await api('DELETE', `/api/runs/${del.dataset.delete}`);
+          said();
+          del.closest('tr').remove();
+          if (done.leftover) target.insertAdjacentHTML('afterbegin', '<div class="notice warn">ลบ run ออกจากประวัติแล้ว แต่ไฟล์บางส่วนยังลบไม่ได้ (อาจมีโปรแกรมอื่นเปิดอยู่) ระบบจะลบที่เหลือให้เองตอนเปิด server ครั้งถัดไป หรือรอบล้างประวัติประจำวัน ยกเว้นเมื่อรันด้วย npm run dev ซึ่งไม่ลบอะไรเลย</div>');
+        } catch (err) { said(); alertInline(target, err); }
       });
       return;
     }

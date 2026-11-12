@@ -7,8 +7,10 @@
 -- - Nothing in this file has been executed by database-diff.
 -- - It assumes the target changed only through the sync script since the comparison.
 -- - Database triggers (ON DATABASE) come first: the ones the sync script created or changed are
---   disabled, dropped or put back, and only then enabled as they were before. An enabled one
---   fires on the statements after it and may refuse them.
+--   disabled, then dropped or put back. The ones that were enabled before the sync script
+--   are enabled again by the last statements of this file: an enabled one fires on the
+--   statements after it and may refuse them. If the script stops part way they stay
+--   disabled: run it again, or its last section.
 -- - Procedures, views, functions, triggers, synonyms, indexes and constraints the sync script
 --   created are dropped next, with IF EXISTS so a sync script that stopped part way is fine.
 -- - Tables, columns, sequences, types and schemas it created are commented out at the end:
@@ -45,7 +47,7 @@ SET XACT_ABORT ON;
 GO
 
 -- ==========================================================================================
--- Database triggers first: disabled, dropped or put back, then enabled as they were before the sync script
+-- Database triggers first: disabled, then dropped or put back (enabled again by the last statements of this script)
 -- ==========================================================================================
 -- Disabled before anything else: the sync script left them enabled, and an enabled one may refuse the statements of this script.
 IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trAaa') DISABLE TRIGGER [trAaa] ON DATABASE;
@@ -55,6 +57,10 @@ GO
 IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trZeta') DISABLE TRIGGER [trZeta] ON DATABASE;
 GO
 IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trGuard') DISABLE TRIGGER [trGuard] ON DATABASE;
+GO
+IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trHold') DISABLE TRIGGER [trHold] ON DATABASE;
+GO
+IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trNoDrop') DISABLE TRIGGER [trNoDrop] ON DATABASE;
 GO
 IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trSelf') DISABLE TRIGGER [trSelf] ON DATABASE;
 GO
@@ -67,6 +73,21 @@ DROP TRIGGER IF EXISTS [trZeta] ON DATABASE;
 GO
 -- trGuard (database trigger): State: source ENABLED, target DISABLED
 -- Disabled at the start of this section.
+-- trHold (database trigger): State: source DISABLED, target ENABLED
+-- Enabled by the last statements of this script.
+-- trNoDrop (database trigger): Definition differs
+GO
+-- Refuses the drop of a procedure or an index. Enabled on both sides; the source has another
+-- text. A rollback script has to drop the index and the procedure the sync script created: it
+-- must not enable this one again before it has.
+CREATE OR ALTER TRIGGER trNoDrop ON DATABASE FOR DROP_PROCEDURE, DROP_INDEX
+AS
+BEGIN
+    RAISERROR('trNoDrop: nothing is dropped here', 16, 1);
+    ROLLBACK;
+END
+
+GO
 -- trSelf (database trigger): Definition differs
 GO
 -- Refuses ALTER TRIGGER, its own included. Enabled on both sides; the source has another text.
@@ -78,9 +99,6 @@ BEGIN
 END
 
 GO
--- Enabled again: the ones that were enabled before the sync script.
-IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trSelf') ENABLE TRIGGER [trSelf] ON DATABASE;
-GO
 
 -- ==========================================================================================
 -- Created by the sync script: dropped
@@ -88,6 +106,17 @@ GO
 DROP INDEX IF EXISTS [IX_Items_Name] ON [dbo].[Items];
 GO
 DROP PROCEDURE IF EXISTS [dbo].[pItems];
+GO
+
+-- ==========================================================================================
+-- Database triggers, enabled again: the ones that were enabled before the sync script
+-- ==========================================================================================
+-- Last, when nothing is left for them to refuse: an enabled one fires on the statements after it.
+IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trHold') ENABLE TRIGGER [trHold] ON DATABASE;
+GO
+IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trNoDrop') ENABLE TRIGGER [trNoDrop] ON DATABASE;
+GO
+IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trSelf') ENABLE TRIGGER [trSelf] ON DATABASE;
 GO
 
 -- End of script: ends the NOEXEC that a failed database check at the top turned on.

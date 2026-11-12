@@ -14,9 +14,20 @@
 -- - A view this script alters gets the indexes the source has on it created again right after
 --   it (ALTER VIEW drops every index of a view). The indexes of the other views come after
 --   the views.
--- - Database triggers (ON DATABASE) come last. The ones this script creates or changes stay
---   disabled until all of them are in place, and the ones the source has enabled are enabled at
---   the very end: an enabled one fires on the statements after it and may refuse them.
+-- - Database triggers (ON DATABASE): the ones this script creates, changes or enables are
+--   disabled by its first statements, and created, changed and enabled by its last: an enabled
+--   one fires on the statements after it and may refuse them. Until then they are disabled for
+--   every session, not only this one: a trigger among them that records DDL (an audit trigger)
+--   records nothing while this script runs.
+-- - So the script can be run again after a run of it that completed or stopped part way: what
+--   that run enabled is disabled first, and what it created is reported as there already (Msg
+--   2714, Msg 1913 and the like). Do not run it with stop-on-error (sqlcmd -b): it would stop
+--   at the first such message, or at any other error, with those triggers disabled. For each
+--   trigger it disables, the script prints the statement that enables it again (USE ...;
+--   ENABLE TRIGGER ... ON DATABASE). If it stopped part way: run it again to its end, or run
+--   those statements to have the triggers enabled again.
+-- - A database trigger this script does not touch stays enabled: if it refuses DDL, disable it
+--   by hand before running this script.
 -- - Uses CREATE OR ALTER, which needs SQL Server 2016 SP1 or later on the target.
 -- - It starts with USE of the target database. If that fails (wrong server, no access), nothing
 --   after it is executed, so no statement runs in another database.

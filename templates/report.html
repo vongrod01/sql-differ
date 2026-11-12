@@ -222,7 +222,7 @@ function createReportCore(meta) {
     Different: { cls: 'chg', sym: '~', t: 'ถูกแก้', d: 'มีทั้งสองจุด แต่ไม่เหมือนเดิม' },
     Unverified: { cls: 'unk', sym: '?', t: 'ตรวจไม่ได้', d: UNREADABLE + ' จึงบอกไม่ได้ว่าเปลี่ยนหรือไม่' }
   } : {
-    OnlyInSource: { cls: 'add', sym: '+', t: 'ต้องเพิ่ม', d: 'ต้นแบบมี แต่ปลายทางยังไม่มี sync จะสร้างให้' },
+    OnlyInSource: { cls: 'add', sym: '+', t: 'ต้องเพิ่ม', d: 'ต้นแบบมี แต่ปลายทางยังไม่มี sync จะสร้างให้ ยกเว้นส่วนที่ไฟล์ sync เขียนไว้เป็นหมายเหตุให้ทำเอง' },
     OnlyInTarget: { cls: 'del', sym: '−', t: 'มีเกิน', d: 'ปลายทางมีแต่ต้นแบบไม่มี sync ไม่ลบให้ แค่เขียนคำสั่งลบไว้เป็นหมายเหตุ' },
     Different: { cls: 'chg', sym: '~', t: 'ต้องแก้', d: 'มีทั้งคู่แต่ไม่เหมือนกัน sync จะแก้ปลายทางให้ตรงต้นแบบ ยกเว้นส่วนที่ไฟล์ sync เขียนไว้เป็นหมายเหตุให้ทำเอง' },
     Unverified: { cls: 'unk', sym: '?', t: 'ตรวจไม่ได้', d: UNREADABLE + ' จึงเทียบไม่ได้ และไม่เขียนคำสั่งให้' }
@@ -305,6 +305,17 @@ function createReportCore(meta) {
   const ENTRY_START = /^[A-Za-z]+: (?:source |not readable on )/;
   const NOT_READABLE = /^([A-Za-z]+): not readable on (source|target|either side)( \(not compared\))?$/;
 
+  // The detail of a row that is on one side only, "Prop: value; Prop: value", as the engine
+  // wrote it: one { key, value } per property (key '' for a part without a property name).
+  function factPairs(row) {
+    const names = PROPS[row.cat];
+    const splitter = names ? new RegExp('; (?=(?:' + names.join('|') + '): )') : /; (?=[A-Z][A-Za-z]*: )/;
+    return (row.detail || '').split(splitter).map(part => {
+      const at = part.indexOf(': ');
+      return at < 1 ? { key: '', value: part } : { key: part.slice(0, at), value: part.slice(at + 2) };
+    });
+  }
+
   // What the engine's detail text says, as data.
   // - "only in" rows: "Prop: value; Prop: value" -> facts.
   // - different rows: one line per property, "Prop: source A, target B" -> changes, shown as
@@ -317,13 +328,9 @@ function createReportCore(meta) {
     const detail = row.detail || '';
     if (!detail) return out;
     if (row.status === 'OnlyInSource' || row.status === 'OnlyInTarget') {
-      const names = PROPS[row.cat];
-      const splitter = names ? new RegExp('; (?=(?:' + names.join('|') + '): )') : /; (?=[A-Z][A-Za-z]*: )/;
-      detail.split(splitter).forEach(part => {
-        const at = part.indexOf(': ');
-        if (at < 1) { out.raw.push(part); return; }
-        const key = part.slice(0, at);
-        out.facts.push({ key, label: propLabel(row.cat, key), value: val(key, part.slice(at + 2)) });
+      factPairs(row).forEach(f => {
+        if (!f.key) { out.raw.push(f.value); return; }
+        out.facts.push({ key: f.key, label: propLabel(row.cat, f.key), value: val(f.key, f.value) });
       });
       return out;
     }
@@ -373,9 +380,44 @@ function createReportCore(meta) {
       !/(^|\n)(Type:|Definition: not readable)/.test(self.detail);
   }
 
+  // The target was read by a login without VIEW DEFINITION. What reads as "only in source" may
+  // then be there, hidden, and the sync script writes some of it as comments to run by hand
+  // (the INCOMPLETE COMPARISON lines at the top of a sync script say which).
+  const TARGET_INCOMPLETE = (meta.noViewDefinition || []).some(w => w[0] === 'target');
+
+  // How many parts an object name has: dots outside [brackets] and "quotes" (Get-NamePartCount
+  // of the engine). A synonym for a name of 3 or 4 parts points into another database or to
+  // another server, and the sync script writes that one as a comment.
+  function namePartCount(name) {
+    let parts = 1;
+    for (let i = 0; i < name.length; i++) {
+      const ch = name.charAt(i);
+      if (ch === '[' || ch === '"') {
+        const close = ch === '[' ? ']' : '"';
+        for (i++; i < name.length; i++) {
+          if (name.charAt(i) !== close) continue;
+          if (name.charAt(i + 1) === close) i++; else break;
+        }
+      } else if (ch === '.') parts++;
+    }
+    return parts;
+  }
+
+  // The kinds of index the sync script can write a CREATE for (Get-CreateIndexSql of the engine).
+  const PLAIN_INDEX = ['CLUSTERED', 'NONCLUSTERED'];
+  const NOT_READABLE_VALUE = '(not readable)';
+
   // One line on what happens to this row. ctx.self: the row of the table or view it belongs to.
+  //
+  // It says "sync will" only where the sync script writes a statement. Where the script writes
+  // a comment for a person to run, it says so: "เป็นหมายเหตุให้ทำเอง". A row holds what differs
+  // and no more (a changed column does not say whether it is computed, a changed index not what
+  // kind it is), so where the script's choice hangs on something the row does not show, the
+  // line says "sync will, unless ...". test/report.test.ts holds every real report to that,
+  // against the sync script of the same comparison.
   function sentence(row, parsed, ctx) {
     const self = ctx && ctx.self;
+    const NOTE = 'เขียนเป็นหมายเหตุให้ทำเอง';
     if (TIMELINE) {
       if (row.status === 'OnlyInSource') return 'เคยมีในจุด "ก่อน" แต่จุด "หลัง" ไม่มีแล้ว';
       if (row.status === 'OnlyInTarget') return 'จุด "ก่อน" ยังไม่มี เพิ่งมีในจุด "หลัง"';
@@ -384,17 +426,56 @@ function createReportCore(meta) {
     }
     if (row.status === 'Unverified') return 'อ่านค่าไม่ได้ จึงเทียบไม่ได้ และ sync ไม่เขียนคำสั่งให้';
     if (row.status === 'OnlyInSource') {
+      const facts = factPairs(row);
+      const fact = key => { const f = facts.filter(p => p.key === key)[0]; return f ? f.value : ''; };
+      const missing = 'ปลายทางยังไม่มี' + catWord(row.cat) + 'นี้';
       if (row.cat === 'Table') {
-        const skipped = ['Index', 'Check constraint', 'Foreign key'].filter(c => (meta.categories || []).indexOf(c) < 0).map(cat);
-        return 'ปลายทางยังไม่มีตารางนี้ sync จะสร้างทั้งตาราง พร้อมคอลัมน์และ primary key' +
-          (skipped.length ? ' (ไม่รวม ' + skipped.join(', ') + ' เพราะไม่ได้เลือกเทียบหมวดนั้น)' : ' รวมทั้ง index, check และ foreign key ของมัน');
+        const children = ['Index', 'Check constraint', 'Foreign key'];
+        const compared = c => (meta.categories || []).indexOf(c) >= 0;
+        const skipped = children.filter(c => !compared(c)).map(cat);
+        const notCompared = skipped.length ? ' (ไม่รวม ' + skipped.join(', ') + ' เพราะไม่ได้เลือกเทียบหมวดนั้น)' : '';
+        const table = 'ปลายทางยังไม่มีตารางนี้ sync จะสร้างทั้งตาราง พร้อมคอลัมน์และ primary key';
+        // The table may be there, hidden: its CREATE TABLE then fails, and what stands on it
+        // would land on the table that is there. Those statements wait as comments.
+        if (TARGET_INCOMPLETE) {
+          const waiting = children.filter(compared).map(cat);
+          return table + (waiting.length ? ' ส่วน ' + waiting.join(', ') + ' ของมัน sync ' + NOTE + ' หลังเช็คว่าตารางถูกสร้างจริง (ผลเทียบไม่ครบ ตารางนี้อาจมีอยู่แล้วแต่มองไม่เห็น)' : '') + notCompared;
+        }
+        return table + (notCompared || ' รวมทั้ง index, check และ foreign key ของมัน');
       }
-      if (row.cat === 'Synonym') return 'ปลายทางยังไม่มี synonym นี้ sync จะสร้างให้ (ถ้าชี้ไปฐานอื่น จะเขียนไว้เป็นหมายเหตุให้ตรวจก่อน)';
+      if (row.cat === 'Synonym') {
+        if (namePartCount(fact('BaseObject')) >= 3) return 'synonym นี้ชี้ไปฐานอื่นหรือ server อื่น ซึ่งชื่อมักต่างกันในแต่ละที่ sync จึงเขียนคำสั่งสร้างไว้เป็นหมายเหตุให้ตรวจแล้วทำเอง';
+        return missing + ' sync จะสร้างให้';
+      }
       // A module whose text cannot be read in the source cannot be written for the target.
       if (MODULES.indexOf(row.cat) >= 0 && row.a === HIDDEN_DEFINITION) {
-        return 'ปลายทางยังไม่มี' + catWord(row.cat) + 'นี้ แต่โค้ดของต้นแบบอ่านไม่ได้ sync จึงสร้างให้ไม่ได้ มีแต่หมายเหตุ';
+        return missing + ' แต่โค้ดของต้นแบบอ่านไม่ได้ sync จึงสร้างให้ไม่ได้ มีแต่หมายเหตุ';
       }
-      return 'ปลายทางยังไม่มี' + catWord(row.cat) + 'นี้ sync จะสร้างให้';
+      // Nor a column, an index or a check of which the part that defines it cannot be read. For
+      // a computed column that part is its formula alone: the script adds it as "name AS
+      // formula" and writes no type (Get-ColumnDefinition of the engine), so a type that could
+      // not be read is not in the way. For any other column it is the type.
+      const formula = fact('Computed');
+      if (row.cat === 'Column' && (formula ? formula === NOT_READABLE_VALUE : fact('Type') === NOT_READABLE_VALUE)) {
+        return missing + (formula ? ' แต่สูตรคำนวณของต้นแบบอ่านไม่ได้' : ' แต่ชนิดข้อมูลของต้นแบบอ่านไม่ได้') + ' sync จึงสร้างให้ไม่ได้ มีแต่หมายเหตุ';
+      }
+      if (row.cat === 'Index' && fact('Type') && PLAIN_INDEX.indexOf(fact('Type')) < 0) {
+        return missing + ' แต่ index แบบ ' + fact('Type') + ' sync เขียนคำสั่งสร้างไม่ได้ มีแต่หมายเหตุให้ทำเอง';
+      }
+      if (row.cat === 'Index' && fact('Filter') === NOT_READABLE_VALUE) return missing + ' แต่เงื่อนไขกรองของต้นแบบอ่านไม่ได้ sync จึงสร้างให้ไม่ได้ มีแต่หมายเหตุ';
+      if (row.cat === 'Check constraint' && fact('Expression') === NOT_READABLE_VALUE) return missing + ' แต่เงื่อนไขของต้นแบบอ่านไม่ได้ sync จึงสร้างให้ไม่ได้ มีแต่หมายเหตุ';
+      if (TARGET_INCOMPLETE) {
+        // A check without a name is paired by its text, which that login cannot read.
+        if (row.cat === 'Check constraint' && leafOf(row).name.indexOf('ไม่มีชื่อ: ') === 0) {
+          return 'check นี้ไม่มีชื่อ และ check ที่ไม่มีชื่อของปลายทางอ่านไม่ได้ จึงไม่รู้ว่ามีอยู่แล้วหรือยัง sync จึงเขียนคำสั่งสร้างไว้เป็นหมายเหตุให้ทำเอง';
+        }
+        // The index of a view that is new itself waits for its CREATE VIEW.
+        if (row.cat === 'Index' && row.group && row.group.kind === 'view' && self && self.status === 'OnlyInSource') {
+          return missing + ' sync ' + NOTE + ' หลังเช็คว่า view ถูกสร้างจริง (ผลเทียบไม่ครบ view นี้อาจมีอยู่แล้วแต่มองไม่เห็น)';
+        }
+        if (MODULES.indexOf(row.cat) >= 0) return missing + ' sync จะสร้างด้วย CREATE ธรรมดา ถ้ามีอยู่แล้วแต่มองไม่เห็น คำสั่งจะ fail โดยไม่เขียนทับ';
+      }
+      return missing + ' sync จะสร้างให้';
     }
     if (row.status === 'OnlyInTarget') {
       if (row.cat === 'Index' && row.group && row.group.kind === 'view' && viewIsRewritten(self)) {
@@ -406,11 +487,21 @@ function createReportCore(meta) {
     const keys = parsed.changes.map(c => c.key);
     const has = key => keys.indexOf(key) >= 0;
     const only = key => !parsed.code && keys.length > 0 && keys.every(k => k === key);
+    const change = key => parsed.changes.filter(c => c.key === key)[0];
+    // A line of the detail that could not be split still starts with the name of its property.
+    const mayDiffer = key => has(key) || parsed.raw.some(text => text.indexOf(key + ': ') === 0);
     const BY_HAND = ' sync เขียนคำสั่งไว้เป็นหมายเหตุให้ทำเอง';
+    const UNLESS = conditions => ' (ถ้า' + conditions.join(' หรือ') + ' sync จะ' + NOTE + 'แทน)';
     if (row.cat === 'Database') return 'sync ไม่แก้ค่าของฐานข้อมูลให้ แค่เขียนไว้เป็นหมายเหตุ';
     if (row.cat === 'User-defined type') return 'type แก้ตรงๆ ไม่ได้ ต้องลบแล้วสร้างใหม่' + BY_HAND;
     if (row.cat === 'Sequence') return 'sync จะแก้ให้ตรงต้นแบบ ยกเว้นชนิดข้อมูลและค่าเริ่มที่ ซึ่งแก้ไม่ได้';
-    if (row.cat === 'Synonym') return 'sync จะลบแล้วสร้างใหม่ให้ชี้ตามต้นแบบ (ถ้าชี้ไปฐานอื่น จะเขียนไว้เป็นหมายเหตุให้ตรวจก่อน)';
+    if (row.cat === 'Synonym') {
+      const base = change('BaseObject');
+      if (!base) return 'sync จะลบแล้วสร้างใหม่ให้ชี้ตามต้นแบบ (ถ้าชี้ไปฐานอื่น จะเขียนไว้เป็นหมายเหตุให้ตรวจก่อน)';
+      // Either side: the sync script and the rollback script stay each other's mirror.
+      if (namePartCount(base.from) >= 3 || namePartCount(base.to) >= 3) return 'synonym นี้ชี้ไปฐานอื่นหรือ server อื่น ซึ่งชื่อมักต่างกันในแต่ละที่ sync จึงเขียนคำสั่งไว้เป็นหมายเหตุให้ตรวจแล้วทำเอง';
+      return 'sync จะลบแล้วสร้างใหม่ให้ชี้ตามต้นแบบ';
+    }
     if (row.cat === 'Column') {
       if (has('Identity') || has('Computed')) return 'IDENTITY และสูตรคำนวณแก้ด้วยคำสั่งไม่ได้ ต้องสร้างคอลัมน์ใหม่' + BY_HAND;
       if (only('Ordinal')) return 'ลำดับคอลัมน์ต่างกัน sync ไม่ย้ายให้ (ต้องสร้างตารางใหม่ถึงจะย้ายได้)';
@@ -418,9 +509,32 @@ function createReportCore(meta) {
       if ((has('Nullable') || has('Collation')) && parsed.notes.some(n => n.key === 'Type')) {
         return 'ชนิดข้อมูลอ่านไม่ได้ฝั่งหนึ่ง และคำสั่งแก้ต้องระบุชนิด sync จึงไม่เขียนคำสั่งให้ มีแต่หมายเหตุ';
       }
+      // The type, NULL / NOT NULL and collation are changed with ALTER COLUMN. A default and
+      // PERSISTED are not: those are always statements.
+      const alter = mayDiffer('Type') || mayDiffer('Nullable') || mayDiffer('Collation');
+      // PERSISTED is a property of computed columns only, and ALTER COLUMN changes nothing
+      // else of one.
+      if (has('Persisted') && alter) {
+        return 'เป็นคอลัมน์คำนวณ: sync จะแก้ให้เฉพาะการเก็บค่า (PERSISTED) ส่วนชนิดข้อมูล, NULL และ collation แก้ด้วยคำสั่งไม่ได้ sync ' + NOTE;
+      }
+      // A type change needs the default of the column dropped first, and the script does not
+      // drop a default that could not be read. The target's: it is there, so that is certain.
+      const hiddenDefault = parsed.notes.filter(n => n.key === 'Default')[0];
+      if (has('Type') && hiddenDefault && hiddenDefault.side !== 'source') {
+        return 'จะเปลี่ยนชนิดข้อมูลต้องลบค่าเริ่มต้นก่อน แต่ค่าเริ่มต้นของปลายทางอ่านไม่ได้ sync จึง' + NOTE;
+      }
       // Nothing is struck through when no line of the detail could be read as from -> to.
-      if (!parsed.changes.length) return 'sync จะแก้ปลายทางให้ตรงต้นแบบ';
-      return 'sync จะแก้ปลายทางจากค่าที่ขีดฆ่าเป็นค่าใหม่' + (has('Ordinal') ? ' ยกเว้นลำดับคอลัมน์ ซึ่ง sync ไม่ย้ายให้' : '');
+      const changed = parsed.changes.length ? 'sync จะแก้ปลายทางจากค่าที่ขีดฆ่าเป็นค่าใหม่' : 'sync จะแก้ปลายทางให้ตรงต้นแบบ';
+      const order = has('Ordinal') ? ' ยกเว้นลำดับคอลัมน์ ซึ่ง sync ไม่ย้ายให้' : '';
+      if (!alter) return changed + order;
+      // What the row does not show: whether the column is computed, or used by a computed
+      // column (SQL Server alters neither), and for a collation alone whether its type is a
+      // user-defined one (COLLATE cannot be written for it). The script writes comments then.
+      const unless = ['เป็นคอลัมน์คำนวณ', 'มีคอลัมน์คำนวณใช้คอลัมน์นี้'];
+      if (!mayDiffer('Type') && !mayDiffer('Nullable')) unless.push('เป็นคอลัมน์ของ type ที่สร้างเอง');
+      // The model's default cannot be put back after a type change when the target has one.
+      if (has('Type') && hiddenDefault) unless.push('ปลายทางมีค่าเริ่มต้นอยู่');
+      return changed + order + UNLESS(unless);
     }
     if (TABLE_CHILDREN.indexOf(row.cat) >= 0) {
       if (leafOf(row).pk) return 'primary key ต่างกัน ต้องลบ foreign key ที่อ้างถึงก่อน' + BY_HAND;
@@ -428,7 +542,23 @@ function createReportCore(meta) {
       if (only('State')) return 'sync จะเปิดหรือปิดให้ตรงต้นแบบ';
       // The model's own filter cannot be read: nothing can be written to put in its place.
       if (parsed.notes.some(n => n.key === 'Filter' && n.side !== 'target')) return 'เงื่อนไขกรองของต้นแบบอ่านไม่ได้ sync จึงไม่แก้ให้ มีแต่หมายเหตุ';
-      return 'sync จะลบของเดิมแล้วสร้างใหม่ตามต้นแบบ';
+      const replaced = 'sync จะลบของเดิมแล้วสร้างใหม่ตามต้นแบบ';
+      if (row.cat !== 'Index') return replaced;
+      const onView = Boolean(row.group) && row.group.kind === 'view';
+      // An index of a view the script writes again is created with that view.
+      if (onView && viewIsRewritten(self)) return replaced;
+      // from: what the target has, to: what the model has.
+      const type = change('Type');
+      if (type) {
+        // Columnstore, XML, spatial: the script cannot write what would replace the index.
+        if (PLAIN_INDEX.indexOf(type.to) < 0) return 'index แบบ ' + type.to + ' sync เขียนคำสั่งสร้างไม่ได้ จึงไม่ลบของเดิม มีแต่หมายเหตุให้ทำเอง';
+        // Dropping the clustered index of a view drops every other index of that view.
+        if (onView && (type.to === 'CLUSTERED' || type.from === 'CLUSTERED')) return 'clustered index ของ view ต่างกัน ถ้าลบ index อื่นของ view จะหายไปด้วย sync จึง' + NOTE;
+        return replaced;
+      }
+      // The kind of index is the same on both sides, so the row does not show it.
+      if (onView) return replaced + UNLESS(['เป็น clustered index ของ view']);
+      return replaced + UNLESS(['เป็น index แบบ columnstore, XML หรือ spatial']);
     }
     // Views, procedures, functions and triggers.
     const hiddenCode = parsed.notes.some(n => n.key === 'Definition');

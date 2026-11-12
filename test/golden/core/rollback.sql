@@ -7,8 +7,10 @@
 -- - Nothing in this file has been executed by database-diff.
 -- - It assumes the target changed only through the sync script since the comparison.
 -- - Database triggers (ON DATABASE) come first: the ones the sync script created or changed are
---   disabled, dropped or put back, and only then enabled as they were before. An enabled one
---   fires on the statements after it and may refuse them.
+--   disabled, then dropped or put back. The ones that were enabled before the sync script
+--   are enabled again by the last statements of this file: an enabled one fires on the
+--   statements after it and may refuse them. If the script stops part way they stay
+--   disabled: run it again, or its last section.
 -- - Procedures, views, functions, triggers, synonyms, indexes and constraints the sync script
 --   created are dropped next, with IF EXISTS so a sync script that stopped part way is fine.
 -- - Tables, columns, sequences, types and schemas it created are commented out at the end:
@@ -45,12 +47,14 @@ SET XACT_ABORT ON;
 GO
 
 -- ==========================================================================================
--- Database triggers first: disabled, dropped or put back, then enabled as they were before the sync script
+-- Database triggers first: disabled, then dropped or put back (enabled again by the last statements of this script)
 -- ==========================================================================================
 -- Disabled before anything else: the sync script left them enabled, and an enabled one may refuse the statements of this script.
 IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trDdlNew') DISABLE TRIGGER [trDdlNew] ON DATABASE;
 GO
 IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trDdlChanged') DISABLE TRIGGER [trDdlChanged] ON DATABASE;
+GO
+IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trDdlState') DISABLE TRIGGER [trDdlState] ON DATABASE;
 GO
 -- Created by the sync script: dropped.
 DROP TRIGGER IF EXISTS [trDdlNew] ON DATABASE;
@@ -65,12 +69,7 @@ SET NOCOUNT ON;
 
 GO
 -- trDdlState (database trigger): State: source DISABLED, target ENABLED
--- Enabled at the end of this section.
--- Enabled again: the ones that were enabled before the sync script.
-IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trDdlChanged') ENABLE TRIGGER [trDdlChanged] ON DATABASE;
-GO
-IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trDdlState') ENABLE TRIGGER [trDdlState] ON DATABASE;
-GO
+-- Enabled by the last statements of this script.
 
 -- ==========================================================================================
 -- Created by the sync script: dropped
@@ -247,6 +246,15 @@ GO
 -- DROP TYPE [dbo].[tPhone];
 -- DROP TYPE [dbo].[tRows];
 -- DROP SCHEMA [rpt];
+
+-- ==========================================================================================
+-- Database triggers, enabled again: the ones that were enabled before the sync script
+-- ==========================================================================================
+-- Last, when nothing is left for them to refuse: an enabled one fires on the statements after it.
+IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trDdlChanged') ENABLE TRIGGER [trDdlChanged] ON DATABASE;
+GO
+IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = N'trDdlState') ENABLE TRIGGER [trDdlState] ON DATABASE;
+GO
 
 -- End of script: ends the NOEXEC that a failed database check at the top turned on.
 SET NOEXEC OFF;

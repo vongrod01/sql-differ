@@ -158,7 +158,15 @@ const routes = [
   ['POST', /^\/api\/runs$/, (m, body) => ({ id: runs.start({ ...body, trigger: 'manual', jobId: null, jobName: null }).id })],
   ['GET', /^\/api\/runs\/([^/]+)$/, (m) => runs.readMeta(m[1])],
   // The size of the history is kept for a few minutes: forgotten here, so the page shows the new one.
-  ['DELETE', /^\/api\/runs\/([^/]+)$/, (m) => { runs.remove(m[1]); retention.forgetUsage(); return { ok: true }; }],
+  // A run with a file in use is not deleted at all: the answer is 409 and says why. Between
+  // its tries the delete lets the server work, so a file of the run that is being sent to a
+  // browser right now does not stand in its way for longer than it takes to send.
+  // leftover: the run is gone from the history, but files of it are still to be removed.
+  ['DELETE', /^\/api\/runs\/([^/]+)$/, async (m) => {
+    const { leftover } = await runs.removeWhenFree(m[1]);
+    retention.forgetUsage();
+    return leftover ? { ok: true, leftover: true } : { ok: true };
+  }],
   ['GET', /^\/api\/runs\/([^/]+)\/events$/, (m, body, req, res) => streamRun(req, res, m[1])],
 
   ['GET', /^\/api\/snapshots$/, () => runs.listSnapshots()],

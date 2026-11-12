@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { OUT, ROOT, childEnv } from './support/engine.js';
 import { withServer } from './support/server.js';
@@ -228,10 +228,42 @@ test('retention: time in which nothing was run does not count as age', () => {
   assert.deepEqual([...(behind.result?.deleted ?? [])].sort(), used.slice(20).sort(), behind.log);
 });
 
-// A file of a run that another program has open cannot be deleted on Windows. The delete used to
-// stop part way, with run.json gone already: the folder was no longer a run to the history page
-// nor to the next clean-up, and stayed for ever.
-test('retention: a run with a file in use stays a whole run, and goes at the next clean-up', async () => {
+// Another process that has a file open for itself, as an editor or a viewer has: it lets go when
+// release() is called.
+async function holdFile(file: string): Promise<{ release(): Promise<void> }> {
+  const holder = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+    "$f = [IO.File]::Open($env:HOLD_FILE, 'Open', 'Read', 'None'); [Console]::Out.WriteLine('held'); [void][Console]::In.ReadLine(); $f.Close()",
+  ], { env: { ...childEnv(), HOLD_FILE: file }, stdio: ['pipe', 'pipe', 'inherit'], windowsHide: true });
+  const closed = once(holder, 'close');
+  let released = false;
+  const release = async (): Promise<void> => {
+    if (!released) holder.stdin.end('\n');
+    released = true;
+    await closed;
+  };
+  const said = await Promise.race([
+    once(holder.stdout, 'data').then(([chunk]) => String(chunk)),
+    closed.then(() => 'the process ended before it held the file'),
+  ]);
+  if (!/^held/.test(said)) {
+    await release();
+    assert.fail(said);
+  }
+  return { release };
+}
+
+// Every file of a folder with what it holds, to see that nothing of it changed. `held`: a file
+// that another process has open for itself alone, which cannot be read meanwhile.
+function contents(dir: string, held = ''): Record<string, string> {
+  return Object.fromEntries(readdirSync(dir).sort().map((name) => [name, path.join(dir, name) === held ? '(in use)' : readFileSync(path.join(dir, name), 'utf8')]));
+}
+
+// A file of a run that another program has open cannot be deleted on Windows. A delete that went
+// file by file stopped part way: first with run.json gone (the folder was no run to anyone any
+// more, and stayed for ever), later with run.json as the last file left (a run in the history
+// whose report and scripts were gone). A run is now deleted whole or not at all: its folder is
+// renamed first, which Windows refuses while any file in it is open, and refuses as a whole.
+test('retention: a run with a file in use is not touched at all, and goes at the next clean-up', async () => {
   const data = dataFolder('locked');
   const now = Date.UTC(2026, 5, 1, 12);
   const fresh = fakeRun(data, now);
@@ -241,30 +273,21 @@ test('retention: a run with a file in use stays a whole run, and goes at the nex
   writeFileSync(path.join(dir, 'report.sync.sql'), '-- script', 'utf8');
   const held = path.join(dir, 'run.log');
   writeFileSync(held, 'log', 'utf8');
+  const whole = contents(dir, held);
+  assert.deepEqual(Object.keys(whole), ['report.html', 'report.sync.sql', 'run.json', 'run.log']);
 
-  // Another process opens the file for itself alone, and lets go when its input ends.
-  const holder = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
-    "$f = [IO.File]::Open($env:HOLD_FILE, 'Open', 'Read', 'None'); [Console]::Out.WriteLine('held'); [void][Console]::In.ReadLine(); $f.Close()",
-  ], { env: { ...childEnv(), HOLD_FILE: held }, stdio: ['pipe', 'pipe', 'inherit'], windowsHide: true });
-  const closed = once(holder, 'close');
+  const holder = await holdFile(held);
   try {
-    const said = await Promise.race([
-      once(holder.stdout, 'data').then(([chunk]) => String(chunk)),
-      closed.then(() => 'the process ended before it held the file'),
-    ]);
-    assert.match(said, /^held/);
-
     const out = prune(data, { now, keep: 1 });
     assert.deepEqual(out.result?.deleted, [], out.log);
-    assert.match(out.log, new RegExp(`retention: run ${old} was not deleted`));
-    // Still a run: its record is there, and it counts as kept.
-    assert.ok(existsSync(path.join(dir, 'run.json')), 'run.json is the last file to go');
-    assert.equal((JSON.parse(readFileSync(path.join(dir, 'run.json'), 'utf8')) as { id: string }).id, old);
+    assert.match(out.log, new RegExp(`retention: run ${old} was not deleted: .*in use`));
+    // Still the run it was: every file is there, as it was, and it counts as kept.
+    assert.deepEqual(contents(dir, held), whole);
     assert.equal(out.result?.kept, 2);
+    assert.deepEqual(runFolders(data), [fresh, old].sort(), 'nothing else is left in the runs folder');
     assert.deepEqual(loggedIds(data), [], 'nothing is logged as deleted');
   } finally {
-    holder.stdin.end('\n');
-    await closed;
+    await holder.release();
   }
 
   // The file is free again: the next clean-up takes the run, and says so.
@@ -272,6 +295,319 @@ test('retention: a run with a file in use stays a whole run, and goes at the nex
   assert.deepEqual(again.result?.deleted, [old], again.log);
   assert.deepEqual(runFolders(data), [fresh]);
   assert.deepEqual(loggedIds(data), [old]);
+});
+
+interface RunRecord {
+  id: string;
+  status: string;
+  report?: string;
+}
+
+interface SnapshotRecord {
+  runId: string;
+  file: string;
+}
+
+// The same from the history page, where a person clicks "delete". The run used to lose its
+// report, its scripts and its snapshots while it stayed in the history as "done": the link to its
+// report was dead, and the drift page still offered a snapshot that was no longer there.
+test('retention: a run deleted on the history page with a file in use stays whole, and the page is told', async () => {
+  const data = dataFolder('server-locked');
+  const id = fakeRun(data, Date.now());
+  const other = fakeRun(data, Date.now() - DAY);
+  const dir = path.join(data, 'runs', id);
+  // A finished comparison as the app records it: a report, a script, a log and a snapshot that
+  // the drift page offers as a baseline.
+  const snapshot = 'report.target.snapshot.json';
+  writeFileSync(path.join(dir, 'run.json'), JSON.stringify({
+    id, createdAt: new Date().toISOString(), finishedAt: new Date().toISOString(), status: 'done', ownerPid: 0, exitCode: 1, spec: COMPARE_SPEC,
+    report: 'report.html', syncScript: 'report.sync.sql', counts: { onlyInSource: 1, onlyInTarget: 0, different: 0, unverified: 0 }, warnings: [],
+    snapshots: [{ file: snapshot, side: 'target', serverId: 'local', serverLabel: 'local', database: 'b' }],
+  }), 'utf8');
+  writeFileSync(path.join(dir, 'report.sync.sql'), '-- script', 'utf8');
+  writeFileSync(path.join(dir, snapshot), '{}', 'utf8');
+  const held = path.join(dir, 'run.log');
+  writeFileSync(held, 'log', 'utf8');
+  const whole = contents(dir, held);
+
+  const env = { DATABASE_DIFF_DATA: data, DATABASE_DIFF_MCP_PROFILES: path.join(data, 'no-mcp-profiles') };
+  const log = path.join(data, 'server.log');
+  await withServer(async (base) => {
+    const headers = { 'x-database-diff': '1' };
+    const history = async (): Promise<RunRecord[]> => await (await fetch(`${base}/api/runs`, { headers })).json() as RunRecord[];
+    const baselines = async (): Promise<SnapshotRecord[]> => await (await fetch(`${base}/api/snapshots`, { headers })).json() as SnapshotRecord[];
+    const reportStatus = async (): Promise<number> => (await fetch(`${base}/runs/${id}/report.html`)).status;
+    assert.deepEqual((await history()).map((r) => r.id).sort(), [id, other].sort());
+    assert.deepEqual((await baselines()).map((s) => s.runId), [id]);
+
+    const holder = await holdFile(held);
+    try {
+      const res = await fetch(`${base}/api/runs/${id}`, { method: 'DELETE', headers });
+      // Refused, and said in words a person can act on: Thai, as the page is, with the code of
+      // the error and no path. The answer is UTF-8, and says so.
+      assert.equal(res.status, 409);
+      const body = await res.json() as { error: string };
+      assert.match(res.headers.get('content-type') ?? '', /^application\/json; charset=utf-8$/i);
+      assert.match(body.error, /^ลบ run นี้ไม่ได้ และยังไม่มีอะไรถูกลบ: มีโปรแกรมอื่นเปิดไฟล์ใน folder ของ run นี้อยู่ \(E[A-Z]+\) ปิดรายงาน script หรือ log ของ run นี้ที่เปิดค้างไว้ แล้วกดลบอีกครั้ง$/);
+      assert.ok(!body.error.includes(data), 'the message names no path of the server');
+      // Nothing went: the run is in the history with a report that opens, and the snapshot the
+      // drift page offers is there.
+      assert.deepEqual(contents(dir, held), whole);
+      const listed = (await history()).find((r) => r.id === id);
+      assert.deepEqual([listed?.status, listed?.report], ['done', 'report.html']);
+      assert.equal(await reportStatus(), 200);
+      assert.deepEqual(await baselines().then((list) => list.map((s) => [s.runId, s.file])), [[id, snapshot]]);
+      assert.ok(existsSync(path.join(dir, snapshot)));
+    } finally {
+      await holder.release();
+    }
+
+    // The file is free: the same click deletes the run, all of it.
+    const res = await fetch(`${base}/api/runs/${id}`, { method: 'DELETE', headers });
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { ok: true });
+    assert.deepEqual((await history()).map((r) => r.id), [other]);
+    assert.deepEqual(await baselines(), []);
+    assert.equal(await reportStatus(), 404);
+  }, env, { log });
+  assert.deepEqual(runFolders(data), [other], 'the folder is gone, and nothing is left in its place');
+  // The console of the server has it in English, once, for whoever looks after the server.
+  const said = readFileSync(log, 'utf8').split(/\r?\n/).filter((line) => line.includes('was not deleted'));
+  assert.deepEqual(said.map((line) => line.replace(/\(E[A-Z]+\)/, '(code)')), [`run ${id} was not deleted: a file in its folder is in use by another program (code)`]);
+});
+
+// A finished comparison as the app records it, in a folder of `data`: a report, a script, a log and
+// a snapshot that the drift page offers as a baseline.
+const SNAPSHOT = 'report.target.snapshot.json';
+function finishedRun(data: string, created: number): { id: string; dir: string } {
+  const id = fakeRun(data, created);
+  const dir = path.join(data, 'runs', id);
+  writeFileSync(path.join(dir, 'run.json'), JSON.stringify({
+    id, createdAt: new Date(created).toISOString(), finishedAt: new Date(created).toISOString(), status: 'done', ownerPid: 0, exitCode: 1, spec: COMPARE_SPEC,
+    report: 'report.html', syncScript: 'report.sync.sql', counts: { onlyInSource: 1, onlyInTarget: 0, different: 0, unverified: 0 }, warnings: [],
+    snapshots: [{ file: SNAPSHOT, side: 'target', serverId: 'local', serverLabel: 'local', database: 'b' }],
+  }), 'utf8');
+  writeFileSync(path.join(dir, 'report.sync.sql'), '-- script', 'utf8');
+  writeFileSync(path.join(dir, SNAPSHOT), '{}', 'utf8');
+  writeFileSync(path.join(dir, 'run.log'), 'log', 'utf8');
+  return { id, dir };
+}
+
+// What the pages are told of a run: is it in the history, is its snapshot offered as a baseline,
+// does its report open.
+async function seenByPages(base: string, id: string): Promise<{ listed: boolean; baseline: boolean; report: number }> {
+  const headers = { 'x-database-diff': '1' };
+  const runs = await (await fetch(`${base}/api/runs`, { headers })).json() as RunRecord[];
+  const snapshots = await (await fetch(`${base}/api/snapshots`, { headers })).json() as SnapshotRecord[];
+  const report = await fetch(`${base}/runs/${id}/report.html`);
+  await report.arrayBuffer();
+  return { listed: runs.some((r) => r.id === id), baseline: snapshots.some((s) => s.runId === id), report: report.status };
+}
+
+// A file of the run that the server itself is sending (a report being opened, a script being
+// downloaded) is open in the server, and Windows refuses the rename of the folder as long as it
+// is. The delete waits a moment and tries again. It used to wait without letting the server do
+// anything else, so the download it was waiting for could not end: the wait was for nothing,
+// and the click was refused although the file was free a moment later.
+test('retention: a run whose file the server is sending at that moment is deleted once that download ends', async () => {
+  const data = dataFolder('server-own-stream');
+  const { id, dir } = finishedRun(data, Date.now());
+  // Far more than the server can hand to the network at once: it is still reading the file
+  // while the reader of the download has not asked for more.
+  const big = path.join(dir, 'big.log');
+  writeFileSync(big, Buffer.alloc(48 * 1024 * 1024, 0x61));
+  const env = { DATABASE_DIFF_DATA: data, DATABASE_DIFF_MCP_PROFILES: path.join(data, 'no-mcp-profiles') };
+  await withServer(async (base) => {
+    const headers = { 'x-database-diff': '1' };
+    const download = await fetch(`${base}/runs/${id}/big.log`);
+    assert.equal(download.status, 200);
+    const reader = download.body?.getReader();
+    assert.ok(reader);
+    await reader.read();
+    // The server has the file open: nobody can rename the folder now.
+    assert.throws(() => renameSync(dir, `${dir}-probe`), /EPERM|EBUSY|EACCES/, 'the download keeps the file open in the server');
+
+    const deleted = fetch(`${base}/api/runs/${id}`, { method: 'DELETE', headers });
+    // The first try has met the open file by now. The download ends: the reader walks away.
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    await reader.cancel();
+    const res = await deleted;
+    assert.deepEqual([res.status, await res.json()], [200, { ok: true }]);
+    assert.deepEqual(await seenByPages(base, id), { listed: false, baseline: false, report: 404 });
+  }, env);
+  assert.deepEqual(runFolders(data), []);
+});
+
+// The folder got its other name, and then its files could not all be deleted. No test can make
+// Windows do that on demand (a file that is open stops the rename already), so the server of
+// this test is started with a module that makes the delete fail (test/support/fs-fault.cjs).
+// The run is gone for every page, the answer says that files are left, and the next start of
+// the server removes them.
+const FS_FAULT = path.join(ROOT, 'test', 'support', 'fs-fault.cjs');
+
+test('retention: a run whose files cannot all be deleted is gone from the history all the same, and the answer says files are left', async () => {
+  const data = dataFolder('server-leftover-route');
+  const { id } = finishedRun(data, Date.now());
+  const other = fakeRun(data, Date.now() - DAY);
+  const leftover = path.join(data, 'runs', `deleted-${id}`);
+  const env = { DATABASE_DIFF_DATA: data, DATABASE_DIFF_MCP_PROFILES: path.join(data, 'no-mcp-profiles') };
+  const log = path.join(data, 'server.log');
+  await withServer(async (base) => {
+    assert.deepEqual(await seenByPages(base, id), { listed: true, baseline: true, report: 200 });
+    const res = await fetch(`${base}/api/runs/${id}`, { method: 'DELETE', headers: { 'x-database-diff': '1' } });
+    assert.deepEqual([res.status, await res.json()], [200, { ok: true, leftover: true }]);
+    // No dead link, no baseline that is not there: the run is not a run any more.
+    assert.deepEqual(await seenByPages(base, id), { listed: false, baseline: false, report: 404 });
+    assert.deepEqual(runFolders(data), [other, `deleted-${id}`].sort());
+    assert.deepEqual(readdirSync(leftover).sort(), ['report.html', 'report.sync.sql', SNAPSHOT, 'run.json', 'run.log'].sort(), 'its files are all still there, under the other name');
+  }, { ...env, DATABASE_DIFF_TEST_FS_FAULT: 'delete' }, { log, preload: FS_FAULT });
+  // The console of the server says what happened, for whoever looks after it.
+  assert.match(readFileSync(log, 'utf8'), new RegExp(`run ${id} is deleted, but not all of its files yet \\(EPERM\\): deleted-${id} is removed `));
+
+  // The next start of the server, with nothing in the way.
+  await withServer(async (base) => {
+    assert.deepEqual(await seenByPages(base, id), { listed: false, baseline: false, report: 404 });
+  }, env);
+  assert.deepEqual(runFolders(data), [other]);
+});
+
+// The other two answers of the delete button, in the words of the page as well: a run that is
+// still going, and a run that is not there (deleted in another tab, or by the clean-up).
+test('retention: a run in progress or a run that is gone is not deleted, and the page is told in Thai', async () => {
+  const data = dataFolder('server-not-deletable');
+  // In progress: its process is alive (this one) and its heartbeat is fresh.
+  const running = fakeRun(data, Date.now(), { status: 'running', ownerPid: process.pid, heartbeat: true });
+  const gone = runId(Date.now() - DAY);
+  const env = { DATABASE_DIFF_DATA: data, DATABASE_DIFF_MCP_PROFILES: path.join(data, 'no-mcp-profiles') };
+  await withServer(async (base) => {
+    const headers = { 'x-database-diff': '1' };
+    const answer = async (id: string): Promise<[number, string]> => {
+      const res = await fetch(`${base}/api/runs/${id}`, { method: 'DELETE', headers });
+      return [res.status, (await res.json() as { error: string }).error];
+    };
+    assert.deepEqual(await answer(running), [409, 'ลบ run นี้ยังไม่ได้: run ยังทำงานอยู่ รอให้เสร็จก่อนแล้วกดลบอีกครั้ง']);
+    assert.deepEqual(await answer(gone), [404, 'ไม่พบ run นี้ อาจถูกลบไปแล้ว โหลดหน้าประวัติใหม่เพื่อดูรายการล่าสุด']);
+    // The page of a run that is not there is another matter: its answer is as it was.
+    const page = await fetch(`${base}/api/runs/${gone}`, { headers });
+    assert.deepEqual([page.status, (await page.json() as { error: string }).error], [404, `Unknown run: ${gone}`]);
+  }, env);
+  assert.deepEqual(runFolders(data), [running]);
+});
+
+// What an earlier delete of a folder of this id left behind is removed first: it would be in the
+// way of the rename. When that folder is in use, the answer must say so, not "a file in its
+// folder", which would send a person looking for an open report of the run.
+test('retention: a leftover of an earlier delete that is in use is named as what it is', async () => {
+  const data = dataFolder('server-leftover-in-use');
+  const { id, dir } = finishedRun(data, Date.now());
+  const whole = contents(dir);
+  const leftover = path.join(data, 'runs', `deleted-${id}`);
+  mkdirSync(leftover);
+  const held = path.join(leftover, 'run.log');
+  writeFileSync(held, 'log', 'utf8');
+  const env = { DATABASE_DIFF_DATA: data, DATABASE_DIFF_MCP_PROFILES: path.join(data, 'no-mcp-profiles'), WATCH_REPORT_DEPENDENCIES: '1' };
+  // As under npm run dev, where nothing sweeps such a folder when the server starts: it is
+  // there when the delete comes.
+  await withServer(async (base) => {
+    const headers = { 'x-database-diff': '1' };
+    const holder = await holdFile(held);
+    try {
+      const res = await fetch(`${base}/api/runs/${id}`, { method: 'DELETE', headers });
+      assert.equal(res.status, 409);
+      const body = await res.json() as { error: string };
+      assert.equal(body.error, `ลบ run นี้ไม่ได้ และยังไม่มีอะไรถูกลบ: folder deleted-${id} ที่การลบครั้งก่อนทิ้งไว้ถูกโปรแกรมอื่นเปิดใช้อยู่ (EPERM) จึงขวางการลบ ปิดโปรแกรมที่เปิดไฟล์ใน folder นั้น แล้วกดลบอีกครั้ง`);
+      assert.ok(!body.error.includes(data), 'the message names no path of the server');
+      assert.deepEqual(contents(dir), whole);
+      assert.deepEqual(await seenByPages(base, id), { listed: true, baseline: true, report: 200 });
+    } finally {
+      await holder.release();
+    }
+    const res = await fetch(`${base}/api/runs/${id}`, { method: 'DELETE', headers });
+    assert.deepEqual([res.status, await res.json()], [200, { ok: true }]);
+  }, env);
+  assert.deepEqual(runFolders(data), []);
+});
+
+// An error of the delete that is not "a file is in use" is not one a person at the page can act
+// on, and its message names folders of the server. The page gets a short answer without them;
+// the whole error goes to the console of the server.
+test('retention: a delete that fails for another reason tells the page no path of the server, and the console all of it', async () => {
+  const data = dataFolder('server-rename-error');
+  const { id, dir } = finishedRun(data, Date.now());
+  const whole = contents(dir);
+  const env = { DATABASE_DIFF_DATA: data, DATABASE_DIFF_MCP_PROFILES: path.join(data, 'no-mcp-profiles') };
+  const log = path.join(data, 'server.log');
+  await withServer(async (base) => {
+    const res = await fetch(`${base}/api/runs/${id}`, { method: 'DELETE', headers: { 'x-database-diff': '1' } });
+    assert.equal(res.status, 500);
+    const body = await res.json() as { error: string };
+    assert.equal(body.error, 'ลบ run นี้ไม่สำเร็จ (EINVAL) ดูรายละเอียดได้ที่ console ของ server');
+    assert.deepEqual(await seenByPages(base, id), { listed: true, baseline: true, report: 200 });
+  }, { ...env, DATABASE_DIFF_TEST_FS_FAULT: 'rename' }, { log, preload: FS_FAULT });
+  assert.deepEqual(contents(dir), whole);
+  const console = readFileSync(log, 'utf8');
+  assert.match(console, new RegExp(`run ${id} could not be deleted: .*EINVAL: invalid argument, rename `));
+  assert.ok(console.includes(dir), 'the console has the path, the page has not');
+});
+
+// A delete that was cut short after the folder got its other name (the server was stopped, the
+// machine went down, a scanner opened a file at that moment) leaves that folder: "deleted-" and
+// the id of the run. It is no run to anyone, and the server removes it when it starts, also when
+// the clean-up of old runs is turned off. Only a real folder of exactly that kind of name.
+test('retention: what a delete that was cut short left behind is no run, and goes when the server starts', async () => {
+  const data = dataFolder('server-leftover');
+  const kept = fakeRun(data, Date.now());
+  const goneId = runId(Date.now() - DAY);
+  const leftover = path.join(data, 'runs', `deleted-${goneId}`);
+  mkdirSync(leftover);
+  const snapshot = 'report.target.snapshot.json';
+  writeFileSync(path.join(leftover, 'run.json'), JSON.stringify({
+    id: goneId, createdAt: new Date(Date.now() - DAY).toISOString(), status: 'done', ownerPid: 0, spec: COMPARE_SPEC, report: 'report.html',
+    snapshots: [{ file: snapshot, side: 'target', serverId: 'local', serverLabel: 'local', database: 'b' }],
+  }), 'utf8');
+  writeFileSync(path.join(leftover, 'report.html'), '<!doctype html><title>report</title>', 'utf8');
+  writeFileSync(path.join(leftover, snapshot), '{}', 'utf8');
+  const held = path.join(leftover, 'run.log');
+  writeFileSync(held, 'log', 'utf8');
+  // Not the app's: another name, and a junction of that kind of name to a folder elsewhere.
+  const otherName = path.join(data, 'runs', 'deleted-by-hand');
+  mkdirSync(otherName);
+  writeFileSync(path.join(otherName, 'keep.txt'), 'x', 'utf8');
+  const elsewhere = path.join(data, 'elsewhere');
+  mkdirSync(elsewhere);
+  writeFileSync(path.join(elsewhere, 'keep.txt'), 'x', 'utf8');
+  const linked = `deleted-${runId(Date.now() - 2 * DAY)}`;
+  symlinkSync(elsewhere, path.join(data, 'runs', linked), 'junction');
+
+  // Retention is off for a server of the tests (DATABASE_DIFF_RETENTION_DAYS=0): leftovers go all the same.
+  const env = { DATABASE_DIFF_DATA: data, DATABASE_DIFF_MCP_PROFILES: path.join(data, 'no-mcp-profiles') };
+  const look = async (base: string): Promise<{ runs: string[]; snapshots: number; storage: number }> => {
+    const headers = { 'x-database-diff': '1' };
+    const runs = await (await fetch(`${base}/api/runs`, { headers })).json() as RunRecord[];
+    const snapshots = await (await fetch(`${base}/api/snapshots`, { headers })).json() as SnapshotRecord[];
+    const storage = await (await fetch(`${base}/api/storage`, { headers })).json() as Storage;
+    return { runs: runs.map((r) => r.id), snapshots: snapshots.length, storage: storage.runs };
+  };
+
+  // A file of the leftover is still open somewhere: it cannot go yet, and it is no run meanwhile.
+  const holder = await holdFile(held);
+  try {
+    assert.deepEqual(await withServer(look, env), { runs: [kept], snapshots: 0, storage: 1 });
+    assert.ok(existsSync(held), 'a leftover with a file in use stays for the next start');
+  } finally {
+    await holder.release();
+  }
+  // The next start takes it.
+  assert.deepEqual(await withServer(look, env), { runs: [kept], snapshots: 0, storage: 1 });
+  assert.deepEqual(runFolders(data), ['deleted-by-hand', kept, linked].sort());
+  assert.ok(existsSync(path.join(otherName, 'keep.txt')), 'a folder of another name is not the app\'s to delete');
+  assert.ok(existsSync(path.join(elsewhere, 'keep.txt')), 'what a junction points at is not touched');
+
+  // Not under node --watch (npm run dev): nothing is deleted then.
+  mkdirSync(leftover);
+  writeFileSync(path.join(leftover, 'run.json'), '{}', 'utf8');
+  await withServer(look, { ...env, WATCH_REPORT_DEPENDENCIES: '1' });
+  assert.ok(existsSync(leftover), 'nothing is deleted under node --watch');
 });
 
 test('retention: the number of days comes from DATABASE_DIFF_RETENTION_DAYS, and anything unclear turns it off', () => {

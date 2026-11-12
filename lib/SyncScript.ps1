@@ -478,6 +478,141 @@ function Get-DatabaseTriggerStateSql($Item, [string]$Action) {
     return 'IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = {0}) {1} TRIGGER {2} ON DATABASE;' -f (Get-SqlLiteral $name), $Action, (Get-QuotedName $name)
 }
 
+# Database triggers on a target that was read without VIEW DEFINITION. Such a login sees no
+# database trigger at all, so every one the source has reads as "only in source", also one that
+# is there. What a script may do to a trigger then depends on something only the session that
+# runs it can find out, and a script cannot carry a variable over a GO. So it keeps notes in a
+# temporary table of that session, one row per trigger name:
+# - the sync script notes, before each CREATE, the triggers that were not there
+#   ($CreatedTriggersTable): only those are disabled after their CREATE and enabled at the end.
+#   One that was there already (its CREATE fails with Msg 2714) is never touched.
+# - the rollback script cannot know which ones the sync script created (it is written before the
+#   sync script runs, and nothing on the target tells the two apart). It disables every one of
+#   them that is enabled, because one the sync script created may refuse the statements of the
+#   rollback, notes it ($DisabledTriggersTable), and enables exactly the noted ones again with
+#   its last statements: whichever it was, it ends as it started.
+# Why a temporary table: it lives across batches and is gone with the session; creating, filling
+# and dropping one fires no DDL trigger; and under the NOEXEC of a failed database check the
+# batches that name it still compile (nothing runs, so it is never created). All checked on SQL
+# Server 2025 (LocalDB). The table is created only when missing and dropped by the last batch
+# that uses it, so a second run in the same session after a run that stopped part way still
+# has the notes of the first. (In another session it has not: a trigger the first run created
+# and left disabled is then one that "was there already", and stays disabled. Both headers say
+# so.) A row carries the database id: in a combined script, or in a session that ran the script
+# of another database, a name noted for one database says nothing about another. The name is
+# compared byte for byte (a binary collation): the same literal is written in every statement.
+#
+# When such a script stops part way (a person stops it, or it is run with stop-on-error, where
+# the Msg 2714 it expects for a trigger that is there already ends it), the triggers it disabled
+# stay disabled, and a run in another session cannot put that right: it finds them disabled, so
+# they are not noted, and it enables only what is noted. Seen: a rollback cut before its last
+# section and run again with sqlcmd ended without a message, with the target's own trigger
+# (enabled before the sync script, never touched by it) disabled for good. That cannot be made
+# to work without notes that outlive the session, so it is made loud instead:
+# - as a script disables a trigger that it means to enable again, it prints the statement that
+#   does so (PRINT, with the name quoted as the statement needs it), for a person to run when
+#   the script does not get to its end;
+# - at its end, for each trigger it would have enabled had it noted it, it prints a warning when
+#   that trigger is disabled without a note. The script cannot know why it is: an earlier run
+#   that stopped may have left it so, or it was disabled all along (the target's own trigger
+#   that its owner turned off, or one the sync script created disabled). So the warning names
+#   no cause, and it is the same for every trigger: it sends the reader to what the stopped run
+#   printed, which is the list of what that run disabled. (It once said "that run disabled it"
+#   of a trigger nothing had touched, and went by the state in the source, which says nothing
+#   of a trigger that was in the target before.)
+# Every such line names its database, twice: in front, and as USE in the statement to run. A
+# combined script holds the scripts of many databases, whose triggers often have the same names,
+# and a statement pasted into a new query window runs wherever that window is (Msg 1088 in
+# master, or the trigger of that name in another database). The name is not written into the
+# script: the line is put together when it runs, with DB_NAME(), so it is right whatever
+# database the script is run in.
+# PRINT is not executed under the NOEXEC of a failed database check, and is no error: it does
+# not stop a run with stop-on-error, nor count as a failure.
+$CreatedTriggersTable = '#database_diff_created'
+$DisabledTriggersTable = '#database_diff_disabled'
+
+# The messages, with {0} where the quoted name of the trigger goes. Each ends with "run:": the
+# statement to run follows it (Get-TriggerPrintSql).
+$TriggerDisabledMessage = 'database trigger {0} is disabled while this script runs; its last statements enable it again. If the script stops before them, run:'
+$TriggerCreatedMessage = 'database trigger {0} is created, and disabled until the last statements of this script enable it. If the script stops before them: run it again to its end, then run:'
+$TriggerNotCreatedWarning = 'WARNING: database trigger {0} is disabled, and this run did not create it: it was there before this run. It may have been disabled all along. If an earlier run of this script stopped part way, the lines that run printed list what it created: only if this trigger is among them, run:'
+$TriggerNotDisabledWarning = 'WARNING: database trigger {0} is disabled, and this run did not disable it. It may have been disabled all along. If an earlier run of this script stopped part way, the lines that run printed list what it disabled: only if this trigger is among them, run:'
+
+# What the first statements of a sync script say as they disable a trigger that is enabled: one
+# that the last statements enable again, and one that the source has disabled, which stays so.
+# And what is said of a new trigger as it is disabled after its CREATE, on a target read in full.
+# A run that ends before the last statements (an error, under stop-on-error: on a second run the
+# first "already there" message is one) leaves them disabled: it must not do so without a word.
+# The statements these lines name, run as printed, put each trigger back as that run found it.
+$TriggerHeldMessage = 'database trigger {0} is disabled until the last statements of this script enable it again. If the script stops before them: run it again to its end, or run:'
+$TriggerOffMessage = 'database trigger {0} is disabled, as the source has it, and stays so. To have it enabled as it was, run:'
+$TriggerNewHeldMessage = 'database trigger {0} is created, and disabled until the last statements of this script enable it. If the script stops before them: run it again to its end, or run:'
+
+# PRINT of one of those messages for a trigger:
+#   database-diff: [database]: <message> USE [database]; ENABLE TRIGGER [name] ON DATABASE;
+# The database is the one the statement runs in (QUOTENAME(DB_NAME()), when it runs). The name of
+# the trigger stands as a statement writes it ([a]]b]), and the text in literals (a quote
+# doubled).
+function Get-TriggerPrintSql($Item, [string]$Message) {
+    $quoted = Get-QuotedName ([string](Get-SqlPart $Item 'Name'))
+    $text = Get-SqlLiteral (': ' + ($Message -f $quoted) + ' USE ')
+    $statement = Get-SqlLiteral ('; ENABLE TRIGGER ' + $quoted + ' ON DATABASE;')
+    return 'PRINT N''database-diff: '' + QUOTENAME(DB_NAME()) + {0} + QUOTENAME(DB_NAME()) + {1};' -f $text, $statement
+}
+
+# DISABLE of a database trigger that is there and enabled, with the line that says so and how
+# to enable it again ($Message). Nothing is done, and nothing printed, for one that is disabled
+# already or not there: a line stands for a trigger whose state this statement changed.
+function Get-DisableTriggerLoudSql($Item, [string]$Message) {
+    $name = [string](Get-SqlPart $Item 'Name')
+    return 'IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = {0} AND is_disabled = 0) BEGIN DISABLE TRIGGER {1} ON DATABASE; {2} END' -f (Get-SqlLiteral $name), (Get-QuotedName $name), (Get-TriggerPrintSql $Item $Message)
+}
+
+function Get-TriggerNoteTableSql([string]$Table) {
+    return 'IF OBJECT_ID(N''tempdb..{0}'') IS NULL CREATE TABLE {0} (database_id int NOT NULL, name nvarchar(128) COLLATE Latin1_General_BIN2 NOT NULL);' -f $Table
+}
+
+function Get-DropTriggerNoteTableSql([string]$Table) {
+    return 'IF OBJECT_ID(N''tempdb..{0}'') IS NOT NULL DROP TABLE {0};' -f $Table
+}
+
+# Before the CREATE of a database trigger: notes its name when no trigger of that name is there.
+function Get-NoteMissingTriggerSql($Item) {
+    $literal = Get-SqlLiteral ([string](Get-SqlPart $Item 'Name'))
+    return 'IF NOT EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = {0}) INSERT INTO {1} (database_id, name) VALUES (DB_ID(), {0});' -f $literal, $CreatedTriggersTable
+}
+
+# DISABLE TRIGGER or ENABLE TRIGGER ($Action) for a database trigger, only when its name is noted
+# in $Table for this database and the trigger is there.
+function Get-NotedTriggerStateSql($Item, [string]$Table, [string]$Action) {
+    $name = [string](Get-SqlPart $Item 'Name')
+    return 'IF EXISTS (SELECT 1 FROM {0} WHERE database_id = DB_ID() AND name = {1}) AND EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = {1}) {2} TRIGGER {3} ON DATABASE;' -f $Table, (Get-SqlLiteral $name), $Action, (Get-QuotedName $name)
+}
+
+# Disables a database trigger that is there and enabled, notes that this script did, and prints
+# the statement that enables it again. The note first: a statement that fails between the two
+# then leaves a note too many (the trigger is enabled once more, which it still is) instead of
+# a trigger that stays disabled.
+function Get-DisableAndNoteTriggerSql($Item) {
+    $name = [string](Get-SqlPart $Item 'Name')
+    $literal = Get-SqlLiteral $name
+    return 'IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = {0} AND is_disabled = 0) BEGIN INSERT INTO {1} (database_id, name) VALUES (DB_ID(), {0}); DISABLE TRIGGER {2} ON DATABASE; {3} END' -f $literal, $DisabledTriggersTable, (Get-QuotedName $name), (Get-TriggerPrintSql $Item $TriggerDisabledMessage)
+}
+
+# After the CREATE of a database trigger that the source has enabled: disabled when this run
+# created it (it is noted), with the statement that enables it again printed.
+function Get-DisableCreatedTriggerSql($Item) {
+    $name = [string](Get-SqlPart $Item 'Name')
+    return 'IF EXISTS (SELECT 1 FROM {0} WHERE database_id = DB_ID() AND name = {1}) AND EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = {1}) BEGIN DISABLE TRIGGER {2} ON DATABASE; {3} END' -f $CreatedTriggersTable, (Get-SqlLiteral $name), (Get-QuotedName $name), (Get-TriggerPrintSql $Item $TriggerCreatedMessage)
+}
+
+# At the end of a script, after the statement that enables a noted trigger: a warning ($Message)
+# when the trigger is disabled and not noted in $Table.
+function Get-DisabledTriggerWarningSql($Item, [string]$Table, [string]$Message) {
+    $literal = Get-SqlLiteral ([string](Get-SqlPart $Item 'Name'))
+    return 'IF EXISTS (SELECT 1 FROM sys.triggers WHERE parent_class = 0 AND name = {0} AND is_disabled = 1) AND NOT EXISTS (SELECT 1 FROM {1} WHERE database_id = DB_ID() AND name = {0}) {2}' -f $literal, $Table, (Get-TriggerPrintSql $Item $Message)
+}
+
 # The comment above the SET NOEXEC OFF that ends every script. app/lib/runs.js (SCRIPT_TRAILER)
 # matches this text: change both together.
 $ScriptTrailerComment = '-- End of script: ends the NOEXEC that a failed database check at the top turned on.'
@@ -547,6 +682,10 @@ function Write-SyncScript {
         & $note "Rollback script generated by database-diff on $(Get-Timestamp 'yyyy-MM-dd HH:mm:ss')"
         & $note "Source (the sync script's model):  $SourceLabel"
         & $note "Target (will be changed back):     $TargetLabel"
+        # "Run it again, or its last section" is true where the script itself says what to enable.
+        # On a target read without VIEW DEFINITION part of that is in the notes of a session.
+        if ($TargetIncomplete) { $whenStopped = '--   disabled: see the INCOMPLETE COMPARISON lines below for what to do then.' }
+        else { $whenStopped = '--   disabled: run it again, or its last section.' }
         & $add @(
             '--'
             '-- Running this on the TARGET database after the sync script of the same comparison puts its'
@@ -554,8 +693,10 @@ function Write-SyncScript {
             '-- - Nothing in this file has been executed by database-diff.'
             '-- - It assumes the target changed only through the sync script since the comparison.'
             '-- - Database triggers (ON DATABASE) come first: the ones the sync script created or changed are'
-            '--   disabled, dropped or put back, and only then enabled as they were before. An enabled one'
-            '--   fires on the statements after it and may refuse them.'
+            '--   disabled, then dropped or put back. The ones that were enabled before the sync script'
+            '--   are enabled again by the last statements of this file: an enabled one fires on the'
+            '--   statements after it and may refuse them. If the script stops part way they stay'
+            $whenStopped
             '-- - Procedures, views, functions, triggers, synonyms, indexes and constraints the sync script'
             '--   created are dropped next, with IF EXISTS so a sync script that stopped part way is fine.'
             '-- - Tables, columns, sequences, types and schemas it created are commented out at the end:'
@@ -584,6 +725,39 @@ function Write-SyncScript {
         & $note "Sync script generated by database-diff on $(Get-Timestamp 'yyyy-MM-dd HH:mm:ss')"
         & $note "Source (the model):        $SourceLabel"
         & $note "Target (will be changed):  $TargetLabel"
+        # What a sync script does with database triggers, said for the target it was written for.
+        # On a target read without VIEW DEFINITION the new ones are not disabled first (one of
+        # them may be a trigger that was there all along), so the script is not simply run again.
+        if ($TargetIncomplete) {
+            $databaseTriggerLines = @(
+                '-- - Database triggers (ON DATABASE): the ones this script changes or enables are disabled by'
+                '--   its first statements, and changed and enabled by its last: an enabled one fires on the'
+                '--   statements after it and may refuse them. Until then they are disabled for every session,'
+                '--   not only this one: a trigger among them that records DDL (an audit trigger) records'
+                '--   nothing while this script runs. The new ones are created by the last statements too; for'
+                '--   those, and for running this script again, see INCOMPLETE COMPARISON below.'
+                '-- - A database trigger this script does not touch stays enabled: if it refuses DDL, disable it'
+                '--   by hand before running this script.'
+            )
+        }
+        else {
+            $databaseTriggerLines = @(
+                '-- - Database triggers (ON DATABASE): the ones this script creates, changes or enables are'
+                '--   disabled by its first statements, and created, changed and enabled by its last: an enabled'
+                '--   one fires on the statements after it and may refuse them. Until then they are disabled for'
+                '--   every session, not only this one: a trigger among them that records DDL (an audit trigger)'
+                '--   records nothing while this script runs.'
+                '-- - So the script can be run again after a run of it that completed or stopped part way: what'
+                '--   that run enabled is disabled first, and what it created is reported as there already (Msg'
+                '--   2714, Msg 1913 and the like). Do not run it with stop-on-error (sqlcmd -b): it would stop'
+                '--   at the first such message, or at any other error, with those triggers disabled. For each'
+                '--   trigger it disables, the script prints the statement that enables it again (USE ...;'
+                '--   ENABLE TRIGGER ... ON DATABASE). If it stopped part way: run it again to its end, or run'
+                '--   those statements to have the triggers enabled again.'
+                '-- - A database trigger this script does not touch stays enabled: if it refuses DDL, disable it'
+                '--   by hand before running this script.'
+            )
+        }
         & $add @(
             '--'
             '-- Running this on the TARGET database changes its schema to match the SOURCE, as far as the'
@@ -598,9 +772,7 @@ function Write-SyncScript {
             '-- - A view this script alters gets the indexes the source has on it created again right after'
             '--   it (ALTER VIEW drops every index of a view). The indexes of the other views come after'
             '--   the views.'
-            '-- - Database triggers (ON DATABASE) come last. The ones this script creates or changes stay'
-            '--   disabled until all of them are in place, and the ones the source has enabled are enabled at'
-            '--   the very end: an enabled one fires on the statements after it and may refuse them.'
+            $databaseTriggerLines
             '-- - Uses CREATE OR ALTER, which needs SQL Server 2016 SP1 or later on the target.'
             '-- - It starts with USE of the target database. If that fails (wrong server, no access), nothing'
             '--   after it is executed, so no statement runs in another database.'
@@ -616,6 +788,19 @@ function Write-SyncScript {
             '--   an object the sync script was to create may have been there before (its CREATE then'
             '--   failed). The drops of procedures, views, functions, triggers and synonyms are therefore'
             '--   commented out at the end: uncomment only those the sync script really created.'
+            '-- - Nor can this script tell which database triggers the sync script created. Each one that is'
+            '--   only in the source and enabled when this script starts is disabled first (it may refuse'
+            '--   the statements of this script), noted in a temporary table (#database_diff_disabled), and'
+            '--   enabled again by the last statements, after the commented-out drops. That also happens to'
+            '--   one that was there before the sync script: it ends as it started.'
+            '-- - If this script stops part way, those triggers stay disabled, the target''s own among them,'
+            '--   and the notes are gone with the session. For each trigger it disables, the script prints'
+            '--   the statement that enables it again (USE ...; ENABLE TRIGGER ... ON DATABASE). Then: run'
+            '--   the script again to its end, and run those statements. Only a run in the same session'
+            '--   (query window) still has the notes and enables them itself; in another session the'
+            '--   script cannot know what the stopped run disabled. It prints a warning for each trigger it'
+            '--   finds disabled, also for one that was disabled all along: enable only what the stopped'
+            '--   run listed.'
         )
     }
     elseif ($TargetIncomplete) {
@@ -629,6 +814,20 @@ function Write-SyncScript {
             '--   source (when that table is there already its CREATE TABLE fails, and they would be added'
             '--   to the table that is there), and unnamed checks that are only in the source (the target''s'
             '--   unnamed checks cannot be read, so the same check may be there under a generated name).'
+            '-- - A database trigger that is only in the source is disabled and enabled by this script only'
+            '--   when this run created it: before each CREATE the script notes in a temporary table'
+            '--   (#database_diff_created) whether the trigger was missing. One that was there already,'
+            '--   hidden from the comparison, is left as it is, enabled or not. If such a trigger refuses'
+            '--   DDL, disable it by hand before running this script.'
+            '-- - Msg 2714 is therefore expected on this target. Do not run this script with stop-on-error'
+            '--   (sqlcmd -b): it would stop at the first one, and leave the database triggers it created'
+            '--   or was changing disabled. For each trigger it disables, the script prints the statement'
+            '--   that enables it again (USE ...; ENABLE TRIGGER ... ON DATABASE). If it did stop part way:'
+            '--   run it again to its end, then run those statements for the triggers it created (a changed'
+            '--   one is enabled by that run itself). Only a run in the same session (query window) still'
+            '--   has the notes and enables them itself; in another session the script prints a warning for'
+            '--   each of them it finds disabled, also for one that was disabled all along: enable only what'
+            '--   the stopped run said it created.'
         )
     }
     foreach ($w in $Warnings) { & $add '--'; & $note "WARNING: $w" }
@@ -726,26 +925,75 @@ function Write-SyncScript {
     #
     # An enabled database trigger fires on every DDL statement after it and may refuse it
     # (RAISERROR and ROLLBACK end the batch with Msg 3609): the statements of this script too,
-    # the CREATE of the next trigger, even its own ALTER. So the database triggers a script
-    # writes are kept disabled until all of them are in place.
-    # - A sync script writes them last. One that it alters or has to disable is disabled first,
-    #   a new one right after its CREATE, and those the source has enabled are enabled at the
-    #   very end, when nothing is left for them to refuse.
+    # the CREATE of the next trigger, even its own ALTER. So a script disables, with its first
+    # statements, every database trigger it manages (creates, alters, drops, or sets the state
+    # of), and enables with its last statements the ones that are to be enabled. In between
+    # none of them is left to refuse anything.
+    # - A sync script disables them first ($part 'first'): the ones it alters, the ones of which
+    #   only the state differs, whichever way, and the ones it creates. A new one is not there
+    #   at a first run; at a second run the first has created and enabled it. It writes them
+    #   last ($part 'last'), a new one disabled again right after its CREATE (which makes it
+    #   enabled), and enables those the source has enabled at the very end.
+    #   Between its first and its last statements those triggers are disabled, also when the
+    #   script does not get that far: under stop-on-error any error ends it there (on a second
+    #   run the first "already there" message does). So each DISABLE that changes the state of
+    #   a trigger prints the statement that enables it again ($TriggerHeldMessage and the two
+    #   after it), and the header says not to run the script that way.
+    #   It once disabled them only in that last section. Run again after a run that completed,
+    #   it then met the guards that run had enabled: every statement before the section was
+    #   refused, and so were the CREATE OR ALTER statements in it. And a guard of the target
+    #   itself of which only the state differs (enabled there, disabled in the source) refused
+    #   the script from its first statement, on the first run.
     # - A rollback script writes them first: the sync script left them enabled, and they would
     #   refuse the rest of the rollback. The ones the sync script created are disabled and
-    #   dropped, the ones it changed disabled and put back, and at the end of the section those
-    #   that were enabled before the sync script are enabled again.
+    #   dropped, the ones it changed disabled and put back. Those that were enabled before the
+    #   sync script are enabled again by the last statements of the script ($enableLast), not at
+    #   the end of this section: one of them may be the target's own guard, and it would refuse
+    #   what the rollback still has to do (seen: a trigger FOR DROP_PROCEDURE, DROP_INDEX that
+    #   was enabled again here left the index and the procedure of the sync script in place).
+    #   The ones it only enables at its end are disabled first as well: a second run of the
+    #   rollback meets them enabled by the first.
     # DISABLE TRIGGER and ENABLE TRIGGER are not DDL events, so they are never refused.
-    # Left as it was: a trigger that has to be dropped and created again by hand (another type),
-    # and a new one on a target read without VIEW DEFINITION, which may be a trigger that was
-    # there already (whether that one is enabled is not this script's to change).
+    #
+    # A refusal is not always just Msg 3609. Seen on SQL Server 2025 (LocalDB 17.0, 2026-11-12):
+    # when the statement that a database trigger rolls back is the ALTER (CREATE OR ALTER) of a
+    # DISABLED database trigger that itself watches ALTER_TRIGGER, the server ends with an
+    # access violation (Error 17310: the session is killed, and once the whole instance went
+    # down). The same ALTER of an enabled trigger, or of a trigger for other events, gets the
+    # usual Msg 3609. One statement shows it: a guard FOR DDL_DATABASE_LEVEL_EVENTS that does
+    # RAISERROR and ROLLBACK, a second trigger FOR ALTER_TRIGGER, disabled, and CREATE OR ALTER
+    # of the second. A script cannot avoid that statement: it has to disable a trigger before
+    # it alters it (an enabled one fires on its own ALTER and may refuse it). What it avoids is
+    # the rollback: with every trigger it manages disabled before its first statement, none of
+    # them is left to roll an ALTER back. A database trigger the script does not manage (the
+    # same on both sides, only in the target, or hidden from the comparison) still can, which
+    # is why the header says to disable such a trigger by hand.
+    # Left as it was: a trigger that has to be dropped and created again by hand (another type).
+    # On a target read without VIEW DEFINITION a trigger that is only in the source may be one
+    # that was there already, and whether that one is enabled is not a script's to change (see
+    # $CreatedTriggersTable for what the scripts do instead):
+    # - a sync script disables a new trigger after its plain CREATE, and enables it at the end,
+    #   only when this run created it;
+    # - a rollback script leaves the drops of those triggers as comments, like the drops of the
+    #   other modules, but disables the enabled ones while it runs and enables them again at
+    #   its end ($restoreLast).
+    # A trigger both sides have (the login saw it, and its text) is changed as on any target.
+    $enableLast = New-Object System.Collections.Generic.List[object]
+    # And the ones a rollback on a target read without VIEW DEFINITION disabled at its start
+    # because the sync script may have created them: enabled again when its notes say so.
+    $restoreLast = New-Object System.Collections.Generic.List[object]
+    # $part, for the database triggers of a sync script, which writes them in two places:
+    # 'first' is the section that disables them, 'last' everything else. 'all': one section.
     $writeModules = {
-        param([string]$category, [bool]$databaseScope = $false)
+        param([string]$category, [bool]$databaseScope = $false, [string]$part = 'all')
         $new = @(@(& $pick $category 'OnlyInSource') | Where-Object { (Test-DatabaseScope (& $src $_)) -eq $databaseScope })
         $changed = @(@(& $pick $category 'Different') | Where-Object { (Test-DatabaseScope (& $src $_)) -eq $databaseScope })
         # For database triggers only: the ones a rollback drops, the ones disabled before
         # anything is written, and the ones enabled when everything is.
         $created = @()
+        # On a target read without VIEW DEFINITION: the ones a rollback cannot tell from
+        # triggers that were there before the sync script.
+        $maybeCreated = @()
         $disableFirst = New-Object System.Collections.Generic.List[object]
         $enableChanged = New-Object System.Collections.Generic.List[object]
         $enableNew = New-Object System.Collections.Generic.List[object]
@@ -753,7 +1001,18 @@ function Write-SyncScript {
         if ($databaseScope) {
             # ToArray, not @(...): Windows PowerShell 5.1 fails on @() around an empty generic list.
             if ($Rollback -and -not $TargetIncomplete) { $created = $databaseTriggersCreated.ToArray() }
+            elseif ($Rollback) { $maybeCreated = $databaseTriggersCreated.ToArray() }
             foreach ($item in $created) { $disableFirst.Add($item) }
+            # (sync) The new ones this script writes: there, and enabled, when a run before
+            # this one created them. Not on a target read without VIEW DEFINITION, where one
+            # that is there may be the target's own (see $CreatedTriggersTable).
+            if (-not $Rollback -and -not $TargetIncomplete) {
+                foreach ($d in $new) {
+                    $s = & $src $d
+                    if ((& $missingParts $s) -or -not (ConvertTo-ModuleScript $s $d.SourceKey $false).ContainsKey('Script')) { continue }
+                    $disableFirst.Add($s)
+                }
+            }
             foreach ($d in $changed) {
                 $s = & $src $d
                 if ((& $missingParts $s) -or $d.Detail -match '(^|\n)(Type|Table):') { continue }
@@ -762,23 +1021,53 @@ function Write-SyncScript {
                 $altered = $d.Detail -match '(^|\n)(Definition differs|SetOptions:)' -and $d.Detail -notmatch '(^|\n)Definition: not readable' -and
                     (ConvertTo-ModuleScript $s $d.SourceKey $false).ContainsKey('Script')
                 $enabled = [string]$s.Props['State'] -ne 'DISABLED'
-                if ($altered -or ($stateDiffers -and -not $enabled)) { $disableFirst.Add($s) }
+                # Also one that is only to be enabled at the end: it is disabled now when
+                # the script runs for the first time, and enabled when it runs again.
+                if ($altered -or $stateDiffers) { $disableFirst.Add($s) }
                 if ($enabled -and ($altered -or $stateDiffers)) { $enableChanged.Add($s) }
                 # Nothing but the state differs: no batch follows its line, so the line says
                 # where its statement is.
                 if ($stateDiffers -and -not $altered) {
-                    if ($enabled) { $stateNotes[[string]$d.SourceKey] = '-- Enabled at the end of this section.' }
-                    else { $stateNotes[[string]$d.SourceKey] = '-- Disabled at the start of this section.' }
+                    if ($enabled -and $Rollback) { $stateNotes[[string]$d.SourceKey] = '-- Enabled by the last statements of this script.' }
+                    elseif ($enabled) { $stateNotes[[string]$d.SourceKey] = '-- Enabled at the end of this section.' }
+                    elseif ($Rollback) { $stateNotes[[string]$d.SourceKey] = '-- Disabled at the start of this section.' }
+                    else { $stateNotes[[string]$d.SourceKey] = '-- Disabled by the first statements of this script.' }
                 }
             }
         }
-        if (-not ($new.Count -or $changed.Count -or $created.Count)) { return }
+        if ($part -eq 'first') {
+            # (sync) Nothing but the statements that disable them, before every other section.
+            if (-not $disableFirst.Count) { return }
+            & $section 'Database triggers first: disabled until the last section of this script creates, changes and enables them'
+            # On a target read without VIEW DEFINITION the new ones are not among them.
+            if ($TargetIncomplete) { & $add '-- Disabled before anything else: an enabled one fires on every statement of this script and may refuse it. Not the new ones, which may be triggers that were there all along: see INCOMPLETE COMPARISON at the top.' }
+            else { & $add '-- Disabled before anything else: an enabled one fires on every statement of this script and may refuse it. Also the ones a run of this script before this one created or enabled, so that the script can be run again.' }
+            # Each with its line: a run that ends before the last section leaves them disabled.
+            # The ones the source has enabled are the ones that section enables again.
+            foreach ($item in $disableFirst) {
+                if ([string]$item.Props['State'] -ne 'DISABLED') { $message = $TriggerHeldMessage } else { $message = $TriggerOffMessage }
+                & $add (Get-DisableTriggerLoudSql $item $message); & $go
+            }
+            return
+        }
+        if (-not ($new.Count -or $changed.Count -or $created.Count -or $maybeCreated.Count)) { return }
+        # A sync script on a target read without VIEW DEFINITION keeps notes on its new triggers.
+        $notesCreated = $databaseScope -and [bool]$TargetIncomplete -and -not $Rollback -and $new.Count -gt 0
         if (-not $databaseScope) { & $section "$category`s" }
-        elseif ($Rollback) { & $section 'Database triggers first: disabled, dropped or put back, then enabled as they were before the sync script' }
+        elseif ($Rollback) { & $section 'Database triggers first: disabled, then dropped or put back (enabled again by the last statements of this script)' }
         else { & $section 'Database triggers last: disabled until all of them are in place (an enabled one fires on the statements after it)' }
-        if ($disableFirst.Count) {
-            if ($Rollback) { & $add '-- Disabled before anything else: the sync script left them enabled, and an enabled one may refuse the statements of this script.' }
-            else { & $add '-- Disabled before they are changed: an enabled one fires on the statements of this section, also on its own ALTER.' }
+        if ($notesCreated) {
+            & $add '-- The comparison of the target is incomplete: a trigger that is only in the source may be there already, hidden. This script disables and enables only the ones it creates: before each CREATE it notes in a temporary table of this session whether the trigger was missing. When running only a part of this section, run this batch and the batch before a CREATE with it.'
+            & $add (Get-TriggerNoteTableSql $CreatedTriggersTable); & $go
+        }
+        if ($maybeCreated.Count) {
+            & $add '-- The comparison of the target is incomplete: this script cannot tell which of these the sync script created, and one that is enabled may refuse the statements below. The enabled ones are disabled, noted in a temporary table of this session, and enabled again by the last statements of this script.'
+            & $add (Get-TriggerNoteTableSql $DisabledTriggersTable); & $go
+            foreach ($item in $maybeCreated) { & $add (Get-DisableAndNoteTriggerSql $item); & $go; $restoreLast.Add($item) }
+        }
+        # (A sync script wrote these in its first section: $part 'first', above.)
+        if ($disableFirst.Count -and $part -ne 'last') {
+            & $add '-- Disabled before anything else: the sync script left them enabled, and an enabled one may refuse the statements of this script.'
             foreach ($item in $disableFirst) { & $add (Get-DatabaseTriggerStateSql $item 'DISABLE'); & $go }
         }
         if ($created.Count) {
@@ -851,6 +1140,9 @@ function Write-SyncScript {
                 if ($module.ContainsKey('Comment')) { & $add $module.Comment }
                 else {
                     if ($createOnly) { & $add '-- Plain CREATE, because the comparison of the target is incomplete: if it fails with Msg 2714, the object is there already. Compare it with the source by hand.' }
+                    # A database trigger: noted when it is not there yet, in the batch before its
+                    # CREATE (which must start a batch of its own).
+                    if ($createOnly -and $databaseScope -and -not (& $missingParts $s)) { & $add (Get-NoteMissingTriggerSql $s) }
                     # SQL Server stores the whole batch as the module definition, so the comments
                     # above must end in their own batch or they become part of the procedure text.
                     & $go
@@ -878,13 +1170,24 @@ function Write-SyncScript {
                 # section when the source has it enabled. A changed one was disabled before.
                 if ($d.Status -eq 'OnlyInSource' -and -not (& $missingParts $s)) {
                     if ($createOnly) {
-                        # As for the trigger of a table, below.
-                        if ($s.Props['State'] -eq 'DISABLED') { & $note "It is disabled in source. Run this only if the CREATE above succeeded: DISABLE TRIGGER $(Get-ModuleName $s) ON $(Get-TriggerTarget $s);" }
+                        # Only when this run created it: one that was there already stays as
+                        # it is, enabled or not.
+                        # One the source has enabled is enabled again at the end: its
+                        # DISABLE prints the statement to run should the script not get there.
+                        if ($written -and [string]$s.Props['State'] -ne 'DISABLED') {
+                            & $add (Get-DisableCreatedTriggerSql $s); & $go
+                            $enableNew.Add($s)
+                        }
+                        elseif ($written) { & $add (Get-NotedTriggerStateSql $s $CreatedTriggersTable 'DISABLE'); & $go }
                     }
-                    elseif ($written) {
-                        & $add (Get-DatabaseTriggerStateSql $s 'DISABLE'); & $go
-                        if ([string]$s.Props['State'] -ne 'DISABLED') { $enableNew.Add($s) }
+                    elseif ($written -and [string]$s.Props['State'] -ne 'DISABLED') {
+                        # Enabled again at the end, so this DISABLE says how to do that by
+                        # hand. (On a second run the trigger was disabled by the first
+                        # statements, which said it: nothing is done or printed here.)
+                        & $add (Get-DisableTriggerLoudSql $s $TriggerNewHeldMessage); & $go
+                        $enableNew.Add($s)
                     }
+                    elseif ($written) { & $add (Get-DatabaseTriggerStateSql $s 'DISABLE'); & $go }
                 }
             }
             elseif ($category -eq 'Trigger' -and -not (& $missingParts $s) -and -not ($typeChanged -or $tableChanged)) {
@@ -903,12 +1206,23 @@ function Write-SyncScript {
             }
         }
         # Database triggers: every one of this section is in place now. The new ones first, in
-        # the order they were created, then the changed ones.
-        if ($enableNew.Count + $enableChanged.Count) {
-            if ($Rollback) { & $add '-- Enabled again: the ones that were enabled before the sync script.' }
+        # the order they were created, then the changed ones. A rollback has everything else
+        # still to do, so it keeps them for its last statements (it has no new ones).
+        if ($Rollback) { foreach ($item in $enableChanged) { $enableLast.Add($item) } }
+        elseif ($enableNew.Count + $enableChanged.Count) {
+            if ($notesCreated) { & $add '-- Enabled now that all of them are in place: the ones the source has enabled. Of the new ones only those this run created; a warning is printed for one that was there already and is disabled: it may have been disabled all along, or an earlier run that stopped part way created it.' }
             else { & $add '-- Enabled now that all of them are in place: the ones the source has enabled.' }
-            foreach ($item in ($enableNew.ToArray() + $enableChanged.ToArray())) { & $add (Get-DatabaseTriggerStateSql $item 'ENABLE'); & $go }
+            foreach ($item in $enableNew) {
+                if ($notesCreated) {
+                    & $add (Get-NotedTriggerStateSql $item $CreatedTriggersTable 'ENABLE')
+                    & $add (Get-DisabledTriggerWarningSql $item $CreatedTriggersTable $TriggerNotCreatedWarning)
+                }
+                else { & $add (Get-DatabaseTriggerStateSql $item 'ENABLE') }
+                & $go
+            }
+            foreach ($item in $enableChanged) { & $add (Get-DatabaseTriggerStateSql $item 'ENABLE'); & $go }
         }
+        if ($notesCreated) { & $add (Get-DropTriggerNoteTableSql $CreatedTriggersTable); & $go }
     }
 
     $constraintDrops = New-Object System.Collections.Generic.List[string]
@@ -967,6 +1281,9 @@ function Write-SyncScript {
     # The sync script ended by enabling the database triggers the model has enabled. One of them
     # may refuse DDL: every drop and change below would end with Msg 3609.
     if ($Rollback) { & $writeModules 'Trigger' $true }
+    # ---- (sync) database triggers, disabled before anything else ----
+    # The ones the script manages; they are written, and enabled, by its last section.
+    else { & $writeModules 'Trigger' $true 'first' }
 
     # In a rollback the indexes the sync script created on views go with the other indexes. (Where
     # the rollback alters the view back further down, that drops them anyway: hence IF EXISTS.)
@@ -1509,7 +1826,7 @@ function Write-SyncScript {
     # After everything else that is created or changed: a DDL trigger fires on the statements that
     # follow it, and the one the model has may refuse or record what this script still has to do.
     # (A rollback wrote them first, above.)
-    if (-not $Rollback) { & $writeModules 'Trigger' $true }
+    if (-not $Rollback) { & $writeModules 'Trigger' $true 'last' }
 
     # ---- database settings: comments only ----
     $items = @(& $pick 'Database' 'Different')
@@ -1529,7 +1846,11 @@ function Write-SyncScript {
     if ($Rollback) {
         $drops = @($dataDrops)
         if ($TargetIncomplete -and $moduleDropComments.Count) {
-            $drops = @('-- The comparison of the target is incomplete: one of the next objects may have been there before the sync script (its CREATE then failed with Msg 2714). Uncomment only those the sync script created:') + $moduleDropComments + $drops
+            $incompleteNotes = @('-- The comparison of the target is incomplete: one of the next objects may have been there before the sync script (its CREATE then failed with Msg 2714). Uncomment only those the sync script created:')
+            if ($databaseTriggerDrops.Count) {
+                $incompleteNotes += '-- (Run with this whole file, the drop of a database trigger meets it disabled: see the first and the last section. Run on its own, an enabled trigger may refuse its own DROP: disable it first.)'
+            }
+            $drops = $incompleteNotes + $moduleDropComments + $drops
         }
         $title = 'Created by the sync script: NOT dropped. Uncomment a line only after checking nothing still needs it (data is lost)'
     }
@@ -1547,6 +1868,28 @@ function Write-SyncScript {
 
     if ($out.Count -gt 0 -and -not ($Diffs | Where-Object { $_.Status -ne 'Unverified' })) {
         if ($Rollback) { & $section 'Nothing to roll back' } else { & $section 'No differences to apply' }
+    }
+
+    # ---- (rollback) database triggers, enabled again ----
+    # The last statements of a rollback: until here the database triggers it disabled at its
+    # start stay disabled. After the commented-out drops as well, so that one of those that is
+    # uncommented runs while they are disabled too.
+    if ($Rollback -and ($enableLast.Count -or $restoreLast.Count)) {
+        if ($restoreLast.Count) { & $section 'Database triggers, enabled again: the ones that were enabled before the sync script, and the ones this script disabled at its start' }
+        else { & $section 'Database triggers, enabled again: the ones that were enabled before the sync script' }
+        & $add '-- Last, when nothing is left for them to refuse: an enabled one fires on the statements after it.'
+        foreach ($item in $enableLast) { & $add (Get-DatabaseTriggerStateSql $item 'ENABLE'); & $go }
+        if ($restoreLast.Count) {
+            & $add '-- The ones noted at the start of this script (enabled then, and the sync script may have created them): enabled again when they are still there. A warning is printed for one that is disabled without a note of this run: it may have been disabled all along, or an earlier run that stopped part way disabled it.'
+            foreach ($item in $restoreLast) {
+                & $add (Get-NotedTriggerStateSql $item $DisabledTriggersTable 'ENABLE')
+                # The same warning for every one of them: this script does not know why a
+                # trigger is disabled, and the state the source has it in does not tell.
+                & $add (Get-DisabledTriggerWarningSql $item $DisabledTriggersTable $TriggerNotDisabledWarning)
+                & $go
+            }
+            & $add (Get-DropTriggerNoteTableSql $DisabledTriggersTable); & $go
+        }
     }
 
     # Must stay the last lines of the script: the web app's combined script (app/lib/runs.js)

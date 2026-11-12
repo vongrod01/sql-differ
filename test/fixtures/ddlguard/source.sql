@@ -1,6 +1,9 @@
 -- What the source has and the target does not: an index, a procedure, three database triggers
--- (one of them refuses CREATE TRIGGER and DROP TRIGGER), another text for trSelf, and trGuard
--- enabled.
+-- (one of them refuses CREATE TRIGGER and DROP TRIGGER), another text for trSelf and for trNoDrop,
+-- trGuard enabled, and trHold disabled.
+-- First of all: nothing below would run while trHold is enabled.
+DISABLE TRIGGER trHold ON DATABASE;
+GO
 CREATE INDEX IX_Items_Name ON dbo.Items (Name);
 GO
 CREATE PROCEDURE dbo.pItems AS SELECT Id, Name, Qty FROM dbo.Items;
@@ -18,8 +21,16 @@ BEGIN
     ROLLBACK;
 END
 GO
--- A trigger fires on its own ALTER: trSelf is disabled while its text is changed.
+-- A trigger fires on its own ALTER: trSelf is disabled while its text is changed, and that of
+-- trNoDrop.
 DISABLE TRIGGER trSelf ON DATABASE;
+GO
+ALTER TRIGGER trNoDrop ON DATABASE FOR DROP_PROCEDURE, DROP_INDEX
+AS
+BEGIN
+    RAISERROR('trNoDrop: nothing is dropped here (source)', 16, 1);
+    ROLLBACK;
+END
 GO
 ALTER TRIGGER trSelf ON DATABASE FOR ALTER_TRIGGER
 AS

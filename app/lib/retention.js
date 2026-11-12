@@ -107,12 +107,15 @@ function prune({ now = Date.now(), days = config.RETENTION_DAYS, keep = config.R
     queue.push(...snapshotRunIds(byId.get(id).meta.spec));
   }
 
-  // Oldest first, one line per run in the log and on the console.
+  // Oldest first, one line per run in the log and on the console. A run is deleted whole or not
+  // at all (runs.remove): one that has a file in use is kept as it is, and tried again next time.
   for (const run of found.filter((r) => !kept.has(r.id)).reverse()) {
     try {
       runs.remove(run.id);
     } catch (err) {
-      console.error(`retention: run ${run.id} was not deleted: ${err.message}`);
+      // The message of a delete that was refused is for the page (Thai): its detail is the
+      // English of it.
+      console.error(`retention: run ${run.id} was not deleted: ${err.detail || err.message}`);
       kept.add(run.id);
       continue;
     }
@@ -188,15 +191,25 @@ function usage() {
 function schedule() {
   // "npm run dev" runs the server under node --watch, which starts it again at every saved
   // change, and sets this variable in it. Nothing is deleted then: the code that decides what
-  // goes may be half edited, and it would decide at every restart.
+  // goes may be half edited, and it would decide at every restart. That goes for what a delete
+  // left behind under a "deleted-" name too (runs.sweepDeleted): it stays until the server is
+  // started the usual way. The history page and the console say so where they speak of it.
   if (process.env.WATCH_REPORT_DEPENDENCIES) {
-    console.log('retention: old runs are not deleted while the server runs under node --watch (npm run dev).');
+    console.log('retention: nothing is deleted while the server runs under node --watch (npm run dev): no old runs, and no "deleted-" folders that a delete left behind.');
     return;
   }
   if (config.RETENTION_INVALID) {
     console.warn(`DATABASE_DIFF_RETENTION_DAYS is "${config.RETENTION_INVALID}", which is not a number of days: old runs are NOT deleted automatically. Use a whole number (0 = keep everything).`);
   }
   const run = () => {
+    // What a delete that was cut short left under its "deleted-" name (runs.remove). Not part of
+    // the retention period: it goes also when old runs are kept for ever.
+    try {
+      const swept = runs.sweepDeleted();
+      if (swept.length) console.log(`retention: removed what was left of ${swept.length} deleted run(s): ${swept.join(', ')}`);
+    } catch (err) {
+      console.error(`retention: ${err.message}`);
+    }
     try {
       const result = prune();
       if (result.reason && result.reason !== 'off') console.error(`retention: nothing was deleted: ${result.reason}`);

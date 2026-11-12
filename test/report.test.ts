@@ -166,8 +166,10 @@ test('report: the four kinds say what happens to the target, and a drift report 
     Different: 'chg ~ ต้องแก้',
     Unverified: 'unk ? ตรวจไม่ได้',
   });
-  // A sync never deletes: the card of what is extra says so.
-  assert.match(sync.KIND['OnlyInSource']?.d ?? '', /sync จะสร้างให้/);
+  // A sync never deletes: the card of what is extra says so. And it does not create or change
+  // everything: both cards say that some of it is written as a comment to run by hand.
+  assert.match(sync.KIND['OnlyInSource']?.d ?? '', /sync จะสร้างให้ ยกเว้นส่วนที่ไฟล์ sync เขียนไว้เป็นหมายเหตุให้ทำเอง$/);
+  assert.match(sync.KIND['Different']?.d ?? '', /sync จะแก้ปลายทางให้ตรงต้นแบบ ยกเว้นส่วนที่ไฟล์ sync เขียนไว้เป็นหมายเหตุให้ทำเอง$/);
   assert.match(sync.KIND['OnlyInTarget']?.d ?? '', /sync ไม่ลบให้/);
   // Drift reads from the older side to the later one: the colours flip with the words.
   assert.deepEqual(words(drift), {
@@ -317,11 +319,31 @@ test('report: each row says in one line what the sync script does with it', () =
   assert.match(say('Table', 'dbo.T', 'OnlyInSource', '', T, null, fewer), /ไม่รวม index, check constraint, foreign key/);
 
   // Different: what can be changed by a statement, and what the script leaves to do by hand.
-  assert.equal(say('Column', 'dbo.T.C', 'Different', 'Type: source bigint, target int', T), 'sync จะแก้ปลายทางจากค่าที่ขีดฆ่าเป็นค่าใหม่');
+  // A type, NULL / NOT NULL or collation is changed with ALTER COLUMN, which the script writes
+  // as a comment when the column is computed or a computed column uses it. The row does not
+  // say whether that is so (it has only what differs), so the sentence says it.
+  const ALTERED = 'sync จะแก้ปลายทางจากค่าที่ขีดฆ่าเป็นค่าใหม่';
+  const UNLESS_COMPUTED = ' (ถ้าเป็นคอลัมน์คำนวณ หรือมีคอลัมน์คำนวณใช้คอลัมน์นี้ sync จะเขียนเป็นหมายเหตุให้ทำเองแทน)';
+  assert.equal(say('Column', 'dbo.T.C', 'Different', 'Type: source bigint, target int', T), ALTERED + UNLESS_COMPUTED);
+  assert.equal(say('Column', 'dbo.T.C', 'Different', 'Nullable: source NOT NULL, target NULL', T), ALTERED + UNLESS_COMPUTED);
+  // A collation alone is not changed on a column of a user-defined type either.
+  assert.equal(say('Column', 'dbo.T.C', 'Different', 'Collation: source Thai_CI_AS, target Thai_BIN', T),
+    ALTERED + ' (ถ้าเป็นคอลัมน์คำนวณ หรือมีคอลัมน์คำนวณใช้คอลัมน์นี้ หรือเป็นคอลัมน์ของ type ที่สร้างเอง sync จะเขียนเป็นหมายเหตุให้ทำเองแทน)');
+  // A default, or PERSISTED, is changed without ALTER COLUMN of the type: always a statement.
+  assert.equal(say('Column', 'dbo.T.C', 'Different', 'Default: source ((1)), target ((0))', T), ALTERED);
+  assert.equal(say('Column', 'dbo.T.C', 'Different', 'Persisted: source PERSISTED, target (none)', T), ALTERED);
+  // PERSISTED among the differences says the column is computed: the rest of it is a comment.
+  assert.equal(say('Column', 'dbo.T.C', 'Different', 'Nullable: source NOT NULL, target NULL\nPersisted: source PERSISTED, target (none)', T),
+    'เป็นคอลัมน์คำนวณ: sync จะแก้ให้เฉพาะการเก็บค่า (PERSISTED) ส่วนชนิดข้อมูล, NULL และ collation แก้ด้วยคำสั่งไม่ได้ sync เขียนเป็นหมายเหตุให้ทำเอง');
+  // A type change needs the default dropped first, and a default nobody could read is not dropped.
+  assert.equal(say('Column', 'dbo.T.C', 'Different', 'Type: source bigint, target int\nDefault: not readable on target (not compared)', T),
+    'จะเปลี่ยนชนิดข้อมูลต้องลบค่าเริ่มต้นก่อน แต่ค่าเริ่มต้นของปลายทางอ่านไม่ได้ sync จึงเขียนเป็นหมายเหตุให้ทำเอง');
+  assert.match(say('Column', 'dbo.T.C', 'Different', 'Type: source bigint, target int\nDefault: not readable on source (not compared)', T), /หรือปลายทางมีค่าเริ่มต้นอยู่ sync จะเขียนเป็นหมายเหตุให้ทำเองแทน\)$/);
   assert.match(say('Column', 'dbo.T.C', 'Different', 'Identity: source IDENTITY(1,1), target (none)', T), /เป็นหมายเหตุให้ทำเอง/);
   assert.match(say('Column', 'dbo.T.C', 'Different', 'Computed: source ([a]+(1)), target ([a]+(2))', T), /เป็นหมายเหตุให้ทำเอง/);
   assert.match(say('Column', 'dbo.T.C', 'Different', 'Ordinal: source 2, target 3', T), /sync ไม่ย้ายให้/);
   // The type is changed, the place of the column is not.
+  assert.match(say('Column', 'dbo.T.C', 'Different', 'Default: source ((1)), target ((0))\nOrdinal: source 2, target 3', T), /^sync จะแก้ปลายทางจากค่าที่ขีดฆ่าเป็นค่าใหม่ ยกเว้นลำดับคอลัมน์ ซึ่ง sync ไม่ย้ายให้$/);
   assert.match(say('Column', 'dbo.T.C', 'Different', 'Type: source bigint, target int\nOrdinal: source 2, target 3', T), /^sync จะแก้ปลายทางจากค่าที่ขีดฆ่าเป็นค่าใหม่ ยกเว้นลำดับคอลัมน์/);
   // No line could be read as from -> to, so nothing is struck through: the sentence does not say so.
   assert.equal(say('Column', 'dbo.T.C', 'Different', "Default: source (N'x, target y'), target (N'z')", T), 'sync จะแก้ปลายทางให้ตรงต้นแบบ');
@@ -353,6 +375,62 @@ test('report: each row says in one line what the sync script does with it', () =
   assert.match(say('Index', 'dbo.T.IX', 'Different', 'Columns: source A, target B\nFilter: not readable on source (not compared)', T), /sync จึงไม่แก้ให้/);
   assert.match(say('Index', 'dbo.T.IX', 'Different', 'Columns: source A, target B\nFilter: not readable on target (not compared)', T), /ลบของเดิมแล้วสร้างใหม่/);
 
+  // ---- what the script writes as a comment, where the row itself shows it ----
+  const NOTE = /เขียน[^ ]*เป็นหมายเหตุให้ทำเอง|มีแต่หมายเหตุ/;
+  // A new column whose type or computed definition could not be read: nothing to add it with.
+  assert.match(say('Column', 'dbo.T.C', 'OnlyInSource', 'Type: (not readable); Nullable: NULL', T), /อ่านไม่ได้ sync จึงสร้างให้ไม่ได้ มีแต่หมายเหตุ$/);
+  assert.match(say('Column', 'dbo.T.C', 'OnlyInSource', 'Type: int; Nullable: NULL; Computed: (not readable)', T), /อ่านไม่ได้ sync จึงสร้างให้ไม่ได้ มีแต่หมายเหตุ$/);
+  // A computed column is added with its formula alone: a type that could not be read is not in
+  // the way (the script writes the ADD), and the page must not say it is.
+  assert.equal(say('Column', 'dbo.T.C', 'OnlyInSource', 'Type: (not readable); Nullable: NULL; Computed: ([a]+(1))', T), 'ปลายทางยังไม่มีคอลัมน์นี้ sync จะสร้างให้');
+  assert.equal(say('Column', 'dbo.T.C', 'OnlyInSource', 'Type: (not readable); Nullable: NOT NULL; Computed: ([a]+(1)); Persisted: PERSISTED', T), 'ปลายทางยังไม่มีคอลัมน์นี้ sync จะสร้างให้');
+  assert.match(say('Column', 'dbo.T.C', 'OnlyInSource', 'Type: (not readable); Nullable: NULL; Computed: (not readable)', T), /อ่านไม่ได้ sync จึงสร้างให้ไม่ได้ มีแต่หมายเหตุ$/);
+  // An index of a kind the script cannot write (columnstore, XML, spatial): new, or as what
+  // would replace the one that is there. A changed index that does not say its kind may be one.
+  assert.match(say('Index', 'dbo.T.IX', 'OnlyInSource', 'Kind: INDEX; Type: NONCLUSTERED COLUMNSTORE; Columns: A', T), /^ปลายทางยังไม่มี index นี้ แต่ index แบบ NONCLUSTERED COLUMNSTORE sync เขียนคำสั่งสร้างไม่ได้ มีแต่หมายเหตุให้ทำเอง$/);
+  assert.match(say('Index', 'dbo.T.IX', 'OnlyInSource', 'Kind: INDEX; Type: NONCLUSTERED; Columns: A; Filter: (not readable)', T), /เงื่อนไขกรองของต้นแบบอ่านไม่ได้ sync จึงสร้างให้ไม่ได้ มีแต่หมายเหตุ$/);
+  assert.match(say('Index', 'dbo.T.IX', 'Different', 'Type: source CLUSTERED COLUMNSTORE, target CLUSTERED', T), /^index แบบ CLUSTERED COLUMNSTORE sync เขียนคำสั่งสร้างไม่ได้ จึงไม่ลบของเดิม มีแต่หมายเหตุให้ทำเอง$/);
+  assert.equal(say('Index', 'dbo.T.IX', 'Different', 'Type: source CLUSTERED, target NONCLUSTERED', T), 'sync จะลบของเดิมแล้วสร้างใหม่ตามต้นแบบ');
+  assert.equal(say('Index', 'dbo.T.IX', 'Different', 'Include: source A, target (none)', T), 'sync จะลบของเดิมแล้วสร้างใหม่ตามต้นแบบ (ถ้าเป็น index แบบ columnstore, XML หรือ spatial sync จะเขียนเป็นหมายเหตุให้ทำเองแทน)');
+  // A constraint is always replaced by a statement.
+  assert.equal(say('Check constraint', 'dbo.T.CK', 'Different', 'Expression: source ([a]>(0)), target ([a]>(1))', T), 'sync จะลบของเดิมแล้วสร้างใหม่ตามต้นแบบ');
+  assert.equal(say('Foreign key', 'dbo.T.FK', 'Different', 'OnDelete: source CASCADE, target NO_ACTION', T), 'sync จะลบของเดิมแล้วสร้างใหม่ตามต้นแบบ');
+  assert.match(say('Check constraint', 'dbo.T.CK', 'OnlyInSource', 'Expression: (not readable); State: ENABLED', T), /เงื่อนไขของต้นแบบอ่านไม่ได้ sync จึงสร้างให้ไม่ได้ มีแต่หมายเหตุ$/);
+  // A synonym for an object in another database or on another server (a name of 3 or 4 parts,
+  // dots inside brackets not counted): a comment, new or changed, whichever side names it.
+  assert.equal(say('Synonym', 'dbo.s', 'OnlyInSource', 'BaseObject: [dbo].[a.b]'), 'ปลายทางยังไม่มี synonym นี้ sync จะสร้างให้');
+  assert.match(say('Synonym', 'dbo.s', 'OnlyInSource', 'BaseObject: [other].[dbo].[a]'), /^synonym นี้ชี้ไปฐานอื่นหรือ server อื่น .*sync จึงเขียนคำสั่งสร้างไว้เป็นหมายเหตุให้ตรวจแล้วทำเอง$/);
+  assert.equal(say('Synonym', 'dbo.s', 'Different', 'BaseObject: source [dbo].[a], target [dbo].[b]'), 'sync จะลบแล้วสร้างใหม่ให้ชี้ตามต้นแบบ');
+  for (const detail of ['BaseObject: source [other].[dbo].[a], target [dbo].[b]', 'BaseObject: source [dbo].[a], target [srv].[other].[dbo].[b]', 'BaseObject: source other..a, target [dbo].[b]']) {
+    assert.match(say('Synonym', 'dbo.s', 'Different', detail), /^synonym นี้ชี้ไปฐานอื่นหรือ server อื่น .*sync จึงเขียนคำสั่งไว้เป็นหมายเหตุให้ตรวจแล้วทำเอง$/, detail);
+  }
+
+  // ---- a target read without VIEW DEFINITION: what is "only in source" may be there, hidden ----
+  const hiddenTarget = coreFor({ noViewDefinition: [['target', 'someone']] });
+  const sayHidden = (cat: string, obj: string, status: string, detail = '', group: [string, string] | null = null, self: Row | null = null) => say(cat, obj, status, detail, group, self, hiddenTarget);
+  // A new table: its CREATE TABLE is a statement, what stands on it waits as comments.
+  const newTable = sayHidden('Table', 'dbo.T', 'OnlyInSource', '', T);
+  assert.match(newTable, /^ปลายทางยังไม่มีตารางนี้ sync จะสร้างทั้งตาราง พร้อมคอลัมน์และ primary key ส่วน index, check constraint, foreign key ของมัน sync เขียนเป็นหมายเหตุให้ทำเอง/);
+  assert.doesNotMatch(newTable, /รวมทั้ง index/);
+  // Only the categories that were compared are written at all.
+  const fewerHidden = coreFor({ categories: ['Table', 'Column', 'Index'], noViewDefinition: [['target', 'someone']] });
+  const newTableFewer = say('Table', 'dbo.T', 'OnlyInSource', '', T, null, fewerHidden);
+  assert.match(newTableFewer, /ส่วน index ของมัน sync เขียนเป็นหมายเหตุให้ทำเอง/);
+  assert.match(newTableFewer, /ไม่รวม check constraint, foreign key เพราะไม่ได้เลือกเทียบหมวดนั้น/);
+  // A check without a name cannot be paired with one the login could not read.
+  assert.match(sayHidden('Check constraint', 'dbo.T (check: ([a]>(0)))', 'OnlyInSource', 'Expression: ([a]>(0)); State: ENABLED', T), /^check นี้ไม่มีชื่อ .*sync จึงเขียนคำสั่งสร้างไว้เป็นหมายเหตุให้ทำเอง$/);
+  assert.equal(sayHidden('Check constraint', 'dbo.T.CK', 'OnlyInSource', 'Expression: ([a]>(0)); State: ENABLED', T), 'ปลายทางยังไม่มี check constraint นี้ sync จะสร้างให้');
+  assert.equal(say('Check constraint', 'dbo.T (check: ([a]>(0)))', 'OnlyInSource', 'Expression: ([a]>(0)); State: ENABLED', T), 'ปลายทางยังไม่มี check constraint นี้ sync จะสร้างให้');
+  // A module is a plain CREATE, which fails instead of replacing one that is there.
+  assert.match(sayHidden('Stored procedure', 'dbo.p', 'OnlyInSource', 'Type: SQL_STORED_PROCEDURE'), /sync จะสร้างด้วย CREATE ธรรมดา ถ้ามีอยู่แล้วแต่มองไม่เห็น คำสั่งจะ fail โดยไม่เขียนทับ$/);
+  // The index of a view that is itself new waits for its CREATE VIEW.
+  const newView = row(hiddenTarget, 'View', 'dbo.v', 'OnlyInSource', 'Type: VIEW', ['view', 'dbo.v'], 'a', null);
+  assert.match(sayHidden('Index', 'dbo.v.IX', 'OnlyInSource', 'Kind: UNIQUE INDEX; Type: CLUSTERED; Columns: A', ['view', 'dbo.v'], newView), NOTE);
+  assert.equal(say('Index', 'dbo.v.IX', 'OnlyInSource', 'Kind: UNIQUE INDEX; Type: CLUSTERED; Columns: A', ['view', 'dbo.v'], newView), 'ปลายทางยังไม่มี index นี้ sync จะสร้างให้');
+  // The other side read without it changes nothing in what the sync script writes.
+  const hiddenSource = coreFor({ noViewDefinition: [['source', 'someone']] });
+  assert.match(say('Table', 'dbo.T', 'OnlyInSource', '', T, null, hiddenSource), /รวมทั้ง index, check และ foreign key ของมัน$/);
+
   // An index that is only in the target, on a view the script writes again: ALTER VIEW drops it.
   const V: [string, string] = ['view', 'dbo.v'];
   const rewritten = row(sync, 'View', 'dbo.v', 'Different', 'Definition differs', V, 'a', 'b');
@@ -361,6 +439,12 @@ test('report: each row says in one line what the sync script does with it', () =
   assert.match(say('Index', 'dbo.v.IX', 'OnlyInTarget', 'Kind: INDEX', V, kept), /sync ไม่ลบให้/);
   assert.match(say('Index', 'dbo.v.IX', 'OnlyInTarget', 'Kind: INDEX', V, null), /sync ไม่ลบให้/);
   assert.match(say('Index', 'dbo.T.IX', 'OnlyInTarget', 'Kind: INDEX', T, rewritten), /sync ไม่ลบให้/);
+  // A changed index of a view. On a view the script writes again it is created with the view.
+  // On another view its clustered index is a comment (dropping it drops the others): said when
+  // the row shows the kind, and as a reservation when it does not.
+  assert.equal(say('Index', 'dbo.v.IX', 'Different', 'Include: source A, target (none)', V, rewritten), 'sync จะลบของเดิมแล้วสร้างใหม่ตามต้นแบบ');
+  assert.equal(say('Index', 'dbo.v.IX', 'Different', 'Include: source A, target (none)', V, null), 'sync จะลบของเดิมแล้วสร้างใหม่ตามต้นแบบ (ถ้าเป็น clustered index ของ view sync จะเขียนเป็นหมายเหตุให้ทำเองแทน)');
+  assert.match(say('Index', 'dbo.v.IX', 'Different', 'Type: source CLUSTERED, target NONCLUSTERED', V, kept), /^clustered index ของ view ต่างกัน .*sync จึงเขียนเป็นหมายเหตุให้ทำเอง$/);
 
   // A drift report says what changed, and nothing about a sync.
   for (const [status, detail] of [['OnlyInSource', 'Type: int'], ['OnlyInTarget', 'Type: int'], ['Different', 'Type: source int, target bigint'], ['Unverified', 'Type: not readable on source']] as const) {
@@ -528,12 +612,18 @@ function itemOf(snapshot: SnapshotFile, category: string, key: string): Snapshot
 }
 
 const TABLE_CHILDREN = ['Column', 'Index', 'Foreign key', 'Check constraint'];
+const MODULE_CATEGORIES = ['View', 'Stored procedure', 'Function', 'Trigger'];
 
 interface Checked {
   script: ReportScript;
   core: Core;
   rows: Row[];
   groups: { tables: Group[]; others: Group[] };
+  // What the page says of the row of this object, with the row of its table or view at hand.
+  say(object: string): string;
+  // How many rows were held against their block in the sync script, and how many of those
+  // blocks hold nothing but comments.
+  blocks: { checked: number; commented: number };
 }
 
 // Everything a report of the engine must hold, whatever was compared. Returns the report for
@@ -630,6 +720,48 @@ function checkReport(c: Comparison, source: SnapshotFile, target: SnapshotFile, 
     }
   });
 
+  // What the page says of a row, against what the sync script of the same comparison does with
+  // it. A changed column, index or constraint and every module that is not a database trigger
+  // has a line in the script that names it, and its statements follow that line: for a column,
+  // an index or a constraint up to the next GO, for a module up to the line of the next object
+  // or the next section. (The other rows have no line of their own in the script.)
+  // - A block that holds nothing but comments: the sentence must say so, or say that it may be.
+  // - A sentence that says "by hand" without reservation: the block must hold no statement.
+  const syncLines = readFileSync(c.files.sync, 'utf8').replace(/^\uFEFF/, '').split(/\r?\n/);
+  const sectionLine = /^-- =+$/;
+  const headOf = (r: Row): string | null => {
+    if (r.obj.endsWith(' (database trigger)')) return null;
+    const oneLine = (text: string) => `-- ${text.replace(/[\r\n]+/g, ' ')}`;
+    if (r.status === 'Different' && (TABLE_CHILDREN.includes(r.cat) || MODULE_CATEGORIES.includes(r.cat))) return oneLine(`${r.obj}: ${r.detail}`);
+    if (r.status === 'OnlyInSource' && MODULE_CATEGORIES.includes(r.cat)) return oneLine(`${r.obj}: only in source`);
+    return null;
+  };
+  const heads = new Map<number, Row>();
+  for (const r of rows) {
+    const head = headOf(r);
+    const at = head === null ? -1 : syncLines.indexOf(head);
+    // Not every such row has a line: the index of a view the script writes again is created
+    // with its view.
+    if (at >= 0) heads.set(at, r);
+  }
+  assert.ok(heads.size > 0, 'the sync script names the objects it changes');
+  const groupOf = (r: Row) => all.find((g) => g.self === r || g.items.includes(r));
+  let commentedBlocks = 0;
+  for (const [at, r] of heads) {
+    let end = at + 1;
+    if (TABLE_CHILDREN.includes(r.cat)) while (end < syncLines.length && syncLines[end] !== 'GO') end++;
+    else while (end < syncLines.length && !heads.has(end) && !sectionLine.test(syncLines[end] ?? '')) end++;
+    const active = syncLines.slice(at + 1, end).filter((l) => l.trim() !== '' && !l.startsWith('--') && l !== 'GO');
+    const self = groupOf(r)?.self ?? null;
+    const text = core.sentence(r, core.parseDetail(r), { self: self === r ? null : self });
+    const where = `${r.cat} ${r.obj}: "${text}"\n${syncLines.slice(at, end).join('\n')}`;
+    if (active.length === 0) {
+      commentedBlocks++;
+      assert.match(text, /หมายเหตุ|ไม่ย้ายให้|ไม่เขียนคำสั่ง/, `the script only has comments for ${where}`);
+    }
+    if (!text.includes('sync จะ')) assert.deepEqual(active, [], `the page says by hand, the script has statements for ${where}`);
+  }
+
   // Every property the engine read, in either database, has a Thai name in its category.
   for (const snapshot of [source, target]) {
     for (const [category, items] of Object.entries(snapshot.categories)) {
@@ -638,7 +770,13 @@ function checkReport(c: Comparison, source: SnapshotFile, target: SnapshotFile, 
       }
     }
   }
-  return { script, core, rows, groups };
+  const say = (object: string): string => {
+    const r = rows.find((candidate) => candidate.obj === object);
+    assert.ok(r, `the report has a row for ${object}`);
+    const self = groupOf(r)?.self ?? null;
+    return core.sentence(r, core.parseDetail(r), { self: self === r ? null : self });
+  };
+  return { script, core, rows, groups, say, blocks: { checked: heads.size, commented: commentedBlocks } };
 }
 
 const skip = skipWithoutServer();
@@ -653,8 +791,12 @@ test('report: every difference of a real comparison is shown once, under the tab
   const targetSnapshot = readSnapshot(before.files.targetSnapshot);
 
   await t.test('core: tables, the indexes of views and database triggers', () => {
-    const { script, groups, rows, core } = checkReport(before, sourceSnapshot, targetSnapshot);
+    const { script, groups, rows, core, blocks } = checkReport(before, sourceSnapshot, targetSnapshot);
     assert.equal(script.META.perspective, 'sync');
+    // The sentences of the changed columns, indexes and constraints and of the modules were
+    // held against the sync script. In this fixture the script has a statement for each.
+    assert.ok(blocks.checked >= 20, `${blocks.checked} rows were checked against the sync script`);
+    assert.equal(blocks.commented, 0);
     assert.deepEqual(plain(script.META.noViewDefinition), []);
     assert.equal(core.TIMELINE, false);
 
@@ -707,13 +849,33 @@ test('report: every difference of a real comparison is shown once, under the tab
     const file = path.join(path.dirname(before.files.targetSnapshot), 'hidden.target.snapshot.json');
     writeFileSync(file, JSON.stringify(hidden), 'utf8');
     const incomplete = compare({ dir: 'report', name: 'incomplete', source, targetSnapshot: file });
-    const { script, rows } = checkReport(incomplete, sourceSnapshot, hidden);
+    const { script, rows, say } = checkReport(incomplete, sourceSnapshot, hidden);
     assert.equal(script.META.perspective, 'sync');
     assert.equal(script.META.noViewDefinition.length, 1);
     assert.equal(script.META.noViewDefinition[0]?.[0], 'target');
     assert.ok(script.META.noViewDefinition[0]?.[1], 'the login that read the target');
     assert.equal(script.META.warnings.length, 1);
     assert.equal(rows.find((r) => r.obj === 'dbo.pGetOrder')?.status, 'OnlyInSource');
+
+    // What the sync script of this comparison writes as comments, the page says as such.
+    const syncScript = readFileSync(incomplete.files.sync, 'utf8');
+    // A new table: what stands on it waits for its CREATE TABLE.
+    assert.equal(rows.find((r) => r.obj === 'dbo.Shipments')?.status, 'OnlyInSource');
+    assert.match(syncScript, /^-- Run this only if the CREATE TABLE of dbo\.Shipments above succeeded: /m);
+    assert.match(say('dbo.Shipments'), /sync จะสร้างทั้งตาราง พร้อมคอลัมน์และ primary key ส่วน index, check constraint, foreign key ของมัน sync เขียนเป็นหมายเหตุให้ทำเอง/);
+    assert.doesNotMatch(say('dbo.Shipments'), /รวมทั้ง index/);
+    // A check without a name: the same one may be there under a generated name.
+    const unnamed = 'dbo.Customers (check: (len([Name])>(0)))';
+    assert.equal(rows.find((r) => r.obj === unnamed)?.status, 'OnlyInSource');
+    assert.match(syncScript, /^-- Run this only if dbo\.Customers does not have this check yet [^\n]*: ALTER TABLE \[dbo\]\.\[Customers\] WITH CHECK ADD CHECK /m);
+    assert.doesNotMatch(syncScript, /^ALTER TABLE \[dbo\]\.\[Customers\] WITH CHECK ADD CHECK /m);
+    assert.match(say(unnamed), /^check นี้ไม่มีชื่อ .*sync จึงเขียนคำสั่งสร้างไว้เป็นหมายเหตุให้ทำเอง$/);
+    assert.doesNotMatch(say(unnamed), /sync จะสร้างให้/);
+    // A check with a name is a statement, and said to be one.
+    assert.match(syncScript, /^ALTER TABLE \[dbo\]\.\[Orders\] WITH CHECK ADD CONSTRAINT \[CK_Orders_Amount\] CHECK /m);
+    assert.equal(say('dbo.Orders.CK_Orders_Amount'), 'ปลายทางยังไม่มี check constraint นี้ sync จะสร้างให้');
+    // A hidden procedure reads as new: a plain CREATE, which fails when it is there.
+    assert.match(say('dbo.pGetOrder'), /CREATE ธรรมดา/);
   });
 
   await t.test('drift: an older snapshot against a database is read as a timeline', () => {
@@ -739,8 +901,26 @@ test('report: every difference of a real comparison is shown once, under the tab
     buildFixture('edge', edgeSource, edgeTarget);
     const edge = compare({ dir: 'report', name: 'edge', source: edgeSource, target: edgeTarget });
     assert.equal(edge.exitCode, 1, edge.log);
-    const { groups } = checkReport(edge, readSnapshot(edge.files.sourceSnapshot), readSnapshot(edge.files.targetSnapshot));
+    const { groups, rows, say, blocks } = checkReport(edge, readSnapshot(edge.files.sourceSnapshot), readSnapshot(edge.files.targetSnapshot));
     assert.ok(groups.tables.length > 0 && groups.others.length > 0);
+    // This fixture is the one with changes the script leaves to do by hand: a computed column
+    // (twice), a primary key, a function of another type, a trigger on another table.
+    assert.ok(blocks.checked >= 9 && blocks.commented >= 5, JSON.stringify(blocks));
+
+    // dbo.Pnn.Twice is a computed column whose NOT NULL differs: the sync script cannot alter it
+    // and writes a comment. The row holds nothing that says the column is computed, so the page
+    // cannot know: it must not say flatly that the sync script changes it.
+    const syncScript = readFileSync(edge.files.sync, 'utf8');
+    assert.equal(rows.find((r) => r.obj === 'dbo.Pnn.Twice')?.detail, 'Nullable: source NOT NULL, target NULL');
+    assert.match(syncScript, /^-- dbo\.Pnn\.Twice: [^\n]*\r?\n-- Not scripted: SQL Server cannot ALTER the type, collation or NULL \/ NOT NULL of a computed column/m);
+    assert.doesNotMatch(syncScript, /^ALTER TABLE \[dbo\]\.\[Pnn\]/m);
+    assert.match(say('dbo.Pnn.Twice'), /ถ้าเป็นคอลัมน์คำนวณ .*sync จะเขียนเป็นหมายเหตุให้ทำเองแทน\)$/);
+    // The computed definition itself differs: that the page sees.
+    assert.match(say('dbo.Items.Total'), /^IDENTITY และสูตรคำนวณแก้ด้วยคำสั่งไม่ได้ .*เป็นหมายเหตุให้ทำเอง$/);
+    // A synonym for an object in another database: a comment, said without "if".
+    assert.match(syncScript, /^-- Not run: dbo\.synRemote is a synonym for an object in another database or on another server/m);
+    assert.match(say('dbo.synRemote'), /^synonym นี้ชี้ไปฐานอื่นหรือ server อื่น .*เป็นหมายเหตุให้ตรวจแล้วทำเอง$/);
+    assert.doesNotMatch(say('dbo.synRemote'), /sync จะ/);
   });
 
   await t.test('batch: the index says the same four words', () => {

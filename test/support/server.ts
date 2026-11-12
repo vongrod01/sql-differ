@@ -2,6 +2,7 @@
 // the app's own 4870, and only over the scratch folders the environment names.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { closeSync, openSync } from 'node:fs';
 import { createServer } from 'node:net';
 import path from 'node:path';
 import { ROOT } from './engine.js';
@@ -24,7 +25,11 @@ export function freePort(): Promise<number> {
 // server deletes old runs (DATABASE_DIFF_RETENTION_DAYS; 0, never, when it does not say), and
 // whether it runs as under node --watch (WATCH_REPORT_DEPENDENCIES, which the shell of a
 // developer may well have set).
-export async function withServer<T>(use: (base: string) => Promise<T>, env: Record<string, string> = {}): Promise<T> {
+// log: a file that gets what the server prints (its console), for a test that looks at it.
+// preload: a module the server loads before anything else (node --require). Given to node as an
+// argument of its own, so its path may hold any character (a value of NODE_OPTIONS is split at
+// spaces).
+export async function withServer<T>(use: (base: string) => Promise<T>, env: Record<string, string> = {}, { log = '', preload = '' } = {}): Promise<T> {
   const all: NodeJS.ProcessEnv = { ...process.env };
   for (const key of Object.keys(all)) {
     if (['DATABASE_DIFF_RETENTION_DAYS', 'WATCH_REPORT_DEPENDENCIES'].includes(key.toUpperCase())) delete all[key];
@@ -32,7 +37,9 @@ export async function withServer<T>(use: (base: string) => Promise<T>, env: Reco
   Object.assign(all, { DATABASE_DIFF_RETENTION_DAYS: '0' }, env);
   assert.ok(all['DATABASE_DIFF_DATA'], 'a test server needs DATABASE_DIFF_DATA');
   const port = await freePort();
-  const server = spawn(process.execPath, [path.join(ROOT, 'app', 'server.js')], { env: { ...all, PORT: String(port) }, windowsHide: true, stdio: 'ignore' });
+  const sink = log ? openSync(log, 'w') : null;
+  const server = spawn(process.execPath, [...(preload ? ['--require', preload] : []), path.join(ROOT, 'app', 'server.js')], { env: { ...all, PORT: String(port) }, windowsHide: true, stdio: sink === null ? 'ignore' : ['ignore', sink, sink] });
+  if (sink !== null) closeSync(sink);
   const base = `http://127.0.0.1:${port}`;
   try {
     let up = false;
@@ -46,6 +53,9 @@ export async function withServer<T>(use: (base: string) => Promise<T>, env: Reco
     assert.ok(up, 'app/server.js did not start');
     return await use(base);
   } finally {
+    // Its console file is whole only once the process has gone.
+    const gone = new Promise((resolve) => server.once('close', resolve));
     server.kill();
+    await gone;
   }
 }
