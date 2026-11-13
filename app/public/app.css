@@ -1,47 +1,28 @@
+/* Dark theme only, with the same palette as the HTML report (templates/report.html): green is
+   something to add, red is extra, amber is a change, grey is unverified. color-scheme: dark also
+   darkens the browser's own controls (select list, scrollbars, checkboxes). */
 :root {
-  color-scheme: light dark;
-  --bg: #f5f6f8;
-  --panel: #ffffff;
-  --text: #1c2230;
-  --muted: #5d6878;
-  --border: #dfe3e9;
-  --head: #eef1f5;
-  --accent: #2f5bd3;
-  --accent-text: #ffffff;
-  --src: #b42318;
-  --src-bg: #fdeceb;
-  --tgt: #1a7f37;
-  --tgt-bg: #e6f4ea;
-  --chg: #8a5d00;
-  --chg-bg: #fff4d6;
-  --unk: #4b5563;
-  --unk-bg: #eceff3;
-  --err: #b42318;
-  --ok: #1a7f37;
-  --code-bg: #f8f9fb;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #12151a;
-    --panel: #1a1e25;
-    --text: #e3e7ed;
-    --muted: #98a3b3;
-    --border: #2c333e;
-    --head: #20252d;
-    --accent: #8eaaff;
-    --accent-text: #0f1420;
-    --src: #ff9b94;
-    --src-bg: #3b1d1b;
-    --tgt: #74d491;
-    --tgt-bg: #17311f;
-    --chg: #e8c060;
-    --chg-bg: #362c15;
-    --unk: #b4bfcd;
-    --unk-bg: #262c35;
-    --err: #ff9b94;
-    --ok: #74d491;
-    --code-bg: #151920;
-  }
+  color-scheme: dark;
+  --bg: #11141a;
+  --panel: #191d25;
+  --text: #e4e8ee;
+  --muted: #9aa5b5;
+  --border: #2b323d;
+  --head: #1f242d;
+  --accent: #8fabff;
+  --accent-text: #0f1420;
+  --src: #ff9d95;
+  --src-bg: #3a1c1a;
+  --tgt: #79d496;
+  --tgt-bg: #16301f;
+  --chg: #e9c262;
+  --chg-bg: #352b14;
+  --unk: #b6c0cd;
+  --unk-bg: #262c35;
+  --err: #ff9d95;
+  --ok: #79d496;
+  --warn-line: #6b5520;
+  --code-bg: #141820;
 }
 * { box-sizing: border-box; }
 /* Author display rules (label.field, .check, ...) would otherwise beat the browser's [hidden] rule. */
@@ -50,7 +31,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font: 15px/1.6 "Segoe UI", "Leelawadee UI", Tahoma, system-ui, sans-serif;
+  font: 15px/1.6 "Leelawadee UI", "Segoe UI", Tahoma, system-ui, sans-serif;
 }
 a { color: var(--accent); }
 h1 { font-size: 22px; margin: 0 0 4px; }
@@ -137,14 +118,19 @@ tr.clickable:hover td { background: var(--head); }
 .counts { display: flex; flex-wrap: wrap; gap: 6px; }
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin: 16px 0; }
 .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; }
-.card .n { display: block; font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.card { border-left-width: 4px; }
+.card.src { border-left-color: var(--src); background: linear-gradient(90deg, var(--src-bg), var(--panel) 70%); }
+.card.tgt { border-left-color: var(--tgt); background: linear-gradient(90deg, var(--tgt-bg), var(--panel) 70%); }
+.card.chg { border-left-color: var(--chg); background: linear-gradient(90deg, var(--chg-bg), var(--panel) 70%); }
+.card.unk { border-left-color: var(--unk); background: linear-gradient(90deg, var(--unk-bg), var(--panel) 70%); }
+.card .n { display: block; font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.2; }
 /* The word of a kind of difference, and one line on what it means (kindWords in app.js). */
 .card .t { display: block; font-weight: 600; }
 .card .d { display: block; font-size: 14px; color: var(--muted); }
 .card.src .n { color: var(--src); } .card.tgt .n { color: var(--tgt); } .card.chg .n { color: var(--chg); } .card.unk .n { color: var(--unk); }
 
 .notice { border-radius: 10px; padding: 10px 14px; margin: 12px 0; border: 1px solid var(--border); background: var(--panel); word-break: break-word; }
-.notice.warn { border-color: var(--chg); background: var(--chg-bg); }
+.notice.warn { border-color: var(--warn-line); background: var(--chg-bg); }
 .notice.error { border-color: var(--err); background: var(--src-bg); }
 .notice.ok { border-color: var(--ok); background: var(--tgt-bg); }
 
