@@ -27,7 +27,7 @@
     --unk-bg: rgba(255, 255, 255, .10);
     --warn-line: rgba(255, 159, 10, .42);
     --err-bg: rgba(255, 69, 58, .17);
-    --code-bg: rgba(4, 6, 12, .55);
+    --code-bg: #0d1017;
     --add-row: rgba(48, 209, 88, .22);
     --del-row: rgba(255, 69, 58, .24);
     --tint-add: linear-gradient(180deg, rgba(48, 209, 88, .40), rgba(48, 209, 88, .16)), var(--fill-reg);
@@ -37,17 +37,17 @@
     --line-add: rgba(48, 209, 88, .45);
     --line-del: rgba(255, 69, 58, .45);
     --line-chg: rgba(255, 159, 10, .45);
-    --fill-clear: linear-gradient(180deg, rgba(255, 255, 255, .17), rgba(255, 255, 255, .07));
-    --fill-reg: linear-gradient(180deg, rgba(36, 42, 60, .88), rgba(20, 24, 36, .85));
-    --fill-inset: rgba(0, 0, 0, .30);
-    --edge: inset 0 1px 0 rgba(255, 255, 255, .30), inset 0 -1px 0 rgba(255, 255, 255, .04);
+    --fill-clear: #242a36;
+    --fill-reg: #171b26;
+    --fill-inset: #0d1017;
+    --edge: 0 0 0 transparent;
     --edge-line: rgba(255, 255, 255, .12);
-    --lift: 0 12px 34px rgba(0, 0, 0, .32);
-    --blur: blur(24px) saturate(170%);
+    --lift: 0 0 0 transparent;
+    --blur: none;
     --font-body: "Leelawadee UI", "Segoe UI", Tahoma, sans-serif;
     --font-code: Consolas, "Cascadia Mono", "Leelawadee UI", monospace;
   }
-  /* Without blur, or when the person asks for less transparency or more contrast: solid sheets. */
+  /* Keep controls distinct when increased contrast is requested. */
   @media (prefers-reduced-transparency: reduce), (forced-colors: active) {
     :root { --fill-clear: #2a3040; --fill-reg: #171b26; --fill-inset: #0d1017; --blur: none; --edge-line: rgba(255, 255, 255, .28); }
   }
@@ -59,36 +59,7 @@
   }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
-  body { margin: 0; background: #07080c; color: var(--text); font: 15px/1.6 var(--font-body); }
-  /* The backdrop the glass picks up: fixed, so the page scrolls over it. */
-  body::before {
-    content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
-    background:
-      radial-gradient(560px 560px at 6% 26%, rgba(94, 92, 230, .55), transparent 70%),
-      radial-gradient(680px 680px at 96% 84%, rgba(10, 132, 255, .46), transparent 70%),
-      radial-gradient(480px 480px at 74% -4%, rgba(100, 210, 255, .27), transparent 70%);
-  }
-  /* The circuit and the code: two layers behind the glass, drawn once as images (nothing is fetched) and
-     still. They fade towards the middle of the page, where the sheets are, and are off in print and for a
-     person who asked for more contrast. Strength 65: .30 and .18 of the first draft, times .65. */
-  body::after, html::after {
-    content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none; background-repeat: repeat;
-  }
-  body::after {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http%3A//www.w3.org/2000/svg' width='960' height='960' viewBox='0 0 960 960'%3E%3Cg fill='none' stroke-linejoin='round' stroke-linecap='round'%3E%3Cpath d='M120 360L120 280L180 220L180 60L200 40L200 0M120 1320L120 1240L180 1180L180 1020L200 1000L200 960M-240 200L-120 200L-80 160L40 160L60 180L60 280L0 340L-40 340M-240 208L-120 208L-80 168L40 168L60 188L60 288L0 348L-40 348M-240 216L-120 216L-80 176L40 176L60 196L60 296L0 356L-40 356M-240 224L-120 224L-80 184L40 184L60 204L60 304L0 364L-40 364M-240 232L-120 232L-80 192L40 192L60 212L60 312L0 372L-40 372M720 200L840 200L880 160L1000 160L1020 180L1020 280L960 340L920 340M720 208L840 208L880 168L1000 168L1020 188L1020 288L960 348L920 348M720 216L840 216L880 176L1000 176L1020 196L1020 296L960 356L920 356M720 224L840 224L880 184L1000 184L1020 204L1020 304L960 364L920 364M720 232L840 232L880 192L1000 192L1020 212L1020 312L960 372L920 372M-120 780L-60 780L0 840L80 840L100 820L100 720M-120 788L-60 788L0 848L80 848L100 828L100 728M-120 796L-60 796L0 856L80 856L100 836L100 736M-120 804L-60 804L0 864L80 864L100 844L100 744M-120 812L-60 812L0 872L80 872L100 852L100 752M840 780L900 780L960 840L1040 840L1060 820L1060 720M840 788L900 788L960 848L1040 848L1060 828L1060 728M840 796L900 796L960 856L1040 856L1060 836L1060 736M840 804L900 804L960 864L1040 864L1060 844L1060 744M840 812L900 812L960 872L1040 872L1060 852L1060 752M520 860L520 800L480 760L480 620L500 600L500 480L440 420L440 300M528 860L528 800L488 760L488 620L508 600L508 480L448 420L448 300M536 860L536 800L496 760L496 620L516 600L516 480L456 420L456 300M544 860L544 800L504 760L504 620L524 600L524 480L464 420L464 300M552 860L552 800L512 760L512 620L532 600L532 480L472 420L472 300M580 660L420 660L360 600L220 600L160 540L40 540M660 160L660 20L700 -20L700 -80L660 -120L660 -240L680 -260L720 -260M660 1120L660 980L700 940L700 880L660 840L660 720L680 700L720 700M0 80L180 80L240 140L240 240L280 280L280 440L240 480L160 480M960 80L1140 80L1200 140L1200 240L1240 280L1240 440L1200 480L1120 480M360 280L240 280L200 240L100 240L80 260L80 300M360 272L240 272L200 232L100 232L80 252L80 292M920 -140L920 -80L860 -20L860 160L800 220L800 280L860 340L900 340M912 -140L912 -80L852 -20L852 160L792 220L792 280L852 340L892 340M904 -140L904 -80L844 -20L844 160L784 220L784 280L844 340L884 340M896 -140L896 -80L836 -20L836 160L776 220L776 280L836 340L876 340M888 -140L888 -80L828 -20L828 160L768 220L768 280L828 340L868 340M920 820L920 880L860 940L860 1120L800 1180L800 1240L860 1300L900 1300M912 820L912 880L852 940L852 1120L792 1180L792 1240L852 1300L892 1300M904 820L904 880L844 940L844 1120L784 1180L784 1240L844 1300L884 1300M896 820L896 880L836 940L836 1120L776 1180L776 1240L836 1300L876 1300M888 820L888 880L828 940L828 1120L768 1180L768 1240L828 1300L868 1300M-80 860L60 860L100 900L200 900L220 880L300 880M-80 868L60 868L100 908L200 908L220 888L300 888M-80 876L60 876L100 916L200 916L220 896L300 896M-80 884L60 884L100 924L200 924L220 904L300 904M880 860L1020 860L1060 900L1160 900L1180 880L1260 880M880 868L1020 868L1060 908L1160 908L1180 888L1260 888M880 876L1020 876L1060 916L1160 916L1180 896L1260 896M880 884L1020 884L1060 924L1160 924L1180 904L1260 904M180 920L180 800L160 780L80 780L40 820L-140 820L-160 840L-240 840M1140 920L1140 800L1120 780L1040 780L1000 820L820 820L800 840L720 840M800 0L680 0L660 -20L660 -100L720 -160L720 -220M800 960L680 960L660 940L660 860L720 800L720 740M560 840L500 840L440 900L300 900L240 840L240 780M40 100L-100 100L-120 80L-240 80L-280 40L-340 40M40 92L-100 92L-120 72L-240 72L-280 32L-340 32M40 84L-100 84L-120 64L-240 64L-280 24L-340 24M1000 100L860 100L840 80L720 80L680 40L620 40M1000 92L860 92L840 72L720 72L680 32L620 32M1000 84L860 84L840 64L720 64L680 24L620 24M540 -280L540 -160L520 -140L520 0L460 60L460 180M540 680L540 800L520 820L520 960L460 1020L460 1140M560 600L660 600L680 580L780 580L820 620L820 720M80 140L240 140L300 80L300 -100L320 -120L320 -240M80 1100L240 1100L300 1040L300 860L320 840L320 720M360 360L260 360L200 420L200 480L160 520L160 620M640 560L780 560L840 620L840 680L880 720L880 840M640 568L780 568L840 628L840 688L880 728L880 848M640 576L780 576L840 636L840 696L880 736L880 856M640 584L780 584L840 644L840 704L880 744L880 864M640 592L780 592L840 652L840 712L880 752L880 872M560 -260L460 -260L400 -200L400 -120L360 -80L360 0M560 700L460 700L400 760L400 840L360 880L360 960M180 280L180 120L200 100L200 20L220 0L220 -180L200 -200L200 -300M180 1240L180 1080L200 1060L200 980L220 960L220 780L200 760L200 660M-320 488h-8l-20 -7.5h-40M-200 488h8l20 -7.5h80M-320 502h-8l-40 -2.5h-60M-200 502h8l40 -2.5h120M-320 516h-8l-20 2.5h-120M-200 516h8l20 2.5h40M-320 530h-8l-20 7.5h-40M-200 530h8l20 7.5h80M640 488h-8l-20 -7.5h-40M760 488h8l20 -7.5h80M640 502h-8l-40 -2.5h-60M760 502h8l40 -2.5h120M640 516h-8l-20 2.5h-120M760 516h8l20 2.5h40M640 530h-8l-20 7.5h-40M760 530h8l20 7.5h80M600 548h-8l-40 -15h-100M700 548h8l40 -15h120M600 562h-8l-40 -10h-100M700 562h8l40 -10h60M600 576h-8l-20 -5h-120M700 576h8l20 -5h120M600 590h-8l-40 0h-120M700 590h8l40 0h60M600 604h-8l-20 5h-120M700 604h8l20 5h40M600 618h-8l-20 10h-100M700 618h8l20 10h120M600 632h-8l-20 15h-60M700 632h8l20 15h80M-280 328h-8l-20 -10h-80M-200 328h8l20 -10h60M-280 342h-8l-20 -5h-60M-200 342h8l20 -5h80M-280 356h-8l-20 0h-60M-200 356h8l20 0h120M-280 370h-8l-20 5h-80M-200 370h8l20 5h100M-280 384h-8l-40 10h-40M-200 384h8l40 10h80M680 328h-8l-20 -10h-80M760 328h8l20 -10h60M680 342h-8l-20 -5h-60M760 342h8l20 -5h80M680 356h-8l-20 0h-60M760 356h8l20 0h120M680 370h-8l-20 5h-80M760 370h8l20 5h100M680 384h-8l-40 10h-40M760 384h8l40 10h80M260 668h-8l-40 -7.5h-80M340 668h8l40 -7.5h60M260 682h-8l-40 -2.5h-100M340 682h8l40 -2.5h100M260 696h-8l-20 2.5h-100M340 696h8l20 2.5h80M260 710h-8l-20 7.5h-40M340 710h8l20 7.5h40' stroke='%237a9bd8' stroke-width='1.4'/%3E%3Cpath d='M680 80L680 -40L720 -80L720 -160L780 -220L780 -300M680 1040L680 920L720 880L720 800L780 740L780 660M560 540L420 540L360 600L360 700L400 740L400 800M600 360L600 460L560 500L560 680L600 720L760 720L780 700L900 700M592 360L592 460L552 500L552 680L592 720L752 720L772 700L892 700M584 360L584 460L544 500L544 680L584 720L744 720L764 700L884 700M576 360L576 460L536 500L536 680L576 720L736 720L756 700L876 700M568 360L568 460L528 500L528 680L568 720L728 720L748 700L868 700M-320 540L-140 540L-100 500L-20 500L0 480L40 480M640 540L820 540L860 500L940 500L960 480L1000 480M240 40L120 40L80 80L-40 80L-100 20L-140 20M1200 40L1080 40L1040 80L920 80L860 20L820 20M180 640L20 640L-40 580L-40 400L-80 360L-80 240M1140 640L980 640L920 580L920 400L880 360L880 240M160 300L160 380L220 440L280 440L320 480L440 480L500 420L500 380M152 300L152 380L212 440L272 440L312 480L432 480L492 420L492 380M144 300L144 380L204 440L264 440L304 480L424 480L484 420L484 380M200 880L140 880L100 840L-80 840L-120 880L-160 880M200 872L140 872L100 832L-80 832L-120 872L-160 872M200 864L140 864L100 824L-80 824L-120 864L-160 864M1160 880L1100 880L1060 840L880 840L840 880L800 880M1160 872L1100 872L1060 832L880 832L840 872L800 872M1160 864L1100 864L1060 824L880 824L840 864L800 864M860 780L720 780L700 800L560 800L520 840L460 840M720 280L720 440L700 460L700 600L760 660L760 780L800 820L800 940M140 560L140 380L200 320L300 320L320 340L320 440L360 480L360 520M-60 300L100 300L140 260L140 120L200 60L320 60L360 20L420 20M900 300L1060 300L1100 260L1100 120L1160 60L1280 60L1320 20L1380 20M480 160L480 60L420 0L420 -60L440 -80L440 -180L480 -220L480 -340M488 160L488 60L428 0L428 -60L448 -80L448 -180L488 -220L488 -340M496 160L496 60L436 0L436 -60L456 -80L456 -180L496 -220L496 -340M504 160L504 60L444 0L444 -60L464 -80L464 -180L504 -220L504 -340M512 160L512 60L452 0L452 -60L472 -80L472 -180L512 -220L512 -340M480 1120L480 1020L420 960L420 900L440 880L440 780L480 740L480 620M488 1120L488 1020L428 960L428 900L448 880L448 780L488 740L488 620M496 1120L496 1020L436 960L436 900L456 880L456 780L496 740L496 620M504 1120L504 1020L444 960L444 900L464 880L464 780L504 740L504 620M512 1120L512 1020L452 960L452 900L472 880L472 780L512 740L512 620' stroke='%2364d2ff' stroke-width='7' opacity='.10'/%3E%3Cpath d='M680 80L680 -40L720 -80L720 -160L780 -220L780 -300M680 1040L680 920L720 880L720 800L780 740L780 660M560 540L420 540L360 600L360 700L400 740L400 800M600 360L600 460L560 500L560 680L600 720L760 720L780 700L900 700M592 360L592 460L552 500L552 680L592 720L752 720L772 700L892 700M584 360L584 460L544 500L544 680L584 720L744 720L764 700L884 700M576 360L576 460L536 500L536 680L576 720L736 720L756 700L876 700M568 360L568 460L528 500L528 680L568 720L728 720L748 700L868 700M-320 540L-140 540L-100 500L-20 500L0 480L40 480M640 540L820 540L860 500L940 500L960 480L1000 480M240 40L120 40L80 80L-40 80L-100 20L-140 20M1200 40L1080 40L1040 80L920 80L860 20L820 20M180 640L20 640L-40 580L-40 400L-80 360L-80 240M1140 640L980 640L920 580L920 400L880 360L880 240M160 300L160 380L220 440L280 440L320 480L440 480L500 420L500 380M152 300L152 380L212 440L272 440L312 480L432 480L492 420L492 380M144 300L144 380L204 440L264 440L304 480L424 480L484 420L484 380M200 880L140 880L100 840L-80 840L-120 880L-160 880M200 872L140 872L100 832L-80 832L-120 872L-160 872M200 864L140 864L100 824L-80 824L-120 864L-160 864M1160 880L1100 880L1060 840L880 840L840 880L800 880M1160 872L1100 872L1060 832L880 832L840 872L800 872M1160 864L1100 864L1060 824L880 824L840 864L800 864M860 780L720 780L700 800L560 800L520 840L460 840M720 280L720 440L700 460L700 600L760 660L760 780L800 820L800 940M140 560L140 380L200 320L300 320L320 340L320 440L360 480L360 520M-60 300L100 300L140 260L140 120L200 60L320 60L360 20L420 20M900 300L1060 300L1100 260L1100 120L1160 60L1280 60L1320 20L1380 20M480 160L480 60L420 0L420 -60L440 -80L440 -180L480 -220L480 -340M488 160L488 60L428 0L428 -60L448 -80L448 -180L488 -220L488 -340M496 160L496 60L436 0L436 -60L456 -80L456 -180L496 -220L496 -340M504 160L504 60L444 0L444 -60L464 -80L464 -180L504 -220L504 -340M512 160L512 60L452 0L452 -60L472 -80L472 -180L512 -220L512 -340M480 1120L480 1020L420 960L420 900L440 880L440 780L480 740L480 620M488 1120L488 1020L428 960L428 900L448 880L448 780L488 740L488 620M496 1120L496 1020L436 960L436 900L456 880L456 780L496 740L496 620M504 1120L504 1020L444 960L444 900L464 880L464 780L504 740L504 620M512 1120L512 1020L452 960L452 900L472 880L472 780L512 740L512 620' stroke='%2364d2ff' stroke-width='4' opacity='.18'/%3E%3Cpath d='M680 80L680 -40L720 -80L720 -160L780 -220L780 -300M680 1040L680 920L720 880L720 800L780 740L780 660M560 540L420 540L360 600L360 700L400 740L400 800M600 360L600 460L560 500L560 680L600 720L760 720L780 700L900 700M592 360L592 460L552 500L552 680L592 720L752 720L772 700L892 700M584 360L584 460L544 500L544 680L584 720L744 720L764 700L884 700M576 360L576 460L536 500L536 680L576 720L736 720L756 700L876 700M568 360L568 460L528 500L528 680L568 720L728 720L748 700L868 700M-320 540L-140 540L-100 500L-20 500L0 480L40 480M640 540L820 540L860 500L940 500L960 480L1000 480M240 40L120 40L80 80L-40 80L-100 20L-140 20M1200 40L1080 40L1040 80L920 80L860 20L820 20M180 640L20 640L-40 580L-40 400L-80 360L-80 240M1140 640L980 640L920 580L920 400L880 360L880 240M160 300L160 380L220 440L280 440L320 480L440 480L500 420L500 380M152 300L152 380L212 440L272 440L312 480L432 480L492 420L492 380M144 300L144 380L204 440L264 440L304 480L424 480L484 420L484 380M200 880L140 880L100 840L-80 840L-120 880L-160 880M200 872L140 872L100 832L-80 832L-120 872L-160 872M200 864L140 864L100 824L-80 824L-120 864L-160 864M1160 880L1100 880L1060 840L880 840L840 880L800 880M1160 872L1100 872L1060 832L880 832L840 872L800 872M1160 864L1100 864L1060 824L880 824L840 864L800 864M860 780L720 780L700 800L560 800L520 840L460 840M720 280L720 440L700 460L700 600L760 660L760 780L800 820L800 940M140 560L140 380L200 320L300 320L320 340L320 440L360 480L360 520M-60 300L100 300L140 260L140 120L200 60L320 60L360 20L420 20M900 300L1060 300L1100 260L1100 120L1160 60L1280 60L1320 20L1380 20M480 160L480 60L420 0L420 -60L440 -80L440 -180L480 -220L480 -340M488 160L488 60L428 0L428 -60L448 -80L448 -180L488 -220L488 -340M496 160L496 60L436 0L436 -60L456 -80L456 -180L496 -220L496 -340M504 160L504 60L444 0L444 -60L464 -80L464 -180L504 -220L504 -340M512 160L512 60L452 0L452 -60L472 -80L472 -180L512 -220L512 -340M480 1120L480 1020L420 960L420 900L440 880L440 780L480 740L480 620M488 1120L488 1020L428 960L428 900L448 880L448 780L488 740L488 620M496 1120L496 1020L436 960L436 900L456 880L456 780L496 740L496 620M504 1120L504 1020L444 960L444 900L464 880L464 780L504 740L504 620M512 1120L512 1020L452 960L452 900L472 880L472 780L512 740L512 620' stroke='%2364d2ff' stroke-width='1.6'/%3E%3Cg stroke='%237a9bd8' stroke-width='1.3'%3E%3Ccircle cx='120' cy='360' r='4.5'/%3E%3Ccircle cx='120' cy='1320' r='4.5'/%3E%3Ccircle cx='780' cy='660' r='5.5'/%3E%3Ccircle cx='580' cy='660' r='4.5'/%3E%3Ccircle cx='40' cy='540' r='5.5'/%3E%3Ccircle cx='660' cy='160' r='4.5'/%3E%3Ccircle cx='660' cy='1120' r='4.5'/%3E%3Ccircle cx='0' cy='80' r='4.5'/%3E%3Ccircle cx='960' cy='80' r='4.5'/%3E%3Ccircle cx='1120' cy='480' r='5.5'/%3E%3Ccircle cx='180' cy='920' r='4.5'/%3E%3Ccircle cx='1140' cy='920' r='4.5'/%3E%3Ccircle cx='720' cy='840' r='5.5'/%3E%3Ccircle cx='800' cy='0' r='4.5'/%3E%3Ccircle cx='800' cy='960' r='4.5'/%3E%3Ccircle cx='40' cy='480' r='5.5'/%3E%3Ccircle cx='1000' cy='480' r='5.5'/%3E%3Ccircle cx='820' cy='20' r='5.5'/%3E%3Ccircle cx='560' cy='840' r='4.5'/%3E%3Ccircle cx='240' cy='780' r='5.5'/%3E%3Ccircle cx='-80' cy='240' r='5.5'/%3E%3Ccircle cx='880' cy='240' r='5.5'/%3E%3Ccircle cx='540' cy='-280' r='4.5'/%3E%3Ccircle cx='540' cy='680' r='4.5'/%3E%3Ccircle cx='560' cy='600' r='4.5'/%3E%3Ccircle cx='80' cy='140' r='4.5'/%3E%3Ccircle cx='80' cy='1100' r='4.5'/%3E%3Ccircle cx='320' cy='720' r='5.5'/%3E%3Ccircle cx='1380' cy='20' r='5.5'/%3E%3Ccircle cx='360' cy='360' r='4.5'/%3E%3Ccircle cx='560' cy='-260' r='4.5'/%3E%3Ccircle cx='560' cy='700' r='4.5'/%3E%3Ccircle cx='180' cy='280' r='4.5'/%3E%3Ccircle cx='180' cy='1240' r='4.5'/%3E%3Ccircle cx='200' cy='660' r='5.5'/%3E%3C/g%3E%3Cg stroke='%2364d2ff' stroke-width='1.5'%3E%3Ccircle cx='680' cy='80' r='4.5'/%3E%3Ccircle cx='680' cy='1040' r='4.5'/%3E%3Ccircle cx='560' cy='540' r='4.5'/%3E%3Ccircle cx='-320' cy='540' r='4.5'/%3E%3Ccircle cx='640' cy='540' r='4.5'/%3E%3Ccircle cx='240' cy='40' r='4.5'/%3E%3Ccircle cx='1200' cy='40' r='4.5'/%3E%3Ccircle cx='180' cy='640' r='4.5'/%3E%3Ccircle cx='1140' cy='640' r='4.5'/%3E%3Ccircle cx='860' cy='780' r='4.5'/%3E%3Ccircle cx='720' cy='280' r='4.5'/%3E%3Ccircle cx='140' cy='560' r='4.5'/%3E%3Ccircle cx='-60' cy='300' r='4.5'/%3E%3Ccircle cx='900' cy='300' r='4.5'/%3E%3C/g%3E%3Cg stroke='%237a9bd8'%3E%3Cpath d='M-312 480v-6M-312 540v6M-298 480v-6M-298 540v6M-284 480v-6M-284 540v6M-270 480v-6M-270 540v6M-256 480v-6M-256 540v6M-242 480v-6M-242 540v6M-228 480v-6M-228 540v6M-214 480v-6M-214 540v6' stroke-width='1.4'/%3E%3Crect x='-320' y='480' width='120' height='60' rx='3' fill='%230a0c12' stroke-width='1.5'/%3E%3Ccircle cx='-311' cy='489' r='2.4' fill='none' stroke-width='1.2'/%3E%3Cpath d='M648 480v-6M648 540v6M662 480v-6M662 540v6M676 480v-6M676 540v6M690 480v-6M690 540v6M704 480v-6M704 540v6M718 480v-6M718 540v6M732 480v-6M732 540v6M746 480v-6M746 540v6' stroke-width='1.4'/%3E%3Crect x='640' y='480' width='120' height='60' rx='3' fill='%230a0c12' stroke-width='1.5'/%3E%3Ccircle cx='649' cy='489' r='2.4' fill='none' stroke-width='1.2'/%3E%3Cpath d='M608 540v-6M608 640v6M622 540v-6M622 640v6M636 540v-6M636 640v6M650 540v-6M650 640v6M664 540v-6M664 640v6M678 540v-6M678 640v6M692 540v-6M692 640v6' stroke-width='1.4'/%3E%3Crect x='600' y='540' width='100' height='100' rx='3' fill='%230a0c12' stroke-width='1.5'/%3E%3Ccircle cx='609' cy='549' r='2.4' fill='none' stroke-width='1.2'/%3E%3Cpath d='M-272 320v-6M-272 400v6M-258 320v-6M-258 400v6M-244 320v-6M-244 400v6M-230 320v-6M-230 400v6M-216 320v-6M-216 400v6' stroke-width='1.4'/%3E%3Crect x='-280' y='320' width='80' height='80' rx='3' fill='%230a0c12' stroke-width='1.5'/%3E%3Ccircle cx='-271' cy='329' r='2.4' fill='none' stroke-width='1.2'/%3E%3Cpath d='M688 320v-6M688 400v6M702 320v-6M702 400v6M716 320v-6M716 400v6M730 320v-6M730 400v6M744 320v-6M744 400v6' stroke-width='1.4'/%3E%3Crect x='680' y='320' width='80' height='80' rx='3' fill='%230a0c12' stroke-width='1.5'/%3E%3Ccircle cx='689' cy='329' r='2.4' fill='none' stroke-width='1.2'/%3E%3Cpath d='M268 660v-6M268 720v6M282 660v-6M282 720v6M296 660v-6M296 720v6M310 660v-6M310 720v6M324 660v-6M324 720v6' stroke-width='1.4'/%3E%3Crect x='260' y='660' width='80' height='60' rx='3' fill='%230a0c12' stroke-width='1.5'/%3E%3Ccircle cx='269' cy='669' r='2.4' fill='none' stroke-width='1.2'/%3E%3C/g%3E%3C/g%3E%3Cg fill='%237a9bd8'%3E%3Ccircle cx='200' cy='0' r='2.6'/%3E%3Ccircle cx='200' cy='960' r='2.6'/%3E%3Ccircle cx='-40' cy='340' r='2.4'/%3E%3Ccircle cx='-240' cy='200' r='2.4'/%3E%3Ccircle cx='-40' cy='348' r='2.4'/%3E%3Ccircle cx='-240' cy='208' r='2.4'/%3E%3Ccircle cx='-40' cy='356' r='2.4'/%3E%3Ccircle cx='-240' cy='216' r='2.4'/%3E%3Ccircle cx='-40' cy='364' r='2.4'/%3E%3Ccircle cx='-240' cy='224' r='2.4'/%3E%3Ccircle cx='-40' cy='372' r='2.4'/%3E%3Ccircle cx='-240' cy='232' r='2.4'/%3E%3Ccircle cx='920' cy='340' r='2.4'/%3E%3Ccircle cx='720' cy='200' r='2.4'/%3E%3Ccircle cx='920' cy='348' r='2.4'/%3E%3Ccircle cx='720' cy='208' r='2.4'/%3E%3Ccircle cx='920' cy='356' r='2.4'/%3E%3Ccircle cx='720' cy='216' r='2.4'/%3E%3Ccircle cx='920' cy='364' r='2.4'/%3E%3Ccircle cx='720' cy='224' r='2.4'/%3E%3Ccircle cx='920' cy='372' r='2.4'/%3E%3Ccircle cx='720' cy='232' r='2.4'/%3E%3Ccircle cx='100' cy='720' r='2.4'/%3E%3Ccircle cx='-120' cy='780' r='2.4'/%3E%3Ccircle cx='100' cy='728' r='2.4'/%3E%3Ccircle cx='-120' cy='788' r='2.4'/%3E%3Ccircle cx='100' cy='736' r='2.4'/%3E%3Ccircle cx='-120' cy='796' r='2.4'/%3E%3Ccircle cx='100' cy='744' r='2.4'/%3E%3Ccircle cx='-120' cy='804' r='2.4'/%3E%3Ccircle cx='100' cy='752' r='2.4'/%3E%3Ccircle cx='-120' cy='812' r='2.4'/%3E%3Ccircle cx='1060' cy='720' r='2.4'/%3E%3Ccircle cx='840' cy='780' r='2.4'/%3E%3Ccircle cx='1060' cy='728' r='2.4'/%3E%3Ccircle cx='840' cy='788' r='2.4'/%3E%3Ccircle cx='1060' cy='736' r='2.4'/%3E%3Ccircle cx='840' cy='796' r='2.4'/%3E%3Ccircle cx='1060' cy='744' r='2.4'/%3E%3Ccircle cx='840' cy='804' r='2.4'/%3E%3Ccircle cx='1060' cy='752' r='2.4'/%3E%3Ccircle cx='840' cy='812' r='2.4'/%3E%3Ccircle cx='780' cy='-300' r='2.6'/%3E%3Ccircle cx='780' cy='660' r='2.6'/%3E%3Ccircle cx='440' cy='300' r='2.4'/%3E%3Ccircle cx='520' cy='860' r='2.4'/%3E%3Ccircle cx='448' cy='300' r='2.4'/%3E%3Ccircle cx='528' cy='860' r='2.4'/%3E%3Ccircle cx='456' cy='300' r='2.4'/%3E%3Ccircle cx='536' cy='860' r='2.4'/%3E%3Ccircle cx='464' cy='300' r='2.4'/%3E%3Ccircle cx='544' cy='860' r='2.4'/%3E%3Ccircle cx='472' cy='300' r='2.4'/%3E%3Ccircle cx='552' cy='860' r='2.4'/%3E%3Ccircle cx='40' cy='540' r='2.6'/%3E%3Ccircle cx='720' cy='-260' r='2.6'/%3E%3Ccircle cx='720' cy='700' r='2.6'/%3E%3Ccircle cx='400' cy='800' r='2.6'/%3E%3Ccircle cx='160' cy='480' r='2.6'/%3E%3Ccircle cx='1120' cy='480' r='2.6'/%3E%3Ccircle cx='80' cy='300' r='2.4'/%3E%3Ccircle cx='360' cy='280' r='2.4'/%3E%3Ccircle cx='80' cy='292' r='2.4'/%3E%3Ccircle cx='360' cy='272' r='2.4'/%3E%3Ccircle cx='900' cy='340' r='2.4'/%3E%3Ccircle cx='920' cy='-140' r='2.4'/%3E%3Ccircle cx='892' cy='340' r='2.4'/%3E%3Ccircle cx='912' cy='-140' r='2.4'/%3E%3Ccircle cx='884' cy='340' r='2.4'/%3E%3Ccircle cx='904' cy='-140' r='2.4'/%3E%3Ccircle cx='876' cy='340' r='2.4'/%3E%3Ccircle cx='896' cy='-140' r='2.4'/%3E%3Ccircle cx='868' cy='340' r='2.4'/%3E%3Ccircle cx='888' cy='-140' r='2.4'/%3E%3Ccircle cx='900' cy='1300' r='2.4'/%3E%3Ccircle cx='920' cy='820' r='2.4'/%3E%3Ccircle cx='892' cy='1300' r='2.4'/%3E%3Ccircle cx='912' cy='820' r='2.4'/%3E%3Ccircle cx='884' cy='1300' r='2.4'/%3E%3Ccircle cx='904' cy='820' r='2.4'/%3E%3Ccircle cx='876' cy='1300' r='2.4'/%3E%3Ccircle cx='896' cy='820' r='2.4'/%3E%3Ccircle cx='868' cy='1300' r='2.4'/%3E%3Ccircle cx='888' cy='820' r='2.4'/%3E%3Ccircle cx='300' cy='880' r='2.4'/%3E%3Ccircle cx='-80' cy='860' r='2.4'/%3E%3Ccircle cx='300' cy='888' r='2.4'/%3E%3Ccircle cx='-80' cy='868' r='2.4'/%3E%3Ccircle cx='300' cy='896' r='2.4'/%3E%3Ccircle cx='-80' cy='876' r='2.4'/%3E%3Ccircle cx='300' cy='904' r='2.4'/%3E%3Ccircle cx='-80' cy='884' r='2.4'/%3E%3Ccircle cx='1260' cy='880' r='2.4'/%3E%3Ccircle cx='880' cy='860' r='2.4'/%3E%3Ccircle cx='1260' cy='888' r='2.4'/%3E%3Ccircle cx='880' cy='868' r='2.4'/%3E%3Ccircle cx='1260' cy='896' r='2.4'/%3E%3Ccircle cx='880' cy='876' r='2.4'/%3E%3Ccircle cx='1260' cy='904' r='2.4'/%3E%3Ccircle cx='880' cy='884' r='2.4'/%3E%3Ccircle cx='-240' cy='840' r='2.6'/%3E%3Ccircle cx='720' cy='840' r='2.6'/%3E%3Ccircle cx='720' cy='-220' r='2.6'/%3E%3Ccircle cx='720' cy='740' r='2.6'/%3E%3Ccircle cx='900' cy='700' r='2.4'/%3E%3Ccircle cx='600' cy='360' r='2.4'/%3E%3Ccircle cx='892' cy='700' r='2.4'/%3E%3Ccircle cx='592' cy='360' r='2.4'/%3E%3Ccircle cx='884' cy='700' r='2.4'/%3E%3Ccircle cx='584' cy='360' r='2.4'/%3E%3Ccircle cx='876' cy='700' r='2.4'/%3E%3Ccircle cx='576' cy='360' r='2.4'/%3E%3Ccircle cx='868' cy='700' r='2.4'/%3E%3Ccircle cx='568' cy='360' r='2.4'/%3E%3Ccircle cx='40' cy='480' r='2.6'/%3E%3Ccircle cx='1000' cy='480' r='2.6'/%3E%3Ccircle cx='-140' cy='20' r='2.6'/%3E%3Ccircle cx='820' cy='20' r='2.6'/%3E%3Ccircle cx='240' cy='780' r='2.6'/%3E%3Ccircle cx='-80' cy='240' r='2.6'/%3E%3Ccircle cx='880' cy='240' r='2.6'/%3E%3Ccircle cx='-340' cy='40' r='2.4'/%3E%3Ccircle cx='40' cy='100' r='2.4'/%3E%3Ccircle cx='-340' cy='32' r='2.4'/%3E%3Ccircle cx='40' cy='92' r='2.4'/%3E%3Ccircle cx='-340' cy='24' r='2.4'/%3E%3Ccircle cx='40' cy='84' r='2.4'/%3E%3Ccircle cx='620' cy='40' r='2.4'/%3E%3Ccircle cx='1000' cy='100' r='2.4'/%3E%3Ccircle cx='620' cy='32' r='2.4'/%3E%3Ccircle cx='1000' cy='92' r='2.4'/%3E%3Ccircle cx='620' cy='24' r='2.4'/%3E%3Ccircle cx='1000' cy='84' r='2.4'/%3E%3Ccircle cx='500' cy='380' r='2.4'/%3E%3Ccircle cx='160' cy='300' r='2.4'/%3E%3Ccircle cx='492' cy='380' r='2.4'/%3E%3Ccircle cx='152' cy='300' r='2.4'/%3E%3Ccircle cx='484' cy='380' r='2.4'/%3E%3Ccircle cx='144' cy='300' r='2.4'/%3E%3Ccircle cx='-160' cy='880' r='2.4'/%3E%3Ccircle cx='200' cy='880' r='2.4'/%3E%3Ccircle cx='-160' cy='872' r='2.4'/%3E%3Ccircle cx='200' cy='872' r='2.4'/%3E%3Ccircle cx='-160' cy='864' r='2.4'/%3E%3Ccircle cx='200' cy='864' r='2.4'/%3E%3Ccircle cx='800' cy='880' r='2.4'/%3E%3Ccircle cx='1160' cy='880' r='2.4'/%3E%3Ccircle cx='800' cy='872' r='2.4'/%3E%3Ccircle cx='1160' cy='872' r='2.4'/%3E%3Ccircle cx='800' cy='864' r='2.4'/%3E%3Ccircle cx='1160' cy='864' r='2.4'/%3E%3Ccircle cx='460' cy='840' r='2.6'/%3E%3Ccircle cx='800' cy='940' r='2.6'/%3E%3Ccircle cx='360' cy='520' r='2.6'/%3E%3Ccircle cx='460' cy='180' r='2.6'/%3E%3Ccircle cx='460' cy='1140' r='2.6'/%3E%3Ccircle cx='820' cy='720' r='2.6'/%3E%3Ccircle cx='320' cy='-240' r='2.6'/%3E%3Ccircle cx='320' cy='720' r='2.6'/%3E%3Ccircle cx='420' cy='20' r='2.6'/%3E%3Ccircle cx='1380' cy='20' r='2.6'/%3E%3Ccircle cx='160' cy='620' r='2.6'/%3E%3Ccircle cx='480' cy='-340' r='2.4'/%3E%3Ccircle cx='480' cy='160' r='2.4'/%3E%3Ccircle cx='488' cy='-340' r='2.4'/%3E%3Ccircle cx='488' cy='160' r='2.4'/%3E%3Ccircle cx='496' cy='-340' r='2.4'/%3E%3Ccircle cx='496' cy='160' r='2.4'/%3E%3Ccircle cx='504' cy='-340' r='2.4'/%3E%3Ccircle cx='504' cy='160' r='2.4'/%3E%3Ccircle cx='512' cy='-340' r='2.4'/%3E%3Ccircle cx='512' cy='160' r='2.4'/%3E%3Ccircle cx='480' cy='620' r='2.4'/%3E%3Ccircle cx='480' cy='1120' r='2.4'/%3E%3Ccircle cx='488' cy='620' r='2.4'/%3E%3Ccircle cx='488' cy='1120' r='2.4'/%3E%3Ccircle cx='496' cy='620' r='2.4'/%3E%3Ccircle cx='496' cy='1120' r='2.4'/%3E%3Ccircle cx='504' cy='620' r='2.4'/%3E%3Ccircle cx='504' cy='1120' r='2.4'/%3E%3Ccircle cx='512' cy='620' r='2.4'/%3E%3Ccircle cx='512' cy='1120' r='2.4'/%3E%3Ccircle cx='880' cy='840' r='2.4'/%3E%3Ccircle cx='640' cy='560' r='2.4'/%3E%3Ccircle cx='880' cy='848' r='2.4'/%3E%3Ccircle cx='640' cy='568' r='2.4'/%3E%3Ccircle cx='880' cy='856' r='2.4'/%3E%3Ccircle cx='640' cy='576' r='2.4'/%3E%3Ccircle cx='880' cy='864' r='2.4'/%3E%3Ccircle cx='640' cy='584' r='2.4'/%3E%3Ccircle cx='880' cy='872' r='2.4'/%3E%3Ccircle cx='640' cy='592' r='2.4'/%3E%3Ccircle cx='360' cy='0' r='2.6'/%3E%3Ccircle cx='360' cy='960' r='2.6'/%3E%3Ccircle cx='200' cy='-300' r='2.6'/%3E%3Ccircle cx='200' cy='660' r='2.6'/%3E%3C/g%3E%3C/svg%3E");
-    background-size: 960px 960px; opacity: .2;
-    -webkit-mask-image: radial-gradient(ellipse 75% 65% at 50% 45%, rgba(0, 0, 0, .5), #000 100%);
-    mask-image: radial-gradient(ellipse 75% 65% at 50% 45%, rgba(0, 0, 0, .5), #000 100%);
-  }
-  html::after {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http%3A//www.w3.org/2000/svg' width='2040' height='1000' viewBox='0 0 2040 1000'%3E%3Cstyle%3Etext{font-family:Consolas,'Cascadia Mono','Courier New',monospace;font-size:14px;white-space:pre}.x{fill:%239db4de}.k{fill:%23b9a2f5}.f{fill:%237fd4ff}.s{fill:%238fd4a8}.n{fill:%23f0b87c}.c{fill:%236f84ad}.l{fill:%235d6f94}.h{fill:%2364b4ff}.p{fill:%2358d37a}.m{fill:%23ff7c73}%3C/style%3E%3Ctext x='42' y='14' class='l' text-anchor='end'%3E1%3C/text%3E%3Ctext x='56' y='14'%3E%3Ctspan class='c'%3E-- schema snapshot: the objects of one database%3C/tspan%3E%3C/text%3E%3Ctext x='42' y='34' class='l' text-anchor='end'%3E2%3C/text%3E%3Ctext x='56' y='34'%3E%3Ctspan class='k'%3ESELECT%3C/tspan%3E%3Ctspan class='x'%3E o.object_id,%3C/tspan%3E%3C/text%3E%3Ctext x='42' y='54' class='l' text-anchor='end'%3E3%3C/text%3E%3Ctext x='56' y='54'%3E%3Ctspan class='x'%3E       s.name%3C/tspan%3E%3Ctspan class='k'%3E  AS%3C/tspan%3E%3Ctspan class='x'%3E schema_name,%3C/tspan%3E%3C/text%3E%3Ctext x='42' y='74' class='l' text-anchor='end'%3E4%3C/text%3E%3Ctext x='56' y='74'%3E%3Ctspan class='x'%3E       o.name%3C/tspan%3E%3Ctspan class='k'%3E  AS%3C/tspan%3E%3Ctspan class='x'%3E object_name,%3C/tspan%3E%3C/text%3E%3Ctext x='42' y='94' class='l' text-anchor='end'%3E5%3C/text%3E%3Ctext x='56' y='94'%3E%3Ctspan class='x'%3E       o.type_desc,%3C/tspan%3E%3C/text%3E%3Ctext x='42' y='114' class='l' text-anchor='end'%3E6%3C/text%3E%3Ctext x='56' y='114'%3E%3Ctspan class='x'%3E       o.modify_date%3C/tspan%3E%3C/text%3E%3Ctext x='42' y='134' class='l' text-anchor='end'%3E7%3C/text%3E%3Ctext x='56' y='134'%3E%3Ctspan class='k'%3EFROM%3C/tspan%3E%3Ctspan class='x'%3E   sys.objects%3C/tspan%3E%3Ctspan class='k'%3E AS%3C/tspan%3E%3Ctspan class='x'%3E o%3C/tspan%3E%3C/text%3E%3Ctext x='42' y='154' class='l' text-anchor='end'%3E8%3C/text%3E%3Ctext x='56' y='154'%3E%3Ctspan class='k'%3EJOIN%3C/tspan%3E%3Ctspan class='x'%3E   sys.schemas%3C/tspan%3E%3Ctspan class='k'%3E AS%3C/tspan%3E%3Ctspan class='x'%3E s%3C/tspan%3E%3Ctspan class='k'%3E ON%3C/tspan%3E%3Ctspan class='x'%3E s.schema_id%3C/tspan%3E%3Ctspan class='x'%3E =%3C/tspan%3E%3Ctspan class='x'%3E o.schema_id%3C/tspan%3E%3C/text%3E%3Ctext x='42' y='174' class='l' text-anchor='end'%3E9%3C/text%3E%3Ctext x='56' y='174'%3E%3Ctspan class='k'%3EWHERE%3C/tspan%3E%3Ctspan class='x'%3E  o.is_ms_shipped%3C/tspan%3E%3Ctspan class='x'%3E =%3C/tspan%3E%3Ctspan class='n'%3E 0%3C/tspan%3E%3C/text%3E%3Ctext x='42' y='194' class='l' text-anchor='end'%3E10%3C/text%3E%3Ctext x='56' y='194'%3E%3Ctspan class='k'%3E  AND%3C/tspan%3E%3Ctspan class='x'%3E  o.type%3C/tspan%3E%3Ctspan class='k'%3E IN%3C/tspan%3E%3Ctspan class='x'%3E (%3C/tspan%3E%3Ctspan class='s'%3E'U'%3C/tspan%3E%3Ctspan class='x'%3E,%3C/tspan%3E%3Ctspan class='s'%3E 'V'%3C/tspan%3E%3Ctspan class='x'%3E,%3C/tspan%3E%3Ctspan class='s'%3E 'P'%3C/tspan%3E%3Ctspan class='x'%3E,%3C/tspan%3E%3Ctspan class='s'%3E 'FN'%3C/tspan%3E%3Ctspan class='x'%3E,%3C/tspan%3E%3Ctspan class='s'%3E 'IF'%3C/tspan%3E%3Ctspan class='x'%3E,%3C/tspan%3E%3Ctspan class='s'%3E 'TF'%3C/tspan%3E%3Ctspan class='x'%3E,%3C/tspan%3E%3Ctspan class='s'%3E 'TR'%3C/tspan%3E%3Ctspan class='x'%3E)%3C/tspan%3E%3C/text%3E%3Ctext x='42' y='214' class='l' text-anchor='end'%3E11%3C/text%3E%3Ctext x='56' y='214'%3E%3Ctspan class='k'%3EORDER%3C/tspan%3E%3Ctspan class='k'%3E BY%3C/tspan%3E%3Ctspan class='x'%3E s.name,%3C/tspan%3E%3Ctspan class='x'%3E o.name;%3C/tspan%3E%3C/text%3E%3Ctext x='42' y='234' class='l' text-anchor='end'%3E12%3C/text%3E%3Ctext x='56' y='234'%3E%3Ctspan class='k'%3EGO%3C/tspan%3E%3C/text%3E%3Ctext x='42' y='254' class='l' text-anchor='end'%3E13%3C/text%3E%3Ctext x='42' y='274' class='l' text-anchor='end'%3E14%3C/text%3E%3Ctext x='56' y='274'%3E%3Ctspan class='k'%3ECREATE%3C/tspan%3E%3Ctspan class='k'%3E PROCEDURE%3C/tspan%3E%3Ctspan class='x'%3E dbo.usp_sync_orders%3C/tspan%3E%3C/text%3E%3Ctext x='42' y='294' class='l' text-anchor='end'%3E15%3C/text%3E%3Ctext x='56' y='294'%3E%3Ctspan class='x'%3E    @since%3C/tspan%3E%3Ctspan class='k'%3E DATETIME2%3C/tspan%3E%3Ctspan class='x'%3E =%3C/tspan%3E%3Ctspan class='k'%3E NULL%3C/tspan%3E%3Ctspan class='x'%3E,%3C/tspan%3E%3C/text%3E%3Ctext x='42' y='314' class='l' text-anchor='end'%3E16%3C/text%3E%3Ctext x='56' y='314'%3E%3Ctspan class='x'%3E    @batch%3C/tspan%3E%3Ctspan class='k'%3E INT%3C/tspan%3E%3Ctspan class='x'%3E =%3C/tspan%3E%3Ctspan class='n'%3E 500%3C/tspan%3E%3C/text%3E%3Ctext x='42' y='334' class='l' text-anchor='end'%3E17%3C/text%3E%3Ctext x='56' y='334'%3E%3Ctspan class='k'%3EAS%3C/tspan%3E%3C/text%3E%3Ctext x='42' y='354' class='l' text-anchor='end'%3E18%3C/text%3E%3Ctext x='56' y='354'%3E%3Ctspan class='k'%3EBEGIN%3C/tspan%3E%3C/text%3E%3Ctext x='42' y='374' class='l' text-anchor='end'%3E19%3C/text%3E%3Ctext x='56' y='374'%3E%3Ctspan class='k'%3E    SET%3C/tspan%3E%3Ctspan class='x'%3E NOCOUNT%3C/tspan%3E%3Ctspan class='k'%3E ON%3C/tspan%3E%3Ctspan class='x'%3E;%3C/tspan%3E%3C/text%3E%3Ctext x='42' y='394' class='l' text-anchor='end'%3E20%3C/text%3E%3Ctext x='56' y='394'%3E%3Ctspan class='k'%3E    DECLARE%3C/tspan%3E%3Ctspan class='x'%3E @rows%3C/tspan%3E%3Ctspan class='k'%3E INT%3C/tspan%3E%3Ctspan class='x'%3E =%3C/tspan%3E%3Ctspan class='n'%3E 1%3C/tspan%3E%3Ctspan class='x'%3E;%3C/tspan%3E%3C/text%3E%3Ctext x='42' y='414' class='l' text-anchor='end'%3E21%3C/text%3E%3Ctext x='42' y='434' class='l' text-anchor='end'%3E22%3C/text%3E%3Ctext x='56' y='434'%3E%3Ctspan class='k'%3E    WHILE%3C/tspan%3E%3Ctspan class='x'%3E @rows%3C/tspan%3E%3Ctspan class='x'%3E &gt;%3C/tspan%3E%3Ctspan class='n'%3E 0%3C/tspan%3E%3C/text%3E%3Ctext x='42' y='454' class='l' text-anchor='end'%3E23%3C/text%3E%3Ctext x='56' y='454'%3E%3Ctspan class='k'%3E    BEGIN%3C/tspan%3E%3C/text%3E%3Ctext x='42' y='474' class='l' text-anchor='end'%3E24%3C/text%3E%3Ctext x='56' y='474'%3E%3Ctspan class='k'%3E        UPDATE%3C/tspan%3E%3Ctspan class='k'%3E TOP%3C/tspan%3E%3Ctspan class='x'%3E (@batch)%3C/tspan%3E%3Ctspan class='x'%3E t%3C/tspan%3E%3C/text%3E%3Ctext x='42' y='494' class='l' text-anchor='end'%3E25%3C/text%3E%3Ctext x='56' y='494'%3E%3Ctspan class='k'%3E           SET%3C/tspan%3E%3Ctspan class='x'%3E t.status%3C/tspan%3E%3Ctspan class='x'%3E =%3C/tspan%3E%3Ctspan class='s'%3E 'synced'%3C/tspan%3E%3Ctspan class='x'%3E,%3C/tspan%3E%3Ctspan class='x'%3E t.synced_at%3C/tspan%3E%3Ctspan class='x'%3E =%3C/tspan%3E%3Ctspan class='f'%3E SYSUTCDATETIME%3C/tspan%3E%3Ctspan class='x'%3E()%3C/tspan%3E%3C/text%3E%3Ctext x='42' y='514' class='l' text-anchor='end'%3E26%3C/text%3E%3Ctext x='56' y='514'%3E%3Ctspan class='k'%3E          FROM%3C/tspan%3E%3Ctspan class='x'%3E dbo.orders%3C/tspan%3E%3Ctspan class='k'%3E AS%3C/tspan%3E%3Ctspan class='x'%3E t%3C/tspan%3E%3C/text%3E%3Ctext x='42' y='534' class='l' text-anchor='end'%3E27%3C/text%3E%3Ctext x='56' y='534'%3E%3Ctspan class='k'%3E         WHERE%3C/tspan%3E%3Ctspan class='x'%3E t.status%3C/tspan%3E%3Ctspan class='x'%3E =%3C/tspan%3E%3Ctspan class='s'%3E 'pending'%3C/tspan%3E%3C/text%3E%3Ctext x='42' y='554' class='l' text-anchor='end'%3E28%3C/text%3E%3Ctext x='56' y='554'%3E%3Ctspan class='k'%3E           AND%3C/tspan%3E%3Ctspan class='x'%3E (@since%3C/tspan%3E%3Ctspan class='k'%3E IS%3C/tspan%3E%3Ctspan class='k'%3E NULL%3C/tspan%3E%3Ctspan class='k'%3E OR%3C/tspan%3E%3Ctspan class='x'%3E t.created_at%3C/tspan%3E%3Ctspan class='x'%3E &gt;=%3C/tspan%3E%3Ctspan class='x'%3E @since);%3C/tspan%3E%3C/text%3E%3Ctext x='42' y='574' class='l' text-anchor='end'%3E29%3C/text%3E%3Ctext x='42' y='594' class='l' text-anchor='end'%3E30%3C/text%3E%3Ctext x='56' y='594'%3E%3Ctspan class='k'%3E        SET%3C/tspan%3E%3Ctspan class='x'%3E @rows%3C/tspan%3E%3Ctspan class='x'%3E =%3C/tspan%3E%3Ctspan class='x'%3E @@ROWCOUNT;%3C/tspan%3E%3C/text%3E%3Ctext x='42' y='614' class='l' text-anchor='end'%3E31%3C/text%3E%3Ctext x='56' y='614'%3E%3Ctspan class='k'%3E    END%3C/tspan%3E%3C/text%3E%3Ctext x='42' y='634' class='l' text-anchor='end'%3E32%3C/text%3E%3Ctext x='56' y='634'%3E%3Ctspan class='k'%3EEND%3C/tspan%3E%3C/text%3E%3Ctext x='42' y='654' class='l' text-anchor='end'%3E33%3C/text%3E%3Ctext x='56' y='654'%3E%3Ctspan class='k'%3EGO%3C/tspan%3E%3C/text%3E%3Ctext x='42' y='674' class='l' text-anchor='end'%3E34%3C/text%3E%3Ctext x='42' y='694' class='l' text-anchor='end'%3E35%3C/text%3E%3Ctext x='56' y='694'%3E%3Ctspan class='k'%3EALTER%3C/tspan%3E%3Ctspan class='k'%3E TABLE%3C/tspan%3E%3Ctspan class='x'%3E dbo.orders%3C/tspan%3E%3Ctspan class='k'%3E ADD%3C/tspan%3E%3C/text%3E%3Ctext x='42' y='714' class='l' text-anchor='end'%3E36%3C/text%3E%3Ctext x='56' y='714'%3E%3Ctspan class='x'%3E    note%3C/tspan%3E%3Ctspan class='k'%3E NVARCHAR%3C/tspan%3E%3Ctspan class='x'%3E(%3C/tspan%3E%3Ctspan class='n'%3E400%3C/tspan%3E%3Ctspan class='x'%3E)%3C/tspan%3E%3Ctspan class='k'%3E NULL%3C/tspan%3E%3Ctspan class='x'%3E,%3C/tspan%3E%3C/text%3E%3Ctext x='42' y='734' class='l' text-anchor='end'%3E37%3C/text%3E%3Ctext x='56' y='734'%3E%3Ctspan class='k'%3E    CONSTRAINT%3C/tspan%3E%3Ctspan class='x'%3E df_orders_status%3C/tspan%3E%3Ctspan class='k'%3E DEFAULT%3C/tspan%3E%3Ctspan class='x'%3E (%3C/tspan%3E%3Ctspan class='s'%3E'pending'%3C/tspan%3E%3Ctspan class='x'%3E)%3C/tspan%3E%3Ctspan class='k'%3E FOR%3C/tspan%3E%3Ctspan class='x'%3E status;%3C/tspan%3E%3C/text%3E%3Ctext x='42' y='754' class='l' text-anchor='end'%3E38%3C/text%3E%3Ctext x='42' y='774' class='l' text-anchor='end'%3E39%3C/text%3E%3Ctext x='56' y='774'%3E%3Ctspan class='k'%3ECREATE%3C/tspan%3E%3Ctspan class='k'%3E NONCLUSTERED%3C/tspan%3E%3Ctspan class='k'%3E INDEX%3C/tspan%3E%3Ctspan class='x'%3E ix_orders_customer%3C/tspan%3E%3C/text%3E%3Ctext x='42' y='794' class='l' text-anchor='end'%3E40%3C/text%3E%3Ctext x='56' y='794'%3E%3Ctspan class='k'%3E    ON%3C/tspan%3E%3Ctspan class='x'%3E dbo.orders%3C/tspan%3E%3Ctspan class='x'%3E (customer_id,%3C/tspan%3E%3Ctspan class='x'%3E created_at%3C/tspan%3E%3Ctspan class='k'%3E DESC%3C/tspan%3E%3Ctspan class='x'%3E)%3C/tspan%3E%3C/text%3E%3Ctext x='42' y='814' class='l' text-anchor='end'%3E41%3C/text%3E%3Ctext x='56' y='814'%3E%3Ctspan class='k'%3E    INCLUDE%3C/tspan%3E%3Ctspan class='x'%3E (status,%3C/tspan%3E%3Ctspan class='x'%3E total);%3C/tspan%3E%3C/text%3E%3Ctext x='42' y='834' class='l' text-anchor='end'%3E42%3C/text%3E%3Ctext x='42' y='854' class='l' text-anchor='end'%3E43%3C/text%3E%3Ctext x='56' y='854'%3E%3Ctspan class='k'%3EIF%3C/tspan%3E%3Ctspan class='f'%3E OBJECT_ID%3C/tspan%3E%3Ctspan class='x'%3E(%3C/tspan%3E%3Ctspan class='s'%3E'dbo.vw_open_orders'%3C/tspan%3E%3Ctspan class='x'%3E,%3C/tspan%3E%3Ctspan class='s'%3E 'V'%3C/tspan%3E%3Ctspan class='x'%3E)%3C/tspan%3E%3Ctspan class='k'%3E IS%3C/tspan%3E%3Ctspan class='k'%3E NOT%3C/tspan%3E%3Ctspan class='k'%3E NULL%3C/tspan%3E%3C/text%3E%3Ctext x='42' y='874' class='l' text-anchor='end'%3E44%3C/text%3E%3Ctext x='56' y='874'%3E%3Ctspan class='k'%3E    DROP%3C/tspan%3E%3Ctspan class='k'%3E VIEW%3C/tspan%3E%3Ctspan class='x'%3E dbo.vw_open_orders;%3C/tspan%3E%3C/text%3E%3Ctext x='42' y='894' class='l' text-anchor='end'%3E45%3C/text%3E%3Ctext x='56' y='894'%3E%3Ctspan class='k'%3EGO%3C/tspan%3E%3C/text%3E%3Ctext x='42' y='914' class='l' text-anchor='end'%3E46%3C/text%3E%3Ctext x='42' y='934' class='l' text-anchor='end'%3E47%3C/text%3E%3Ctext x='56' y='934'%3E%3Ctspan class='k'%3EEXEC%3C/tspan%3E%3Ctspan class='x'%3E sp_rename%3C/tspan%3E%3Ctspan class='s'%3E 'dbo.orders.note'%3C/tspan%3E%3Ctspan class='x'%3E,%3C/tspan%3E%3Ctspan class='s'%3E 'remark'%3C/tspan%3E%3Ctspan class='x'%3E,%3C/tspan%3E%3Ctspan class='s'%3E 'COLUMN'%3C/tspan%3E%3Ctspan class='x'%3E;%3C/tspan%3E%3C/text%3E%3Ctext x='42' y='954' class='l' text-anchor='end'%3E48%3C/text%3E%3Ctext x='56' y='954'%3E%3Ctspan class='k'%3ESELECT%3C/tspan%3E%3Ctspan class='k'%3E COUNT%3C/tspan%3E%3Ctspan class='x'%3E(*)%3C/tspan%3E%3Ctspan class='k'%3E AS%3C/tspan%3E%3Ctspan class='x'%3E changed%3C/tspan%3E%3Ctspan class='k'%3E FROM%3C/tspan%3E%3Ctspan class='x'%3E dbo.orders%3C/tspan%3E%3Ctspan class='k'%3E WHERE%3C/tspan%3E%3Ctspan class='x'%3E status%3C/tspan%3E%3Ctspan class='x'%3E &lt;&gt;%3C/tspan%3E%3Ctspan class='s'%3E 'synced'%3C/tspan%3E%3Ctspan class='x'%3E;%3C/tspan%3E%3C/text%3E%3Ctext x='42' y='974' class='l' text-anchor='end'%3E49%3C/text%3E%3Ctext x='42' y='994' class='l' text-anchor='end'%3E50%3C/text%3E%3Ctext x='702' y='14' class='l' text-anchor='end'%3E1%3C/text%3E%3Ctext x='702' y='34' class='l' text-anchor='end'%3E2%3C/text%3E%3Ctext x='702' y='54' class='l' text-anchor='end'%3E3%3C/text%3E%3Ctext x='702' y='74' class='l' text-anchor='end'%3E4%3C/text%3E%3Ctext x='702' y='94' class='l' text-anchor='end'%3E5%3C/text%3E%3Ctext x='702' y='114' class='l' text-anchor='end'%3E6%3C/text%3E%3Ctext x='702' y='134' class='l' text-anchor='end'%3E7%3C/text%3E%3Ctext x='702' y='154' class='l' text-anchor='end'%3E8%3C/text%3E%3Ctext x='716' y='154'%3E%3Ctspan class='k'%3Eimport%3C/tspan%3E%3Ctspan class='x'%3E {%3C/tspan%3E%3Ctspan class='x'%3E createServer%3C/tspan%3E%3Ctspan class='x'%3E }%3C/tspan%3E%3Ctspan class='k'%3E from%3C/tspan%3E%3Ctspan class='s'%3E 'node:http'%3C/tspan%3E%3Ctspan class='x'%3E;%3C/tspan%3E%3C/text%3E%3Ctext x='702' y='174' class='l' text-anchor='end'%3E9%3C/text%3E%3Ctext x='716' y='174'%3E%3Ctspan class='k'%3Eimport%3C/tspan%3E%3Ctspan class='x'%3E {%3C/tspan%3E%3Ctspan class='x'%3E loadObjects%3C/tspan%3E%3Ctspan class='x'%3E }%3C/tspan%3E%3Ctspan class='k'%3E from%3C/tspan%3E%3Ctspan class='s'%3E './engine/snapshot.js'%3C/tspan%3E%3Ctspan class='x'%3E;%3C/tspan%3E%3C/text%3E%3Ctext x='702' y='194' class='l' text-anchor='end'%3E10%3C/text%3E%3Ctext x='702' y='214' class='l' text-anchor='end'%3E11%3C/text%3E%3Ctext x='716' y='214'%3E%3Ctspan class='k'%3Econst%3C/tspan%3E%3Ctspan class='x'%3E kinds%3C/tspan%3E%3Ctspan class='x'%3E =%3C/tspan%3E%3Ctspan class='x'%3E [%3C/tspan%3E%3Ctspan class='s'%3E'onlyInSource'%3C/tspan%3E%3Ctspan class='x'%3E,%3C/tspan%3E%3Ctspan class='s'%3E 'onlyInTarget'%3C/tspan%3E%3Ctspan class='x'%3E,%3C/tspan%3E%3Ctspan class='s'%3E 'different'%3C/tspan%3E%3Ctspan class='x'%3E];%3C/tspan%3E%3C/text%3E%3Ctext x='702' y='234' class='l' text-anchor='end'%3E12%3C/text%3E%3Ctext x='702' y='254' class='l' text-anchor='end'%3E13%3C/text%3E%3Ctext x='716' y='254'%3E%3Ctspan class='c'%3E// one row per object, matched by schema + name%3C/tspan%3E%3C/text%3E%3Ctext x='702' y='274' class='l' text-anchor='end'%3E14%3C/text%3E%3Ctext x='716' y='274'%3E%3Ctspan class='k'%3Efunction%3C/tspan%3E%3Ctspan class='f'%3E keyOf%3C/tspan%3E%3Ctspan class='x'%3E(row)%3C/tspan%3E%3Ctspan class='x'%3E {%3C/tspan%3E%3C/text%3E%3Ctext x='702' y='294' class='l' text-anchor='end'%3E15%3C/text%3E%3Ctext x='716' y='294'%3E%3Ctspan class='k'%3E  return%3C/tspan%3E%3Ctspan class='s'%3E `${row.schema}.${row.name}`%3C/tspan%3E%3Ctspan class='x'%3E.%3C/tspan%3E%3Ctspan class='f'%3EtoLowerCase%3C/tspan%3E%3Ctspan class='x'%3E();%3C/tspan%3E%3C/text%3E%3Ctext x='702' y='314' class='l' text-anchor='end'%3E16%3C/text%3E%3Ctext x='716' y='314'%3E%3Ctspan class='x'%3E}%3C/tspan%3E%3C/text%3E%3Ctext x='702' y='334' class='l' text-anchor='end'%3E17%3C/text%3E%3Ctext x='702' y='354' class='l' text-anchor='end'%3E18%3C/text%3E%3Ctext x='716' y='354'%3E%3Ctspan class='k'%3Eexport%3C/tspan%3E%3Ctspan class='k'%3E async%3C/tspan%3E%3Ctspan class='k'%3E function%3C/tspan%3E%3Ctspan class='f'%3E diffDatabases%3C/tspan%3E%3Ctspan class='x'%3E(source,%3C/tspan%3E%3Ctspan class='x'%3E target,%3C/tspan%3E%3Ctspan class='x'%3E options%3C/tspan%3E%3Ctspan class='x'%3E =%3C/tspan%3E%3Ctspan class='x'%3E {})%3C/tspan%3E%3Ctspan class='x'%3E {%3C/tspan%3E%3C/text%3E%3Ctext x='702' y='374' class='l' text-anchor='end'%3E19%3C/text%3E%3Ctext x='716' y='374'%3E%3Ctspan class='k'%3E  const%3C/tspan%3E%3Ctspan class='x'%3E [a,%3C/tspan%3E%3Ctspan class='x'%3E b]%3C/tspan%3E%3Ctspan class='x'%3E =%3C/tspan%3E%3Ctspan class='k'%3E await%3C/tspan%3E%3Ctspan class='f'%3E Promise.all%3C/tspan%3E%3Ctspan class='x'%3E([%3C/tspan%3E%3Ctspan class='f'%3EloadObjects%3C/tspan%3E%3Ctspan class='x'%3E(source),%3C/tspan%3E%3Ctspan class='f'%3E loadObjects%3C/tspan%3E%3Ctspan class='x'%3E(target)]);%3C/tspan%3E%3C/text%3E%3Ctext x='702' y='394' class='l' text-anchor='end'%3E20%3C/text%3E%3Ctext x='716' y='394'%3E%3Ctspan class='k'%3E  const%3C/tspan%3E%3Ctspan class='x'%3E right%3C/tspan%3E%3Ctspan class='x'%3E =%3C/tspan%3E%3Ctspan class='k'%3E new%3C/tspan%3E%3Ctspan class='f'%3E Map%3C/tspan%3E%3Ctspan class='x'%3E(%3C/tspan%3E%3Ctspan class='f'%3Eb.map%3C/tspan%3E%3Ctspan class='x'%3E((r)%3C/tspan%3E%3Ctspan class='x'%3E =&gt;%3C/tspan%3E%3Ctspan class='x'%3E [%3C/tspan%3E%3Ctspan class='f'%3EkeyOf%3C/tspan%3E%3Ctspan class='x'%3E(r),%3C/tspan%3E%3Ctspan class='x'%3E r]));%3C/tspan%3E%3C/text%3E%3Ctext x='702' y='414' class='l' text-anchor='end'%3E21%3C/text%3E%3Ctext x='716' y='414'%3E%3Ctspan class='k'%3E  const%3C/tspan%3E%3Ctspan class='x'%3E result%3C/tspan%3E%3Ctspan class='x'%3E =%3C/tspan%3E%3Ctspan class='x'%3E {%3C/tspan%3E%3Ctspan class='x'%3E onlyInSource:%3C/tspan%3E%3Ctspan class='x'%3E [],%3C/tspan%3E%3Ctspan class='x'%3E onlyInTarget:%3C/tspan%3E%3Ctspan class='x'%3E [],%3C/tspan%3E%3Ctspan class='x'%3E different:%3C/tspan%3E%3Ctspan class='x'%3E []%3C/tspan%3E%3Ctspan class='x'%3E };%3C/tspan%3E%3C/text%3E%3Ctext x='702' y='434' class='l' text-anchor='end'%3E22%3C/text%3E%3Ctext x='702' y='454' class='l' text-anchor='end'%3E23%3C/text%3E%3Ctext x='716' y='454'%3E%3Ctspan class='k'%3E  for%3C/tspan%3E%3Ctspan class='x'%3E (%3C/tspan%3E%3Ctspan class='k'%3Econst%3C/tspan%3E%3Ctspan class='x'%3E row%3C/tspan%3E%3Ctspan class='k'%3E of%3C/tspan%3E%3Ctspan class='x'%3E a)%3C/tspan%3E%3Ctspan class='x'%3E {%3C/tspan%3E%3C/text%3E%3Ctext x='702' y='474' class='l' text-anchor='end'%3E24%3C/text%3E%3Ctext x='716' y='474'%3E%3Ctspan class='k'%3E    const%3C/tspan%3E%3Ctspan class='x'%3E other%3C/tspan%3E%3Ctspan class='x'%3E =%3C/tspan%3E%3Ctspan class='f'%3E right.get%3C/tspan%3E%3Ctspan class='x'%3E(%3C/tspan%3E%3Ctspan class='f'%3EkeyOf%3C/tspan%3E%3Ctspan class='x'%3E(row));%3C/tspan%3E%3C/text%3E%3Ctext x='702' y='494' class='l' text-anchor='end'%3E25%3C/text%3E%3Ctext x='716' y='494'%3E%3Ctspan class='k'%3E    if%3C/tspan%3E%3Ctspan class='x'%3E (!other)%3C/tspan%3E%3Ctspan class='f'%3E result.onlyInSource.push%3C/tspan%3E%3Ctspan class='x'%3E(row);%3C/tspan%3E%3C/text%3E%3Ctext x='702' y='514' class='l' text-anchor='end'%3E26%3C/text%3E%3Ctext x='716' y='514'%3E%3Ctspan class='k'%3E    else%3C/tspan%3E%3Ctspan class='k'%3E if%3C/tspan%3E%3Ctspan class='x'%3E (%3C/tspan%3E%3Ctspan class='f'%3Enormalize%3C/tspan%3E%3Ctspan class='x'%3E(row.definition)%3C/tspan%3E%3Ctspan class='x'%3E !==%3C/tspan%3E%3Ctspan class='f'%3E normalize%3C/tspan%3E%3Ctspan class='x'%3E(other.definition))%3C/tspan%3E%3Ctspan class='x'%3E {%3C/tspan%3E%3C/text%3E%3Ctext x='702' y='534' class='l' text-anchor='end'%3E27%3C/text%3E%3Ctext x='716' y='534'%3E%3Ctspan class='f'%3E      result.different.push%3C/tspan%3E%3Ctspan class='x'%3E({%3C/tspan%3E%3Ctspan class='x'%3E key:%3C/tspan%3E%3Ctspan class='f'%3E keyOf%3C/tspan%3E%3Ctspan class='x'%3E(row),%3C/tspan%3E%3Ctspan class='x'%3E row,%3C/tspan%3E%3Ctspan class='x'%3E other%3C/tspan%3E%3Ctspan class='x'%3E });%3C/tspan%3E%3C/text%3E%3Ctext x='702' y='554' class='l' text-anchor='end'%3E28%3C/text%3E%3Ctext x='716' y='554'%3E%3Ctspan class='x'%3E    }%3C/tspan%3E%3C/text%3E%3Ctext x='702' y='574' class='l' text-anchor='end'%3E29%3C/text%3E%3Ctext x='716' y='574'%3E%3Ctspan class='f'%3E    right.delete%3C/tspan%3E%3Ctspan class='x'%3E(%3C/tspan%3E%3Ctspan class='f'%3EkeyOf%3C/tspan%3E%3Ctspan class='x'%3E(row));%3C/tspan%3E%3C/text%3E%3Ctext x='702' y='594' class='l' text-anchor='end'%3E30%3C/text%3E%3Ctext x='716' y='594'%3E%3Ctspan class='x'%3E  }%3C/tspan%3E%3C/text%3E%3Ctext x='702' y='614' class='l' text-anchor='end'%3E31%3C/text%3E%3Ctext x='716' y='614'%3E%3Ctspan class='x'%3E  result.onlyInTarget%3C/tspan%3E%3Ctspan class='x'%3E =%3C/tspan%3E%3Ctspan class='x'%3E [...%3C/tspan%3E%3Ctspan class='f'%3Eright.values%3C/tspan%3E%3Ctspan class='x'%3E()];%3C/tspan%3E%3C/text%3E%3Ctext x='702' y='634' class='l' text-anchor='end'%3E32%3C/text%3E%3Ctext x='716' y='634'%3E%3Ctspan class='k'%3E  return%3C/tspan%3E%3Ctspan class='x'%3E result;%3C/tspan%3E%3C/text%3E%3Ctext x='702' y='654' class='l' text-anchor='end'%3E33%3C/text%3E%3Ctext x='716' y='654'%3E%3Ctspan class='x'%3E}%3C/tspan%3E%3C/text%3E%3Ctext x='702' y='674' class='l' text-anchor='end'%3E34%3C/text%3E%3Ctext x='702' y='694' class='l' text-anchor='end'%3E35%3C/text%3E%3Ctext x='716' y='694'%3E%3Ctspan class='h'%3E@@ -42,7 +42,9 @@ function normalize(sql) {%3C/tspan%3E%3C/text%3E%3Ctext x='702' y='714' class='l' text-anchor='end'%3E36%3C/text%3E%3Ctext x='716' y='714'%3E%3Ctspan class='m'%3E-  return sql.trim();%3C/tspan%3E%3C/text%3E%3Ctext x='702' y='734' class='l' text-anchor='end'%3E37%3C/text%3E%3Ctext x='716' y='734'%3E%3Ctspan class='p'%3E+  return sql%3C/tspan%3E%3C/text%3E%3Ctext x='702' y='754' class='l' text-anchor='end'%3E38%3C/text%3E%3Ctext x='716' y='754'%3E%3Ctspan class='p'%3E+    .replace(/%5Cr%5Cn/g, '%5Cn')%3C/tspan%3E%3C/text%3E%3Ctext x='702' y='774' class='l' text-anchor='end'%3E39%3C/text%3E%3Ctext x='716' y='774'%3E%3Ctspan class='p'%3E+    .replace(/[ %5Ct]+$/gm, '')%3C/tspan%3E%3C/text%3E%3Ctext x='702' y='794' class='l' text-anchor='end'%3E40%3C/text%3E%3Ctext x='716' y='794'%3E%3Ctspan class='p'%3E+    .trim();%3C/tspan%3E%3C/text%3E%3Ctext x='702' y='814' class='l' text-anchor='end'%3E41%3C/text%3E%3Ctext x='716' y='814'%3E%3Ctspan class='x'%3E }%3C/tspan%3E%3C/text%3E%3Ctext x='702' y='834' class='l' text-anchor='end'%3E42%3C/text%3E%3Ctext x='702' y='854' class='l' text-anchor='end'%3E43%3C/text%3E%3Ctext x='716' y='854'%3E%3Ctspan class='k'%3Eexport%3C/tspan%3E%3Ctspan class='k'%3E function%3C/tspan%3E%3Ctspan class='f'%3E summarize%3C/tspan%3E%3Ctspan class='x'%3E(result)%3C/tspan%3E%3Ctspan class='x'%3E {%3C/tspan%3E%3C/text%3E%3Ctext x='702' y='874' class='l' text-anchor='end'%3E44%3C/text%3E%3Ctext x='716' y='874'%3E%3Ctspan class='k'%3E  return%3C/tspan%3E%3Ctspan class='f'%3E Object.fromEntries%3C/tspan%3E%3Ctspan class='x'%3E(%3C/tspan%3E%3Ctspan class='f'%3Ekinds.map%3C/tspan%3E%3Ctspan class='x'%3E((k)%3C/tspan%3E%3Ctspan class='x'%3E =&gt;%3C/tspan%3E%3Ctspan class='x'%3E [k,%3C/tspan%3E%3Ctspan class='x'%3E result[k].length]));%3C/tspan%3E%3C/text%3E%3Ctext x='702' y='894' class='l' text-anchor='end'%3E45%3C/text%3E%3Ctext x='716' y='894'%3E%3Ctspan class='x'%3E}%3C/tspan%3E%3C/text%3E%3Ctext x='702' y='914' class='l' text-anchor='end'%3E46%3C/text%3E%3Ctext x='702' y='934' class='l' text-anchor='end'%3E47%3C/text%3E%3Ctext x='716' y='934'%3E%3Ctspan class='k'%3Econst%3C/tspan%3E%3Ctspan class='x'%3E server%3C/tspan%3E%3Ctspan class='x'%3E =%3C/tspan%3E%3Ctspan class='f'%3E createServer%3C/tspan%3E%3Ctspan class='x'%3E(%3C/tspan%3E%3Ctspan class='k'%3Easync%3C/tspan%3E%3Ctspan class='x'%3E (req,%3C/tspan%3E%3Ctspan class='x'%3E res)%3C/tspan%3E%3Ctspan class='x'%3E =&gt;%3C/tspan%3E%3Ctspan class='x'%3E {%3C/tspan%3E%3C/text%3E%3Ctext x='702' y='954' class='l' text-anchor='end'%3E48%3C/text%3E%3Ctext x='716' y='954'%3E%3Ctspan class='k'%3E  const%3C/tspan%3E%3Ctspan class='x'%3E body%3C/tspan%3E%3Ctspan class='x'%3E =%3C/tspan%3E%3Ctspan class='k'%3E await%3C/tspan%3E%3Ctspan class='f'%3E readJson%3C/tspan%3E%3Ctspan class='x'%3E(req);%3C/tspan%3E%3C/text%3E%3Ctext x='702' y='974' class='l' text-anchor='end'%3E49%3C/text%3E%3Ctext x='716' y='974'%3E%3Ctspan class='k'%3E  const%3C/tspan%3E%3Ctspan class='x'%3E out%3C/tspan%3E%3Ctspan class='x'%3E =%3C/tspan%3E%3Ctspan class='k'%3E await%3C/tspan%3E%3Ctspan class='f'%3E diffDatabases%3C/tspan%3E%3Ctspan class='x'%3E(body.source,%3C/tspan%3E%3Ctspan class='x'%3E body.target);%3C/tspan%3E%3C/text%3E%3Ctext x='702' y='994' class='l' text-anchor='end'%3E50%3C/text%3E%3Ctext x='716' y='994'%3E%3Ctspan class='f'%3E  res.writeHead%3C/tspan%3E%3Ctspan class='x'%3E(%3C/tspan%3E%3Ctspan class='n'%3E200%3C/tspan%3E%3Ctspan class='x'%3E,%3C/tspan%3E%3Ctspan class='x'%3E {%3C/tspan%3E%3Ctspan class='s'%3E 'content-type'%3C/tspan%3E%3Ctspan class='x'%3E:%3C/tspan%3E%3Ctspan class='s'%3E 'application/json'%3C/tspan%3E%3Ctspan class='x'%3E });%3C/tspan%3E%3C/text%3E%3Ctext x='1362' y='14' class='l' text-anchor='end'%3E1%3C/text%3E%3Ctext x='1362' y='34' class='l' text-anchor='end'%3E2%3C/text%3E%3Ctext x='1362' y='54' class='l' text-anchor='end'%3E3%3C/text%3E%3Ctext x='1362' y='74' class='l' text-anchor='end'%3E4%3C/text%3E%3Ctext x='1362' y='94' class='l' text-anchor='end'%3E5%3C/text%3E%3Ctext x='1362' y='114' class='l' text-anchor='end'%3E6%3C/text%3E%3Ctext x='1362' y='134' class='l' text-anchor='end'%3E7%3C/text%3E%3Ctext x='1362' y='154' class='l' text-anchor='end'%3E8%3C/text%3E%3Ctext x='1362' y='174' class='l' text-anchor='end'%3E9%3C/text%3E%3Ctext x='1362' y='194' class='l' text-anchor='end'%3E10%3C/text%3E%3Ctext x='1362' y='214' class='l' text-anchor='end'%3E11%3C/text%3E%3Ctext x='1362' y='234' class='l' text-anchor='end'%3E12%3C/text%3E%3Ctext x='1362' y='254' class='l' text-anchor='end'%3E13%3C/text%3E%3Ctext x='1362' y='274' class='l' text-anchor='end'%3E14%3C/text%3E%3Ctext x='1362' y='294' class='l' text-anchor='end'%3E15%3C/text%3E%3Ctext x='1362' y='314' class='l' text-anchor='end'%3E16%3C/text%3E%3Ctext x='1362' y='334' class='l' text-anchor='end'%3E17%3C/text%3E%3Ctext x='1362' y='354' class='l' text-anchor='end'%3E18%3C/text%3E%3Ctext x='1362' y='374' class='l' text-anchor='end'%3E19%3C/text%3E%3Ctext x='1362' y='394' class='l' text-anchor='end'%3E20%3C/text%3E%3Ctext x='1362' y='414' class='l' text-anchor='end'%3E21%3C/text%3E%3Ctext x='1362' y='434' class='l' text-anchor='end'%3E22%3C/text%3E%3Ctext x='1376' y='434'%3E%3Ctspan class='c'%3E-- schema snapshot: the objects of one database%3C/tspan%3E%3C/text%3E%3Ctext x='1362' y='454' class='l' text-anchor='end'%3E23%3C/text%3E%3Ctext x='1376' y='454'%3E%3Ctspan class='k'%3ESELECT%3C/tspan%3E%3Ctspan class='x'%3E o.object_id,%3C/tspan%3E%3C/text%3E%3Ctext x='1362' y='474' class='l' text-anchor='end'%3E24%3C/text%3E%3Ctext x='1376' y='474'%3E%3Ctspan class='x'%3E       s.name%3C/tspan%3E%3Ctspan class='k'%3E  AS%3C/tspan%3E%3Ctspan class='x'%3E schema_name,%3C/tspan%3E%3C/text%3E%3Ctext x='1362' y='494' class='l' text-anchor='end'%3E25%3C/text%3E%3Ctext x='1376' y='494'%3E%3Ctspan class='x'%3E       o.name%3C/tspan%3E%3Ctspan class='k'%3E  AS%3C/tspan%3E%3Ctspan class='x'%3E object_name,%3C/tspan%3E%3C/text%3E%3Ctext x='1362' y='514' class='l' text-anchor='end'%3E26%3C/text%3E%3Ctext x='1376' y='514'%3E%3Ctspan class='x'%3E       o.type_desc,%3C/tspan%3E%3C/text%3E%3Ctext x='1362' y='534' class='l' text-anchor='end'%3E27%3C/text%3E%3Ctext x='1376' y='534'%3E%3Ctspan class='x'%3E       o.modify_date%3C/tspan%3E%3C/text%3E%3Ctext x='1362' y='554' class='l' text-anchor='end'%3E28%3C/text%3E%3Ctext x='1376' y='554'%3E%3Ctspan class='k'%3EFROM%3C/tspan%3E%3Ctspan class='x'%3E   sys.objects%3C/tspan%3E%3Ctspan class='k'%3E AS%3C/tspan%3E%3Ctspan class='x'%3E o%3C/tspan%3E%3C/text%3E%3Ctext x='1362' y='574' class='l' text-anchor='end'%3E29%3C/text%3E%3Ctext x='1376' y='574'%3E%3Ctspan class='k'%3EJOIN%3C/tspan%3E%3Ctspan class='x'%3E   sys.schemas%3C/tspan%3E%3Ctspan class='k'%3E AS%3C/tspan%3E%3Ctspan class='x'%3E s%3C/tspan%3E%3Ctspan class='k'%3E ON%3C/tspan%3E%3Ctspan class='x'%3E s.schema_id%3C/tspan%3E%3Ctspan class='x'%3E =%3C/tspan%3E%3Ctspan class='x'%3E o.schema_id%3C/tspan%3E%3C/text%3E%3Ctext x='1362' y='594' class='l' text-anchor='end'%3E30%3C/text%3E%3Ctext x='1376' y='594'%3E%3Ctspan class='k'%3EWHERE%3C/tspan%3E%3Ctspan class='x'%3E  o.is_ms_shipped%3C/tspan%3E%3Ctspan class='x'%3E =%3C/tspan%3E%3Ctspan class='n'%3E 0%3C/tspan%3E%3C/text%3E%3Ctext x='1362' y='614' class='l' text-anchor='end'%3E31%3C/text%3E%3Ctext x='1376' y='614'%3E%3Ctspan class='k'%3E  AND%3C/tspan%3E%3Ctspan class='x'%3E  o.type%3C/tspan%3E%3Ctspan class='k'%3E IN%3C/tspan%3E%3Ctspan class='x'%3E (%3C/tspan%3E%3Ctspan class='s'%3E'U'%3C/tspan%3E%3Ctspan class='x'%3E,%3C/tspan%3E%3Ctspan class='s'%3E 'V'%3C/tspan%3E%3Ctspan class='x'%3E,%3C/tspan%3E%3Ctspan class='s'%3E 'P'%3C/tspan%3E%3Ctspan class='x'%3E,%3C/tspan%3E%3Ctspan class='s'%3E 'FN'%3C/tspan%3E%3Ctspan class='x'%3E,%3C/tspan%3E%3Ctspan class='s'%3E 'IF'%3C/tspan%3E%3Ctspan class='x'%3E,%3C/tspan%3E%3Ctspan class='s'%3E 'TF'%3C/tspan%3E%3Ctspan class='x'%3E,%3C/tspan%3E%3Ctspan class='s'%3E 'TR'%3C/tspan%3E%3Ctspan class='x'%3E)%3C/tspan%3E%3C/text%3E%3Ctext x='1362' y='634' class='l' text-anchor='end'%3E32%3C/text%3E%3Ctext x='1376' y='634'%3E%3Ctspan class='k'%3EORDER%3C/tspan%3E%3Ctspan class='k'%3E BY%3C/tspan%3E%3Ctspan class='x'%3E s.name,%3C/tspan%3E%3Ctspan class='x'%3E o.name;%3C/tspan%3E%3C/text%3E%3Ctext x='1362' y='654' class='l' text-anchor='end'%3E33%3C/text%3E%3Ctext x='1376' y='654'%3E%3Ctspan class='k'%3EGO%3C/tspan%3E%3C/text%3E%3Ctext x='1362' y='674' class='l' text-anchor='end'%3E34%3C/text%3E%3Ctext x='1362' y='694' class='l' text-anchor='end'%3E35%3C/text%3E%3Ctext x='1376' y='694'%3E%3Ctspan class='k'%3ECREATE%3C/tspan%3E%3Ctspan class='k'%3E PROCEDURE%3C/tspan%3E%3Ctspan class='x'%3E dbo.usp_sync_orders%3C/tspan%3E%3C/text%3E%3Ctext x='1362' y='714' class='l' text-anchor='end'%3E36%3C/text%3E%3Ctext x='1376' y='714'%3E%3Ctspan class='x'%3E    @since%3C/tspan%3E%3Ctspan class='k'%3E DATETIME2%3C/tspan%3E%3Ctspan class='x'%3E =%3C/tspan%3E%3Ctspan class='k'%3E NULL%3C/tspan%3E%3Ctspan class='x'%3E,%3C/tspan%3E%3C/text%3E%3Ctext x='1362' y='734' class='l' text-anchor='end'%3E37%3C/text%3E%3Ctext x='1376' y='734'%3E%3Ctspan class='x'%3E    @batch%3C/tspan%3E%3Ctspan class='k'%3E INT%3C/tspan%3E%3Ctspan class='x'%3E =%3C/tspan%3E%3Ctspan class='n'%3E 500%3C/tspan%3E%3C/text%3E%3Ctext x='1362' y='754' class='l' text-anchor='end'%3E38%3C/text%3E%3Ctext x='1376' y='754'%3E%3Ctspan class='k'%3EAS%3C/tspan%3E%3C/text%3E%3Ctext x='1362' y='774' class='l' text-anchor='end'%3E39%3C/text%3E%3Ctext x='1376' y='774'%3E%3Ctspan class='k'%3EBEGIN%3C/tspan%3E%3C/text%3E%3Ctext x='1362' y='794' class='l' text-anchor='end'%3E40%3C/text%3E%3Ctext x='1376' y='794'%3E%3Ctspan class='k'%3E    SET%3C/tspan%3E%3Ctspan class='x'%3E NOCOUNT%3C/tspan%3E%3Ctspan class='k'%3E ON%3C/tspan%3E%3Ctspan class='x'%3E;%3C/tspan%3E%3C/text%3E%3Ctext x='1362' y='814' class='l' text-anchor='end'%3E41%3C/text%3E%3Ctext x='1376' y='814'%3E%3Ctspan class='k'%3E    DECLARE%3C/tspan%3E%3Ctspan class='x'%3E @rows%3C/tspan%3E%3Ctspan class='k'%3E INT%3C/tspan%3E%3Ctspan class='x'%3E =%3C/tspan%3E%3Ctspan class='n'%3E 1%3C/tspan%3E%3Ctspan class='x'%3E;%3C/tspan%3E%3C/text%3E%3Ctext x='1362' y='834' class='l' text-anchor='end'%3E42%3C/text%3E%3Ctext x='1362' y='854' class='l' text-anchor='end'%3E43%3C/text%3E%3Ctext x='1376' y='854'%3E%3Ctspan class='k'%3E    WHILE%3C/tspan%3E%3Ctspan class='x'%3E @rows%3C/tspan%3E%3Ctspan class='x'%3E &gt;%3C/tspan%3E%3Ctspan class='n'%3E 0%3C/tspan%3E%3C/text%3E%3Ctext x='1362' y='874' class='l' text-anchor='end'%3E44%3C/text%3E%3Ctext x='1376' y='874'%3E%3Ctspan class='k'%3E    BEGIN%3C/tspan%3E%3C/text%3E%3Ctext x='1362' y='894' class='l' text-anchor='end'%3E45%3C/text%3E%3Ctext x='1376' y='894'%3E%3Ctspan class='k'%3E        UPDATE%3C/tspan%3E%3Ctspan class='k'%3E TOP%3C/tspan%3E%3Ctspan class='x'%3E (@batch)%3C/tspan%3E%3Ctspan class='x'%3E t%3C/tspan%3E%3C/text%3E%3Ctext x='1362' y='914' class='l' text-anchor='end'%3E46%3C/text%3E%3Ctext x='1376' y='914'%3E%3Ctspan class='k'%3E           SET%3C/tspan%3E%3Ctspan class='x'%3E t.status%3C/tspan%3E%3Ctspan class='x'%3E =%3C/tspan%3E%3Ctspan class='s'%3E 'synced'%3C/tspan%3E%3Ctspan class='x'%3E,%3C/tspan%3E%3Ctspan class='x'%3E t.synced_at%3C/tspan%3E%3Ctspan class='x'%3E =%3C/tspan%3E%3Ctspan class='f'%3E SYSUTCDATETIME%3C/tspan%3E%3Ctspan class='x'%3E()%3C/tspan%3E%3C/text%3E%3Ctext x='1362' y='934' class='l' text-anchor='end'%3E47%3C/text%3E%3Ctext x='1376' y='934'%3E%3Ctspan class='k'%3E          FROM%3C/tspan%3E%3Ctspan class='x'%3E dbo.orders%3C/tspan%3E%3Ctspan class='k'%3E AS%3C/tspan%3E%3Ctspan class='x'%3E t%3C/tspan%3E%3C/text%3E%3Ctext x='1362' y='954' class='l' text-anchor='end'%3E48%3C/text%3E%3Ctext x='1376' y='954'%3E%3Ctspan class='k'%3E         WHERE%3C/tspan%3E%3Ctspan class='x'%3E t.status%3C/tspan%3E%3Ctspan class='x'%3E =%3C/tspan%3E%3Ctspan class='s'%3E 'pending'%3C/tspan%3E%3C/text%3E%3Ctext x='1362' y='974' class='l' text-anchor='end'%3E49%3C/text%3E%3Ctext x='1376' y='974'%3E%3Ctspan class='k'%3E           AND%3C/tspan%3E%3Ctspan class='x'%3E (@since%3C/tspan%3E%3Ctspan class='k'%3E IS%3C/tspan%3E%3Ctspan class='k'%3E NULL%3C/tspan%3E%3Ctspan class='k'%3E OR%3C/tspan%3E%3Ctspan class='x'%3E t.created_at%3C/tspan%3E%3Ctspan class='x'%3E &gt;=%3C/tspan%3E%3Ctspan class='x'%3E @since);%3C/tspan%3E%3C/text%3E%3Ctext x='1362' y='994' class='l' text-anchor='end'%3E50%3C/text%3E%3C/svg%3E");
-    background-size: 2040px 1000px; opacity: .12;
-    -webkit-mask-image: radial-gradient(ellipse 62% 70% at 50% 45%, rgba(0, 0, 0, .18), #000 100%);
-    mask-image: radial-gradient(ellipse 62% 70% at 50% 45%, rgba(0, 0, 0, .18), #000 100%);
-  }
-  @media print, (prefers-contrast: more), (forced-colors: active) {
-    body::after, html::after { display: none; }
-  }
+  body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--text); font: 15px/1.6 var(--font-body); }
   a { color: var(--accent); }
   a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .wrap { max-width: 1080px; margin: 0 auto; padding: 28px 16px 72px; display: grid; gap: 18px; }
@@ -108,7 +79,7 @@
   .warn { padding: 12px 16px; border-radius: 18px; background: var(--tint-chg); border: 1px solid var(--warn-line); word-break: break-word; box-shadow: var(--edge); }
   .warn b { display: block; }
 
-  /* The four kinds are tinted glass */
+  /* Status colours distinguish the four kinds of difference. */
   .legend { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
   .kind { background: var(--fill-reg); border: 1px solid var(--edge-line); border-radius: 20px; padding: 10px 16px 12px; display: grid; gap: 4px; align-content: start; text-align: left; font: inherit; color: inherit; box-shadow: var(--edge), var(--lift); }
   .kind .top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
@@ -127,7 +98,7 @@
   .panel { background: var(--fill-reg); border: 1px solid var(--edge-line); border-radius: 24px; min-width: 0; box-shadow: var(--edge), var(--lift); }
   .empty { padding: 28px 16px; text-align: center; color: var(--muted); }
 
-  /* Nothing of the screen is printed: a light page with dark text, and no glass. */
+  /* Print as a light page with dark text. */
   @media print {
     :root {
       color-scheme: light; --text: #111; --muted: #444; --line: #bbb; --edge-line: #bbb; --head: #eee; --accent: #1d4fc0;
@@ -138,7 +109,6 @@
       --fill-clear: #fff; --fill-reg: #fff; --fill-inset: #f4f4f4; --edge: none; --lift: none; --blur: none;
     }
     body { background: #fff; }
-    body::before { display: none; }
   }
 
   /* One centred column: a header names both databases and explains the four words, then one
@@ -258,6 +228,18 @@
   details.totals th:first-child, details.totals td:first-child { text-align: left; }
   details.totals thead th { font-weight: 650; color: var(--text); }
 
+  /* Shared language selector. */
+  .langbar { display: flex; justify-content: flex-end; margin-bottom: -6px; }
+  .langpick { display: inline-flex; align-items: center; gap: 6px; padding: 5px 6px 5px 14px; background: var(--fill-clear); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
+    border: 1px solid var(--edge-line); border-radius: 999px; box-shadow: var(--edge), var(--lift); }
+  .langpick svg { color: var(--muted); flex-shrink: 0; }
+  .langpick select { appearance: none; -webkit-appearance: none; font: inherit; color: var(--text); min-height: 36px; min-width: 76px; padding: 4px 36px 4px 14px; cursor: pointer;
+    background-color: var(--fill-inset); border: 1px solid var(--edge-line); border-radius: 999px; box-shadow: inset 0 1px 3px rgba(0, 0, 0, .45);
+    background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+    background-position: calc(100% - 19px) 50%, calc(100% - 13px) 50%; background-size: 6px 6px, 6px 6px; background-repeat: no-repeat; }
+  .langpick select option { background: #171b26; color: var(--text); }
+  .langpick select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
   @media (max-width: 720px) {
     .pair { grid-template-columns: minmax(0, 1fr); }
     .arrow b { display: inline-block; transform: rotate(90deg); margin-right: 8px; }
@@ -279,7 +261,7 @@
     .kind, .linkbtn { transition: border-color .15s; }
   }
   @media print {
-    .toolbar { display: none; }
+    .toolbar, .langbar { display: none; }
     .pickdock, input.pick, input.pickg, .pickg-l { display: none; }
     .panel, .db, .kind { break-inside: avoid; }
   }
@@ -287,6 +269,15 @@
 </head>
 <body>
 <div class="wrap">
+  <div class="langbar">
+    <label class="langpick">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c5 5 5 13 0 18-5-5-5-13 0-18Z"/></svg>
+      <select id="lang" aria-label="ภาษา" title="ภาษา">
+        <option value="th" lang="th">ไทย</option>
+        <option value="en" lang="en">Eng</option>
+      </select>
+    </label>
+  </div>
   <header class="group">
     <h1 id="title"></h1>
     <div class="pair">
@@ -329,38 +320,47 @@ const DATA = __DATA_JSON__;
 
 // Everything that does not touch the page: the words, the parsing of the engine's detail text, the
 // grouping by table and the line diff. test/report.test.ts runs this part without a browser.
-function createReportCore(meta) {
+function createReportCore(meta, lang) {
   'use strict';
+  // The words of the page come in two languages, side by side wherever something is said: L(thai, english).
+  // The Thai is the original text and what a report in Thai is made of, to the letter. Both are worked out
+  // whichever language is asked for, so a part of a sentence is never made of one and then the other.
+  const EN = lang === 'en';
+  const L = (th, en) => (EN ? en : th);
   // sync (default): read as changes to the target, which becomes like the source model, so "only
   // in source" is something to add (green) and "only in target" something that is extra (red).
   // timeline (drift): read from the older source to the later target, the other way round.
   const TIMELINE = meta.perspective === 'timeline';
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
+  // In Thai a side reads after "ใน"; in English each one brings its own preposition.
   const SIDE = TIMELINE
-    ? { source: 'จุด "ก่อน"', target: 'จุด "หลัง"', both: 'ทั้งสองจุด' }
-    : { source: 'ฝั่งต้นแบบ', target: 'ฝั่งปลายทาง', both: 'ทั้งสองฝั่ง' };
+    ? { source: L('จุด "ก่อน"', 'at the "before" point'), target: L('จุด "หลัง"', 'at the "after" point'), both: L('ทั้งสองจุด', 'at both points') }
+    : { source: L('ฝั่งต้นแบบ', 'on the source side'), target: L('ฝั่งปลายทาง', 'on the target side'), both: L('ทั้งสองฝั่ง', 'on both sides') };
 
-  const UNREADABLE = 'อ่านค่าไม่ได้ (ไม่มีสิทธิ์ หรือถูกเข้ารหัส)';
+  const UNREADABLE = L('อ่านค่าไม่ได้ (ไม่มีสิทธิ์ หรือถูกเข้ารหัส)', 'Cannot read the value (no permission, or encrypted)');
   const KIND = TIMELINE ? {
-    OnlyInSource: { cls: 'del', sym: '−', t: 'หายไป', d: 'เคยมีในจุด "ก่อน" แต่จุด "หลัง" ไม่มีแล้ว' },
-    OnlyInTarget: { cls: 'add', sym: '+', t: 'เพิ่มขึ้นมา', d: 'จุด "ก่อน" ยังไม่มี เพิ่งมีในจุด "หลัง"' },
-    Different: { cls: 'chg', sym: '~', t: 'ถูกแก้', d: 'มีทั้งสองจุด แต่ไม่เหมือนเดิม' },
-    Unverified: { cls: 'unk', sym: '?', t: 'ตรวจไม่ได้', d: UNREADABLE + ' จึงบอกไม่ได้ว่าเปลี่ยนหรือไม่' }
+    OnlyInSource: { cls: 'del', sym: '−', t: L('หายไป', 'Removed'), d: L('เคยมีในจุด "ก่อน" แต่จุด "หลัง" ไม่มีแล้ว', 'Existed at the "before" point but is gone at the "after" point') },
+    OnlyInTarget: { cls: 'add', sym: '+', t: L('เพิ่มขึ้นมา', 'Added'), d: L('จุด "ก่อน" ยังไม่มี เพิ่งมีในจุด "หลัง"', 'Did not exist at the "before" point; first appears at the "after" point') },
+    Different: { cls: 'chg', sym: '~', t: L('ถูกแก้', 'Changed'), d: L('มีทั้งสองจุด แต่ไม่เหมือนเดิม', 'Exists at both points, but differs') },
+    Unverified: { cls: 'unk', sym: '?', t: L('ตรวจไม่ได้', 'Unverified'), d: UNREADABLE + L(' จึงบอกไม่ได้ว่าเปลี่ยนหรือไม่', ', so it cannot be said whether it changed') }
   } : {
-    OnlyInSource: { cls: 'add', sym: '+', t: 'ต้องเพิ่ม', d: 'ต้นแบบมี แต่ปลายทางยังไม่มี sync จะสร้างให้ ยกเว้นส่วนที่ไฟล์ sync เขียนไว้เป็นหมายเหตุให้ทำเอง' },
-    OnlyInTarget: { cls: 'del', sym: '−', t: 'มีเกิน', d: 'ปลายทางมีแต่ต้นแบบไม่มี sync ไม่ลบให้ แค่เขียนคำสั่งลบไว้เป็นหมายเหตุ' },
-    Different: { cls: 'chg', sym: '~', t: 'ต้องแก้', d: 'มีทั้งคู่แต่ไม่เหมือนกัน sync จะแก้ปลายทางให้ตรงต้นแบบ ยกเว้นส่วนที่ไฟล์ sync เขียนไว้เป็นหมายเหตุให้ทำเอง' },
-    Unverified: { cls: 'unk', sym: '?', t: 'ตรวจไม่ได้', d: UNREADABLE + ' จึงเทียบไม่ได้ และไม่เขียนคำสั่งให้' }
+    OnlyInSource: { cls: 'add', sym: '+', t: L('ต้องเพิ่ม', 'To add'), d: L('ต้นแบบมี แต่ปลายทางยังไม่มี sync จะสร้างให้ ยกเว้นส่วนที่ไฟล์ sync เขียนไว้เป็นหมายเหตุให้ทำเอง', 'In the source but not yet in the target. Sync creates it, except for parts the sync file writes as comments for you to run by hand') },
+    OnlyInTarget: { cls: 'del', sym: '−', t: L('มีเกิน', 'Extra'), d: L('ปลายทางมีแต่ต้นแบบไม่มี sync ไม่ลบให้ แค่เขียนคำสั่งลบไว้เป็นหมายเหตุ', 'In the target but not in the source. Sync does not delete it; it only writes the delete command as a comment') },
+    Different: { cls: 'chg', sym: '~', t: L('ต้องแก้', 'To change'), d: L('มีทั้งคู่แต่ไม่เหมือนกัน sync จะแก้ปลายทางให้ตรงต้นแบบ ยกเว้นส่วนที่ไฟล์ sync เขียนไว้เป็นหมายเหตุให้ทำเอง', 'In both but different. Sync changes the target to match the source, except for parts the sync file writes as comments for you to run by hand') },
+    Unverified: { cls: 'unk', sym: '?', t: L('ตรวจไม่ได้', 'Unverified'), d: UNREADABLE + L(' จึงเทียบไม่ได้ และไม่เขียนคำสั่งให้', ', so it cannot be compared, and sync writes no command for it') }
   };
 
   const CAT = {
-    'Database': 'ค่าของฐานข้อมูล', 'Schema': 'schema', 'Table': 'ตาราง', 'Column': 'คอลัมน์', 'Index': 'index',
+    'Database': L('ค่าของฐานข้อมูล', 'database settings'), 'Schema': 'schema', 'Table': L('ตาราง', 'table'), 'Column': L('คอลัมน์', 'column'), 'Index': 'index',
     'Foreign key': 'foreign key', 'Check constraint': 'check constraint', 'View': 'view', 'Stored procedure': 'stored procedure',
-    'Function': 'function', 'Trigger': 'trigger', 'User-defined type': 'type ที่สร้างเอง', 'Sequence': 'sequence', 'Synonym': 'synonym'
+    'Function': 'function', 'Trigger': 'trigger', 'User-defined type': L('type ที่สร้างเอง', 'user-defined type'), 'Sequence': 'sequence', 'Synonym': 'synonym'
   };
   const cat = c => CAT[c] || c;
-  // A category inside a Thai sentence: a Latin word needs a space on each side, a Thai one none.
+  // A category inside a Thai sentence: a Latin word needs a space on each side, a Thai one none. (An English
+  // sentence has its own spaces, and uses cat.)
+  // A list in an English sentence: "a", "a and b", "a, b and c".
+  const inEnglish = items => (items.length < 2 ? items.join('') : items.slice(0, -1).join(', ') + ' and ' + items[items.length - 1]);
   const catWord = c => (/^[A-Za-z]/.test(cat(c)) ? ' ' + cat(c) + ' ' : cat(c));
 
   // The properties the engine compares, per category, in the order it writes them.
@@ -380,42 +380,51 @@ function createReportCore(meta) {
   const TABLE_CHILDREN = ['Column', 'Index', 'Foreign key', 'Check constraint'];
 
   const LABEL = {
-    Type: 'ชนิดข้อมูล', DataType: 'ชนิดข้อมูล', Nullable: 'ยอมให้ว่าง (NULL)', Identity: 'เลขรันอัตโนมัติ (IDENTITY)',
-    Computed: 'สูตรคำนวณ', Persisted: 'เก็บค่าที่คำนวณไว้', Default: 'ค่าเริ่มต้น', Collation: 'collation', Ordinal: 'ลำดับคอลัมน์',
-    Kind: 'ประเภท', Columns: 'คอลัมน์', Include: 'คอลัมน์ที่แนบ (INCLUDE)', Filter: 'เงื่อนไขกรอง (WHERE)', Name: 'ชื่อ',
-    References: 'อ้างถึง', OnDelete: 'เมื่อลบแถวแม่', OnUpdate: 'เมื่อแก้แถวแม่', State: 'สถานะ', Expression: 'เงื่อนไข',
-    Table: 'อยู่บน', SetOptions: 'ค่า SET ตอนสร้าง', Definition: 'โค้ด', Spec: 'โครงสร้าง', Details: 'รายละเอียดเพิ่ม',
-    Precision: 'จำนวนหลัก (precision)', Start: 'เริ่มที่', Increment: 'เพิ่มทีละ', Min: 'ต่ำสุด', Max: 'สูงสุด', Cycle: 'วนรอบ',
-    Cache: 'cache', BaseObject: 'ชี้ไปที่', CompatibilityLevel: 'compatibility level'
+    Type: L('ชนิดข้อมูล', 'Data type'), DataType: L('ชนิดข้อมูล', 'Data type'), Nullable: L('ยอมให้ว่าง (NULL)', 'Allows NULL'),
+    Identity: L('เลขรันอัตโนมัติ (IDENTITY)', 'Auto-number (IDENTITY)'),
+    Computed: L('สูตรคำนวณ', 'Computed formula'), Persisted: L('เก็บค่าที่คำนวณไว้', 'Stores the computed value'), Default: L('ค่าเริ่มต้น', 'Default value'),
+    Collation: 'collation', Ordinal: L('ลำดับคอลัมน์', 'Column order'),
+    Kind: L('ประเภท', 'Kind'), Columns: L('คอลัมน์', 'Columns'), Include: L('คอลัมน์ที่แนบ (INCLUDE)', 'Included columns (INCLUDE)'),
+    Filter: L('เงื่อนไขกรอง (WHERE)', 'Filter condition (WHERE)'), Name: L('ชื่อ', 'Name'),
+    References: L('อ้างถึง', 'References'), OnDelete: L('เมื่อลบแถวแม่', 'When the parent row is deleted'), OnUpdate: L('เมื่อแก้แถวแม่', 'When the parent row is updated'),
+    State: L('สถานะ', 'State'), Expression: L('เงื่อนไข', 'Condition'),
+    Table: L('อยู่บน', 'On'), SetOptions: L('ค่า SET ตอนสร้าง', 'SET options at creation'), Definition: L('โค้ด', 'Code'), Spec: L('โครงสร้าง', 'Structure'),
+    Details: L('รายละเอียดเพิ่ม', 'More details'),
+    Precision: L('จำนวนหลัก (precision)', 'Precision'), Start: L('เริ่มที่', 'Starts at'), Increment: L('เพิ่มทีละ', 'Increment'), Min: L('ต่ำสุด', 'Minimum'),
+    Max: L('สูงสุด', 'Maximum'), Cycle: L('วนรอบ', 'Cycles'),
+    Cache: 'cache', BaseObject: L('ชี้ไปที่', 'Points to'), CompatibilityLevel: 'compatibility level'
   };
-  const OBJECT_TYPE = { Type: 'ประเภท object' };
+  const OBJECT_TYPE = { Type: L('ประเภท object', 'Object type') };
   const LABEL_BY_CAT = {
-    'Index': { Type: 'แบบ index' },
+    'Index': { Type: L('แบบ index', 'Index type') },
     'View': OBJECT_TYPE, 'Stored procedure': OBJECT_TYPE, 'Function': OBJECT_TYPE, 'Trigger': OBJECT_TYPE,
-    'User-defined type': { Collation: 'collation ของคอลัมน์', Details: 'รายละเอียดเพิ่ม (IDENTITY, default, key, check)' },
-    'Database': { Collation: 'collation ของฐาน' }
+    'User-defined type': { Collation: L('collation ของคอลัมน์', 'Column collation'), Details: L('รายละเอียดเพิ่ม (IDENTITY, default, key, check)', 'More details (IDENTITY, default, key, check)') },
+    'Database': { Collation: L('collation ของฐาน', 'Database collation') }
   };
   const propLabel = (category, key) => (LABEL_BY_CAT[category] && LABEL_BY_CAT[category][key]) || LABEL[key] || key;
 
   const VALUE = {
-    Nullable: { 'NULL': 'ได้ (NULL)', 'NOT NULL': 'ไม่ได้ (NOT NULL)' },
-    State: { 'ENABLED': 'เปิดใช้', 'DISABLED': 'ปิดอยู่' },
-    Persisted: { 'PERSISTED': 'เก็บไว้ (PERSISTED)', '(none)': 'ไม่เก็บ' },
-    SetOptions: { '(none)': 'ปกติ (ON)' },
-    Cycle: { 'CYCLE': 'วน (CYCLE)', 'NO CYCLE': 'ไม่วน (NO CYCLE)' },
-    Cache: { 'NO CACHE': 'ไม่ใช้ (NO CACHE)' },
-    OnDelete: { 'NO_ACTION': 'ไม่ทำอะไร (NO ACTION)', 'CASCADE': 'ทำตามแถวแม่ (CASCADE)', 'SET_NULL': 'ใส่ NULL (SET NULL)', 'SET_DEFAULT': 'ใส่ค่าเริ่มต้น (SET DEFAULT)' },
-    Name: { '(system-named)': 'ระบบตั้งชื่อให้' },
-    Kind: { 'alias type': 'type ย่อ (alias)', 'table type': 'type แบบตาราง' },
-    Table: { 'DATABASE': 'ทั้งฐานข้อมูล (database trigger)' }
+    Nullable: { 'NULL': L('ได้ (NULL)', 'Yes (NULL)'), 'NOT NULL': L('ไม่ได้ (NOT NULL)', 'No (NOT NULL)') },
+    State: { 'ENABLED': L('เปิดใช้', 'Enabled'), 'DISABLED': L('ปิดอยู่', 'Disabled') },
+    Persisted: { 'PERSISTED': L('เก็บไว้ (PERSISTED)', 'Stored (PERSISTED)'), '(none)': L('ไม่เก็บ', 'Not stored') },
+    SetOptions: { '(none)': L('ปกติ (ON)', 'Normal (ON)') },
+    Cycle: { 'CYCLE': L('วน (CYCLE)', 'Cycles (CYCLE)'), 'NO CYCLE': L('ไม่วน (NO CYCLE)', 'Does not cycle (NO CYCLE)') },
+    Cache: { 'NO CACHE': L('ไม่ใช้ (NO CACHE)', 'Not used (NO CACHE)') },
+    OnDelete: {
+      'NO_ACTION': L('ไม่ทำอะไร (NO ACTION)', 'Do nothing (NO ACTION)'), 'CASCADE': L('ทำตามแถวแม่ (CASCADE)', 'Follow the parent row (CASCADE)'),
+      'SET_NULL': L('ใส่ NULL (SET NULL)', 'Set to NULL (SET NULL)'), 'SET_DEFAULT': L('ใส่ค่าเริ่มต้น (SET DEFAULT)', 'Set to the default (SET DEFAULT)')
+    },
+    Name: { '(system-named)': L('ระบบตั้งชื่อให้', 'Named by the system') },
+    Kind: { 'alias type': L('type ย่อ (alias)', 'Alias type'), 'table type': L('type แบบตาราง', 'Table type') },
+    Table: { 'DATABASE': L('ทั้งฐานข้อมูล (database trigger)', 'The whole database (database trigger)') }
   };
   VALUE.OnUpdate = VALUE.OnDelete;
   // A value as the engine writes it, in plain words. "(none)" is its word for an empty value.
   function val(key, v) {
-    if (v === '(not readable)') return 'อ่านไม่ได้';
+    if (v === '(not readable)') return L('อ่านไม่ได้', 'Unreadable');
     const known = VALUE[key];
     if (known && Object.prototype.hasOwnProperty.call(known, v)) return known[v];
-    return v === '(none)' ? 'ไม่มี' : v;
+    return v === '(none)' ? L('ไม่มี', 'None') : v;
   }
 
   // The text the engine writes where a definition exists but cannot be read ($HiddenDefinition).
@@ -471,7 +480,8 @@ function createReportCore(meta) {
       const hidden = NOT_READABLE.exec(text);
       if (hidden) {
         const side = hidden[2] === 'either side' ? SIDE.both : SIDE[hidden[2]];
-        out.notes.push({ key: hidden[1], side: hidden[2], text: propLabel(row.cat, hidden[1]) + ': อ่านไม่ได้ใน' + side + (hidden[3] ? ' จึงไม่ได้เทียบส่วนนี้' : '') });
+        out.notes.push({ key: hidden[1], side: hidden[2], text: propLabel(row.cat, hidden[1]) +
+          L(': อ่านไม่ได้ใน' + side + (hidden[3] ? ' จึงไม่ได้เทียบส่วนนี้' : ''), ': cannot be read ' + side + (hidden[3] ? ', so this part was not compared' : '')) });
         return;
       }
       const m = /^([A-Za-z]+): source ([\s\S]*)$/.exec(text);
@@ -482,6 +492,9 @@ function createReportCore(meta) {
     });
     return out;
   }
+
+  // What stands before the text of a check that has no name of its own.
+  const UNNAMED = L('ไม่มีชื่อ: ', 'unnamed: ');
 
   // The name of a column, index or constraint inside its table's card: the object name without
   // the table. The engine writes "<table>.<name>", or "<table> (primary key)", "<table> (unique:
@@ -494,9 +507,9 @@ function createReportCore(meta) {
     if (rest.charAt(0) === '.') return { name: rest.slice(1), kind: cat(row.cat), pk: false };
     const m = /^ \((primary key|unique: |foreign key: |check: )([\s\S]*)\)$/.exec(rest);
     if (!m) return { name: row.obj, kind: cat(row.cat), pk: false };
-    if (m[1] === 'primary key') return { name: 'ของตารางนี้', kind: 'primary key', pk: true };
+    if (m[1] === 'primary key') return { name: L('ของตารางนี้', "this table's"), kind: 'primary key', pk: true };
     const kind = m[1] === 'unique: ' ? 'unique' : m[1] === 'check: ' ? 'check constraint' : 'foreign key';
-    return { name: 'ไม่มีชื่อ: ' + m[2], kind, pk: false };
+    return { name: UNNAMED + m[2], kind, pk: false };
   }
 
   // True when the sync script writes the view of this row again (CREATE OR ALTER VIEW), which
@@ -541,41 +554,56 @@ function createReportCore(meta) {
   // kind it is), so where the script's choice hangs on something the row does not show, the
   // line says "sync will, unless ...". test/report.test.ts holds every real report to that,
   // against the sync script of the same comparison.
+  // An English sentence is written without its full stop, as a Thai one is: it is put here, once.
   function sentence(row, parsed, ctx) {
+    return sentenceOf(row, parsed, ctx) + L('', '.');
+  }
+
+  function sentenceOf(row, parsed, ctx) {
     const self = ctx && ctx.self;
-    const NOTE = 'เขียนเป็นหมายเหตุให้ทำเอง';
+    const NOTE = L('เขียนเป็นหมายเหตุให้ทำเอง', 'writes it as a comment for you to run by hand');
     if (TIMELINE) {
-      if (row.status === 'OnlyInSource') return 'เคยมีในจุด "ก่อน" แต่จุด "หลัง" ไม่มีแล้ว';
-      if (row.status === 'OnlyInTarget') return 'จุด "ก่อน" ยังไม่มี เพิ่งมีในจุด "หลัง"';
-      if (row.status === 'Unverified') return 'อ่านค่าไม่ได้ จึงบอกไม่ได้ว่าเปลี่ยนหรือไม่';
-      return parsed.code ? 'โค้ดข้างในถูกแก้' + (parsed.changes.length ? ' และค่าด้านล่างเปลี่ยนจากที่ขีดฆ่าเป็นค่าใหม่' : '') : 'เปลี่ยนจากค่าที่ขีดฆ่าเป็นค่าใหม่';
+      if (row.status === 'OnlyInSource') return L('เคยมีในจุด "ก่อน" แต่จุด "หลัง" ไม่มีแล้ว', 'Existed at the "before" point but is gone at the "after" point');
+      if (row.status === 'OnlyInTarget') return L('จุด "ก่อน" ยังไม่มี เพิ่งมีในจุด "หลัง"', 'Did not exist at the "before" point; first appears at the "after" point');
+      if (row.status === 'Unverified') return L('อ่านค่าไม่ได้ จึงบอกไม่ได้ว่าเปลี่ยนหรือไม่', 'Cannot read the value, so it cannot be said whether it changed');
+      return parsed.code
+        ? L('โค้ดข้างในถูกแก้' + (parsed.changes.length ? ' และค่าด้านล่างเปลี่ยนจากที่ขีดฆ่าเป็นค่าใหม่' : ''),
+          'The code inside was changed' + (parsed.changes.length ? ', and the values below changed from the struck-through value to the new one' : ''))
+        : L('เปลี่ยนจากค่าที่ขีดฆ่าเป็นค่าใหม่', 'Changed from the struck-through value to the new one');
     }
-    if (row.status === 'Unverified') return 'อ่านค่าไม่ได้ จึงเทียบไม่ได้ และ sync ไม่เขียนคำสั่งให้';
+    if (row.status === 'Unverified') return L('อ่านค่าไม่ได้ จึงเทียบไม่ได้ และ sync ไม่เขียนคำสั่งให้', 'Cannot read the value, so it cannot be compared, and sync writes no command for it');
     if (row.status === 'OnlyInSource') {
       const facts = factPairs(row);
       const fact = key => { const f = facts.filter(p => p.key === key)[0]; return f ? f.value : ''; };
-      const missing = 'ปลายทางยังไม่มี' + catWord(row.cat) + 'นี้';
+      const missing = L('ปลายทางยังไม่มี' + catWord(row.cat) + 'นี้', 'The target does not have this ' + cat(row.cat) + ' yet');
       if (row.cat === 'Table') {
         const children = ['Index', 'Check constraint', 'Foreign key'];
         const compared = c => (meta.categories || []).indexOf(c) >= 0;
         const skipped = children.filter(c => !compared(c)).map(cat);
-        const notCompared = skipped.length ? ' (ไม่รวม ' + skipped.join(', ') + ' เพราะไม่ได้เลือกเทียบหมวดนั้น)' : '';
-        const table = 'ปลายทางยังไม่มีตารางนี้ sync จะสร้างทั้งตาราง พร้อมคอลัมน์และ primary key';
+        const notCompared = skipped.length
+          ? L(' (ไม่รวม ' + skipped.join(', ') + ' เพราะไม่ได้เลือกเทียบหมวดนั้น)', ' (the ' + inEnglish(skipped) + ' parts are left out, because those categories were not chosen for comparison)') : '';
+        const table = L('ปลายทางยังไม่มีตารางนี้ sync จะสร้างทั้งตาราง พร้อมคอลัมน์และ primary key', 'The target does not have this table yet. Sync creates the whole table, with its columns and primary key');
         // The table may be there, hidden: its CREATE TABLE then fails, and what stands on it
         // would land on the table that is there. Those statements wait as comments.
         if (TARGET_INCOMPLETE) {
           const waiting = children.filter(compared).map(cat);
-          return table + (waiting.length ? ' ส่วน ' + waiting.join(', ') + ' ของมัน sync ' + NOTE + ' หลังเช็คว่าตารางถูกสร้างจริง (ผลเทียบไม่ครบ ตารางนี้อาจมีอยู่แล้วแต่มองไม่เห็น)' : '') + notCompared;
+          return table + (waiting.length
+            ? L(' ส่วน ' + waiting.join(', ') + ' ของมัน sync ' + NOTE + ' หลังเช็คว่าตารางถูกสร้างจริง (ผลเทียบไม่ครบ ตารางนี้อาจมีอยู่แล้วแต่มองไม่เห็น)',
+              '. As for its ' + inEnglish(waiting) + ' parts, sync ' + NOTE + ' after checking that the table was really created (the comparison is incomplete: this table may already exist but be hidden)')
+            : '') + notCompared;
         }
-        return table + (notCompared || ' รวมทั้ง index, check และ foreign key ของมัน');
+        return table + (notCompared || L(' รวมทั้ง index, check และ foreign key ของมัน', ', including its indexes, checks and foreign keys'));
       }
       if (row.cat === 'Synonym') {
-        if (namePartCount(fact('BaseObject')) >= 3) return 'synonym นี้ชี้ไปฐานอื่นหรือ server อื่น ซึ่งชื่อมักต่างกันในแต่ละที่ sync จึงเขียนคำสั่งสร้างไว้เป็นหมายเหตุให้ตรวจแล้วทำเอง';
-        return missing + ' sync จะสร้างให้';
+        if (namePartCount(fact('BaseObject')) >= 3) {
+          return L('synonym นี้ชี้ไปฐานอื่นหรือ server อื่น ซึ่งชื่อมักต่างกันในแต่ละที่ sync จึงเขียนคำสั่งสร้างไว้เป็นหมายเหตุให้ตรวจแล้วทำเอง',
+            'This synonym points to another database or server, whose names often differ from place to place, so sync writes the create command as a comment for you to check and run by hand');
+        }
+        return missing + L(' sync จะสร้างให้', '. Sync creates it');
       }
       // A module whose text cannot be read in the source cannot be written for the target.
       if (MODULES.indexOf(row.cat) >= 0 && row.a === HIDDEN_DEFINITION) {
-        return missing + ' แต่โค้ดของต้นแบบอ่านไม่ได้ sync จึงสร้างให้ไม่ได้ มีแต่หมายเหตุ';
+        return missing + L(' แต่โค้ดของต้นแบบอ่านไม่ได้ sync จึงสร้างให้ไม่ได้ มีแต่หมายเหตุ', ', but the source code cannot be read, so sync cannot create it. Only a comment is written');
       }
       // Nor a column, an index or a check of which the part that defines it cannot be read. For
       // a computed column that part is its formula alone: the script adds it as "name AS
@@ -583,31 +611,43 @@ function createReportCore(meta) {
       // not be read is not in the way. For any other column it is the type.
       const formula = fact('Computed');
       if (row.cat === 'Column' && (formula ? formula === NOT_READABLE_VALUE : fact('Type') === NOT_READABLE_VALUE)) {
-        return missing + (formula ? ' แต่สูตรคำนวณของต้นแบบอ่านไม่ได้' : ' แต่ชนิดข้อมูลของต้นแบบอ่านไม่ได้') + ' sync จึงสร้างให้ไม่ได้ มีแต่หมายเหตุ';
+        return missing + L((formula ? ' แต่สูตรคำนวณของต้นแบบอ่านไม่ได้' : ' แต่ชนิดข้อมูลของต้นแบบอ่านไม่ได้') + ' sync จึงสร้างให้ไม่ได้ มีแต่หมายเหตุ',
+          ', but the source ' + (formula ? 'computed formula' : 'data type') + ' cannot be read, so sync cannot create it. Only a comment is written');
       }
       if (row.cat === 'Index' && fact('Type') && PLAIN_INDEX.indexOf(fact('Type')) < 0) {
-        return missing + ' แต่ index แบบ ' + fact('Type') + ' sync เขียนคำสั่งสร้างไม่ได้ มีแต่หมายเหตุให้ทำเอง';
+        return missing + L(' แต่ index แบบ ' + fact('Type') + ' sync เขียนคำสั่งสร้างไม่ได้ มีแต่หมายเหตุให้ทำเอง',
+          ', but sync cannot write the create command for a ' + fact('Type') + ' index. Only a comment for you to run by hand is written');
       }
-      if (row.cat === 'Index' && fact('Filter') === NOT_READABLE_VALUE) return missing + ' แต่เงื่อนไขกรองของต้นแบบอ่านไม่ได้ sync จึงสร้างให้ไม่ได้ มีแต่หมายเหตุ';
-      if (row.cat === 'Check constraint' && fact('Expression') === NOT_READABLE_VALUE) return missing + ' แต่เงื่อนไขของต้นแบบอ่านไม่ได้ sync จึงสร้างให้ไม่ได้ มีแต่หมายเหตุ';
+      if (row.cat === 'Index' && fact('Filter') === NOT_READABLE_VALUE) {
+        return missing + L(' แต่เงื่อนไขกรองของต้นแบบอ่านไม่ได้ sync จึงสร้างให้ไม่ได้ มีแต่หมายเหตุ', ', but the source filter condition cannot be read, so sync cannot create it. Only a comment is written');
+      }
+      if (row.cat === 'Check constraint' && fact('Expression') === NOT_READABLE_VALUE) {
+        return missing + L(' แต่เงื่อนไขของต้นแบบอ่านไม่ได้ sync จึงสร้างให้ไม่ได้ มีแต่หมายเหตุ', ', but the source condition cannot be read, so sync cannot create it. Only a comment is written');
+      }
       if (TARGET_INCOMPLETE) {
         // A check without a name is paired by its text, which that login cannot read.
-        if (row.cat === 'Check constraint' && leafOf(row).name.indexOf('ไม่มีชื่อ: ') === 0) {
-          return 'check นี้ไม่มีชื่อ และ check ที่ไม่มีชื่อของปลายทางอ่านไม่ได้ จึงไม่รู้ว่ามีอยู่แล้วหรือยัง sync จึงเขียนคำสั่งสร้างไว้เป็นหมายเหตุให้ทำเอง';
+        if (row.cat === 'Check constraint' && leafOf(row).name.indexOf(UNNAMED) === 0) {
+          return L('check นี้ไม่มีชื่อ และ check ที่ไม่มีชื่อของปลายทางอ่านไม่ได้ จึงไม่รู้ว่ามีอยู่แล้วหรือยัง sync จึงเขียนคำสั่งสร้างไว้เป็นหมายเหตุให้ทำเอง',
+            "This check has no name, and the target's unnamed checks cannot be read, so it is not known whether it already exists. Sync writes the create command as a comment for you to run by hand");
         }
         // The index of a view that is new itself waits for its CREATE VIEW.
         if (row.cat === 'Index' && row.group && row.group.kind === 'view' && self && self.status === 'OnlyInSource') {
-          return missing + ' sync ' + NOTE + ' หลังเช็คว่า view ถูกสร้างจริง (ผลเทียบไม่ครบ view นี้อาจมีอยู่แล้วแต่มองไม่เห็น)';
+          return missing + L(' sync ' + NOTE + ' หลังเช็คว่า view ถูกสร้างจริง (ผลเทียบไม่ครบ view นี้อาจมีอยู่แล้วแต่มองไม่เห็น)',
+            '. Sync ' + NOTE + ' after checking that the view was really created (the comparison is incomplete: this view may already exist but be hidden)');
         }
-        if (MODULES.indexOf(row.cat) >= 0) return missing + ' sync จะสร้างด้วย CREATE ธรรมดา ถ้ามีอยู่แล้วแต่มองไม่เห็น คำสั่งจะ fail โดยไม่เขียนทับ';
+        if (MODULES.indexOf(row.cat) >= 0) {
+          return missing + L(' sync จะสร้างด้วย CREATE ธรรมดา ถ้ามีอยู่แล้วแต่มองไม่เห็น คำสั่งจะ fail โดยไม่เขียนทับ',
+            '. Sync creates it with a plain CREATE; if it already exists but is hidden, the command fails without overwriting it');
+        }
       }
-      return missing + ' sync จะสร้างให้';
+      return missing + L(' sync จะสร้างให้', '. Sync creates it');
     }
     if (row.status === 'OnlyInTarget') {
       if (row.cat === 'Index' && row.group && row.group.kind === 'view' && viewIsRewritten(self)) {
-        return 'มีแค่ในปลายทาง แต่ sync จะเขียน view นี้ใหม่ ซึ่งทำให้ index นี้หายไปด้วย (rollback script สร้างคืนให้)';
+        return L('มีแค่ในปลายทาง แต่ sync จะเขียน view นี้ใหม่ ซึ่งทำให้ index นี้หายไปด้วย (rollback script สร้างคืนให้)',
+          'Only in the target, but sync rewrites this view, which also drops this index (the rollback script recreates it)');
       }
-      return 'มีแค่ในปลายทาง sync ไม่ลบให้ แค่เขียนคำสั่งลบไว้เป็นหมายเหตุ';
+      return L('มีแค่ในปลายทาง sync ไม่ลบให้ แค่เขียนคำสั่งลบไว้เป็นหมายเหตุ', 'Only in the target. Sync does not delete it; it only writes the delete command as a comment');
     }
     // Different: what the sync script does depends on what differs.
     const keys = parsed.changes.map(c => c.key);
@@ -616,24 +656,33 @@ function createReportCore(meta) {
     const change = key => parsed.changes.filter(c => c.key === key)[0];
     // A line of the detail that could not be split still starts with the name of its property.
     const mayDiffer = key => has(key) || parsed.raw.some(text => text.indexOf(key + ': ') === 0);
-    const BY_HAND = ' sync เขียนคำสั่งไว้เป็นหมายเหตุให้ทำเอง';
-    const UNLESS = conditions => ' (ถ้า' + conditions.join(' หรือ') + ' sync จะ' + NOTE + 'แทน)';
-    if (row.cat === 'Database') return 'sync ไม่แก้ค่าของฐานข้อมูลให้ แค่เขียนไว้เป็นหมายเหตุ';
-    if (row.cat === 'User-defined type') return 'type แก้ตรงๆ ไม่ได้ ต้องลบแล้วสร้างใหม่' + BY_HAND;
-    if (row.cat === 'Sequence') return 'sync จะแก้ให้ตรงต้นแบบ ยกเว้นชนิดข้อมูลและค่าเริ่มที่ ซึ่งแก้ไม่ได้';
+    const BY_HAND = L(' sync เขียนคำสั่งไว้เป็นหมายเหตุให้ทำเอง', ', so sync writes the command as a comment for you to run by hand');
+    const UNLESS = conditions => L(' (ถ้า' + conditions.join(' หรือ') + ' sync จะ' + NOTE + 'แทน)', ' (if ' + conditions.join(' or ') + ', sync ' + NOTE + ' instead)');
+    if (row.cat === 'Database') return L('sync ไม่แก้ค่าของฐานข้อมูลให้ แค่เขียนไว้เป็นหมายเหตุ', 'Sync does not change database settings; it only writes them as a comment');
+    if (row.cat === 'User-defined type') return L('type แก้ตรงๆ ไม่ได้ ต้องลบแล้วสร้างใหม่' + BY_HAND, 'A type cannot be changed directly; it has to be dropped and created again' + BY_HAND);
+    if (row.cat === 'Sequence') return L('sync จะแก้ให้ตรงต้นแบบ ยกเว้นชนิดข้อมูลและค่าเริ่มที่ ซึ่งแก้ไม่ได้', 'Sync changes it to match the source, except the data type and the start value, which cannot be changed');
     if (row.cat === 'Synonym') {
       const base = change('BaseObject');
-      if (!base) return 'sync จะลบแล้วสร้างใหม่ให้ชี้ตามต้นแบบ (ถ้าชี้ไปฐานอื่น จะเขียนไว้เป็นหมายเหตุให้ตรวจก่อน)';
+      if (!base) {
+        return L('sync จะลบแล้วสร้างใหม่ให้ชี้ตามต้นแบบ (ถ้าชี้ไปฐานอื่น จะเขียนไว้เป็นหมายเหตุให้ตรวจก่อน)',
+          'Sync drops it and creates it again to point where the source points (if it points to another database, it is written as a comment for you to check first)');
+      }
       // Either side: the sync script and the rollback script stay each other's mirror.
-      if (namePartCount(base.from) >= 3 || namePartCount(base.to) >= 3) return 'synonym นี้ชี้ไปฐานอื่นหรือ server อื่น ซึ่งชื่อมักต่างกันในแต่ละที่ sync จึงเขียนคำสั่งไว้เป็นหมายเหตุให้ตรวจแล้วทำเอง';
-      return 'sync จะลบแล้วสร้างใหม่ให้ชี้ตามต้นแบบ';
+      if (namePartCount(base.from) >= 3 || namePartCount(base.to) >= 3) {
+        return L('synonym นี้ชี้ไปฐานอื่นหรือ server อื่น ซึ่งชื่อมักต่างกันในแต่ละที่ sync จึงเขียนคำสั่งไว้เป็นหมายเหตุให้ตรวจแล้วทำเอง',
+          'This synonym points to another database or server, whose names often differ from place to place, so sync writes the command as a comment for you to check and run by hand');
+      }
+      return L('sync จะลบแล้วสร้างใหม่ให้ชี้ตามต้นแบบ', 'Sync drops it and creates it again to point where the source points');
     }
     if (row.cat === 'Column') {
-      if (has('Identity') || has('Computed')) return 'IDENTITY และสูตรคำนวณแก้ด้วยคำสั่งไม่ได้ ต้องสร้างคอลัมน์ใหม่' + BY_HAND;
-      if (only('Ordinal')) return 'ลำดับคอลัมน์ต่างกัน sync ไม่ย้ายให้ (ต้องสร้างตารางใหม่ถึงจะย้ายได้)';
+      if (has('Identity') || has('Computed')) {
+        return L('IDENTITY และสูตรคำนวณแก้ด้วยคำสั่งไม่ได้ ต้องสร้างคอลัมน์ใหม่' + BY_HAND, 'IDENTITY and computed formulas cannot be changed by a command; the column has to be created again' + BY_HAND);
+      }
+      if (only('Ordinal')) return L('ลำดับคอลัมน์ต่างกัน sync ไม่ย้ายให้ (ต้องสร้างตารางใหม่ถึงจะย้ายได้)', 'The column order differs. Sync does not move columns (the table has to be rebuilt to move one)');
       // ALTER COLUMN says the type again, and a type that could not be read cannot be written.
       if ((has('Nullable') || has('Collation')) && parsed.notes.some(n => n.key === 'Type')) {
-        return 'ชนิดข้อมูลอ่านไม่ได้ฝั่งหนึ่ง และคำสั่งแก้ต้องระบุชนิด sync จึงไม่เขียนคำสั่งให้ มีแต่หมายเหตุ';
+        return L('ชนิดข้อมูลอ่านไม่ได้ฝั่งหนึ่ง และคำสั่งแก้ต้องระบุชนิด sync จึงไม่เขียนคำสั่งให้ มีแต่หมายเหตุ',
+          'The data type cannot be read on one side, and the alter command has to state the type, so sync writes no command. Only a comment is written');
       }
       // The type, NULL / NOT NULL and collation are changed with ALTER COLUMN. A default and
       // PERSISTED are not: those are always statements.
@@ -641,34 +690,40 @@ function createReportCore(meta) {
       // PERSISTED is a property of computed columns only, and ALTER COLUMN changes nothing
       // else of one.
       if (has('Persisted') && alter) {
-        return 'เป็นคอลัมน์คำนวณ: sync จะแก้ให้เฉพาะการเก็บค่า (PERSISTED) ส่วนชนิดข้อมูล, NULL และ collation แก้ด้วยคำสั่งไม่ได้ sync ' + NOTE;
+        return L('เป็นคอลัมน์คำนวณ: sync จะแก้ให้เฉพาะการเก็บค่า (PERSISTED) ส่วนชนิดข้อมูล, NULL และ collation แก้ด้วยคำสั่งไม่ได้ sync ' + NOTE,
+          'This is a computed column: sync changes only whether the value is stored (PERSISTED); the data type, NULL and collation cannot be changed by a command, so sync ' + NOTE);
       }
       // A type change needs the default of the column dropped first, and the script does not
       // drop a default that could not be read. The target's: it is there, so that is certain.
       const hiddenDefault = parsed.notes.filter(n => n.key === 'Default')[0];
       if (has('Type') && hiddenDefault && hiddenDefault.side !== 'source') {
-        return 'จะเปลี่ยนชนิดข้อมูลต้องลบค่าเริ่มต้นก่อน แต่ค่าเริ่มต้นของปลายทางอ่านไม่ได้ sync จึง' + NOTE;
+        return L('จะเปลี่ยนชนิดข้อมูลต้องลบค่าเริ่มต้นก่อน แต่ค่าเริ่มต้นของปลายทางอ่านไม่ได้ sync จึง' + NOTE,
+          "Changing the data type needs the default value dropped first, but the target's default value cannot be read, so sync " + NOTE);
       }
       // Nothing is struck through when no line of the detail could be read as from -> to.
-      const changed = parsed.changes.length ? 'sync จะแก้ปลายทางจากค่าที่ขีดฆ่าเป็นค่าใหม่' : 'sync จะแก้ปลายทางให้ตรงต้นแบบ';
-      const order = has('Ordinal') ? ' ยกเว้นลำดับคอลัมน์ ซึ่ง sync ไม่ย้ายให้' : '';
+      const changed = parsed.changes.length
+        ? L('sync จะแก้ปลายทางจากค่าที่ขีดฆ่าเป็นค่าใหม่', 'Sync changes the target from the struck-through value to the new one')
+        : L('sync จะแก้ปลายทางให้ตรงต้นแบบ', 'Sync changes the target to match the source');
+      const order = has('Ordinal') ? L(' ยกเว้นลำดับคอลัมน์ ซึ่ง sync ไม่ย้ายให้', ', except the column order, which sync does not move') : '';
       if (!alter) return changed + order;
       // What the row does not show: whether the column is computed, or used by a computed
       // column (SQL Server alters neither), and for a collation alone whether its type is a
       // user-defined one (COLLATE cannot be written for it). The script writes comments then.
-      const unless = ['เป็นคอลัมน์คำนวณ', 'มีคอลัมน์คำนวณใช้คอลัมน์นี้'];
-      if (!mayDiffer('Type') && !mayDiffer('Nullable')) unless.push('เป็นคอลัมน์ของ type ที่สร้างเอง');
+      const unless = [L('เป็นคอลัมน์คำนวณ', 'it is a computed column'), L('มีคอลัมน์คำนวณใช้คอลัมน์นี้', 'a computed column uses this column')];
+      if (!mayDiffer('Type') && !mayDiffer('Nullable')) unless.push(L('เป็นคอลัมน์ของ type ที่สร้างเอง', 'it is a column of a user-defined type'));
       // The model's default cannot be put back after a type change when the target has one.
-      if (has('Type') && hiddenDefault) unless.push('ปลายทางมีค่าเริ่มต้นอยู่');
+      if (has('Type') && hiddenDefault) unless.push(L('ปลายทางมีค่าเริ่มต้นอยู่', 'the target has a default value'));
       return changed + order + UNLESS(unless);
     }
     if (TABLE_CHILDREN.indexOf(row.cat) >= 0) {
-      if (leafOf(row).pk) return 'primary key ต่างกัน ต้องลบ foreign key ที่อ้างถึงก่อน' + BY_HAND;
-      if (only('Name')) return 'ของข้างในเหมือนกัน ต่างกันแค่ชื่อ sync จะเปลี่ยนชื่อให้ตรงต้นแบบ';
-      if (only('State')) return 'sync จะเปิดหรือปิดให้ตรงต้นแบบ';
+      if (leafOf(row).pk) return L('primary key ต่างกัน ต้องลบ foreign key ที่อ้างถึงก่อน' + BY_HAND, 'The primary key differs; the foreign keys that reference it have to be dropped first' + BY_HAND);
+      if (only('Name')) return L('ของข้างในเหมือนกัน ต่างกันแค่ชื่อ sync จะเปลี่ยนชื่อให้ตรงต้นแบบ', 'The contents are the same; only the name differs. Sync renames it to match the source');
+      if (only('State')) return L('sync จะเปิดหรือปิดให้ตรงต้นแบบ', 'Sync enables or disables it to match the source');
       // The model's own filter cannot be read: nothing can be written to put in its place.
-      if (parsed.notes.some(n => n.key === 'Filter' && n.side !== 'target')) return 'เงื่อนไขกรองของต้นแบบอ่านไม่ได้ sync จึงไม่แก้ให้ มีแต่หมายเหตุ';
-      const replaced = 'sync จะลบของเดิมแล้วสร้างใหม่ตามต้นแบบ';
+      if (parsed.notes.some(n => n.key === 'Filter' && n.side !== 'target')) {
+        return L('เงื่อนไขกรองของต้นแบบอ่านไม่ได้ sync จึงไม่แก้ให้ มีแต่หมายเหตุ', 'The source filter condition cannot be read, so sync does not change it. Only a comment is written');
+      }
+      const replaced = L('sync จะลบของเดิมแล้วสร้างใหม่ตามต้นแบบ', 'Sync drops the existing one and creates it again from the source');
       if (row.cat !== 'Index') return replaced;
       const onView = Boolean(row.group) && row.group.kind === 'view';
       // An index of a view the script writes again is created with that view.
@@ -677,22 +732,28 @@ function createReportCore(meta) {
       const type = change('Type');
       if (type) {
         // Columnstore, XML, spatial: the script cannot write what would replace the index.
-        if (PLAIN_INDEX.indexOf(type.to) < 0) return 'index แบบ ' + type.to + ' sync เขียนคำสั่งสร้างไม่ได้ จึงไม่ลบของเดิม มีแต่หมายเหตุให้ทำเอง';
+        if (PLAIN_INDEX.indexOf(type.to) < 0) {
+          return L('index แบบ ' + type.to + ' sync เขียนคำสั่งสร้างไม่ได้ จึงไม่ลบของเดิม มีแต่หมายเหตุให้ทำเอง',
+            'Sync cannot write the create command for a ' + type.to + ' index, so it does not drop the existing one. Only a comment for you to run by hand is written');
+        }
         // Dropping the clustered index of a view drops every other index of that view.
-        if (onView && (type.to === 'CLUSTERED' || type.from === 'CLUSTERED')) return 'clustered index ของ view ต่างกัน ถ้าลบ index อื่นของ view จะหายไปด้วย sync จึง' + NOTE;
+        if (onView && (type.to === 'CLUSTERED' || type.from === 'CLUSTERED')) {
+          return L('clustered index ของ view ต่างกัน ถ้าลบ index อื่นของ view จะหายไปด้วย sync จึง' + NOTE,
+            "The view's clustered index differs, and dropping it would also drop the view's other indexes, so sync " + NOTE);
+        }
         return replaced;
       }
       // The kind of index is the same on both sides, so the row does not show it.
-      if (onView) return replaced + UNLESS(['เป็น clustered index ของ view']);
-      return replaced + UNLESS(['เป็น index แบบ columnstore, XML หรือ spatial']);
+      if (onView) return replaced + UNLESS([L('เป็น clustered index ของ view', 'it is the clustered index of a view')]);
+      return replaced + UNLESS([L('เป็น index แบบ columnstore, XML หรือ spatial', 'it is a columnstore, XML or spatial index')]);
     }
     // Views, procedures, functions and triggers.
     const hiddenCode = parsed.notes.some(n => n.key === 'Definition');
-    if (only('State')) return 'sync จะเปิดหรือปิดให้ตรงต้นแบบ';
-    if (hiddenCode) return 'โค้ดอ่านไม่ได้ฝั่งหนึ่ง sync จึงไม่เขียนคำสั่งให้ มีแต่หมายเหตุ';
-    if (has('Type') || has('Table')) return 'แก้ด้วย ALTER ไม่ได้ ต้องลบแล้วสร้างใหม่' + BY_HAND;
-    if (parsed.code) return 'โค้ดข้างในต่างกัน sync จะแทนด้วยโค้ดของต้นแบบ';
-    return 'sync จะสร้างซ้ำด้วยโค้ดเดิมและค่า SET ของต้นแบบ';
+    if (only('State')) return L('sync จะเปิดหรือปิดให้ตรงต้นแบบ', 'Sync enables or disables it to match the source');
+    if (hiddenCode) return L('โค้ดอ่านไม่ได้ฝั่งหนึ่ง sync จึงไม่เขียนคำสั่งให้ มีแต่หมายเหตุ', 'The code cannot be read on one side, so sync writes no command. Only a comment is written');
+    if (has('Type') || has('Table')) return L('แก้ด้วย ALTER ไม่ได้ ต้องลบแล้วสร้างใหม่' + BY_HAND, 'It cannot be changed with ALTER; it has to be dropped and created again' + BY_HAND);
+    if (parsed.code) return L('โค้ดข้างในต่างกัน sync จะแทนด้วยโค้ดของต้นแบบ', 'The code inside differs. Sync replaces it with the source code');
+    return L('sync จะสร้างซ้ำด้วยโค้ดเดิมและค่า SET ของต้นแบบ', 'Sync creates it again with the same code and the SET options of the source');
   }
 
   // For a row whose only difference is the SET options a module was created under: what that
@@ -700,11 +761,13 @@ function createReportCore(meta) {
   function setOptionsHint(parsed) {
     if (parsed.code || parsed.changes.length !== 1 || parsed.changes[0].key !== 'SetOptions' || parsed.notes.length || parsed.raw.length) return [];
     const values = parsed.changes[0].from + ' ' + parsed.changes[0].to;
-    const lines = ['โค้ดเหมือนกันทุกบรรทัด ต่างกันแค่ค่า SET ที่ถูกบันทึกไว้ตอนสร้าง object นี้ (ค่า "ปกติ" คือ ON)'];
-    const quoted = 'QUOTED_IDENTIFIER OFF: ข้อความใน "..." ถูกอ่านเป็นข้อความธรรมดา และ object แบบนี้แก้ข้อมูลในตารางที่มี filtered index หรือ indexed view ไม่ได้ มักเกิดจากสร้างด้วยเครื่องมืออย่าง sqlcmd ที่ไม่ใส่ -I';
-    const ansi = 'ANSI_NULLS OFF: เทียบ = NULL แล้วเป็นจริงได้ (แบบเก่า)';
+    const lines = [L('โค้ดเหมือนกันทุกบรรทัด ต่างกันแค่ค่า SET ที่ถูกบันทึกไว้ตอนสร้าง object นี้ (ค่า "ปกติ" คือ ON)',
+      'The code is the same on every line; only the SET options recorded when this object was created differ (the "normal" value is ON).')];
+    const quoted = L('QUOTED_IDENTIFIER OFF: ข้อความใน "..." ถูกอ่านเป็นข้อความธรรมดา และ object แบบนี้แก้ข้อมูลในตารางที่มี filtered index หรือ indexed view ไม่ได้ มักเกิดจากสร้างด้วยเครื่องมืออย่าง sqlcmd ที่ไม่ใส่ -I',
+      'QUOTED_IDENTIFIER OFF: text inside "..." is read as a plain string, and an object like this cannot change data in a table that has a filtered index or an indexed view. It usually comes from creating it with a tool such as sqlcmd without -I.');
+    const ansi = L('ANSI_NULLS OFF: เทียบ = NULL แล้วเป็นจริงได้ (แบบเก่า)', 'ANSI_NULLS OFF: comparing = NULL can be true (the old behaviour).');
     const hasQuoted = values.indexOf('QUOTED_IDENTIFIER OFF') >= 0, hasAnsi = values.indexOf('ANSI_NULLS OFF') >= 0;
-    if (hasQuoted && hasAnsi) lines.push(quoted + ' ส่วน ' + ansi);
+    if (hasQuoted && hasAnsi) lines.push(quoted + L(' ส่วน ', ' Also, ') + ansi);
     else if (hasQuoted) lines.push(quoted);
     else if (hasAnsi) lines.push(ansi);
     return lines;
@@ -752,16 +815,17 @@ function createReportCore(meta) {
   function groupStatus(group) {
     const thing = group.kind === 'view' ? 'view ' : 'ตาราง';
     const whole = group.kind === 'view' ? '' : 'ทั้งตาราง';
+    const noun = group.kind === 'view' ? 'view' : 'table';
     const self = group.self;
     if (self && self.status === 'OnlyInSource') {
-      return { cls: KIND.OnlyInSource.cls, sym: KIND.OnlyInSource.sym, text: TIMELINE ? thing + 'หายไป' + whole : thing + 'ใหม่' + whole };
+      return { cls: KIND.OnlyInSource.cls, sym: KIND.OnlyInSource.sym, text: L(TIMELINE ? thing + 'หายไป' + whole : thing + 'ใหม่' + whole, TIMELINE ? noun + ' removed' : 'new ' + noun) };
     }
     if (self && self.status === 'OnlyInTarget') {
-      return { cls: KIND.OnlyInTarget.cls, sym: KIND.OnlyInTarget.sym, text: TIMELINE ? thing + 'เพิ่มขึ้นมา' + whole : thing + 'เกินมา' + whole };
+      return { cls: KIND.OnlyInTarget.cls, sym: KIND.OnlyInTarget.sym, text: L(TIMELINE ? thing + 'เพิ่มขึ้นมา' + whole : thing + 'เกินมา' + whole, TIMELINE ? noun + ' added' : 'extra ' + noun) };
     }
     const all = (self ? [self] : []).concat(group.items);
-    if (all.length && all.every(r => r.status === 'Unverified')) return { cls: 'unk', sym: '?', text: 'มีของที่ตรวจไม่ได้' };
-    return { cls: 'chg', sym: '~', text: TIMELINE ? 'ของข้างในเปลี่ยนไป' : 'มีของข้างในต่างกัน' };
+    if (all.length && all.every(r => r.status === 'Unverified')) return { cls: 'unk', sym: '?', text: L('มีของที่ตรวจไม่ได้', 'has unverified items') };
+    return { cls: 'chg', sym: '~', text: L(TIMELINE ? 'ของข้างในเปลี่ยนไป' : 'มีของข้างในต่างกัน', TIMELINE ? 'contents changed' : 'contents differ') };
   }
 
   function lineKey(s) {
@@ -821,7 +885,7 @@ function createReportCore(meta) {
       for (let k = Math.max(0, i - CONTEXT); k <= Math.min(ops.length - 1, i + CONTEXT); k++) show[k] = 1;
     });
     let html = '', la = 0, lb = 0, hidden = 0;
-    const gap = count => `<tr class="gap"><td colspan="4">… ${count} บรรทัดที่เหมือนกัน</td></tr>`;
+    const gap = count => `<tr class="gap"><td colspan="4">… ${L(count + ' บรรทัดที่เหมือนกัน', count + ' identical lines')}</td></tr>`;
     ops.forEach((op, i) => {
       const t = op[0];
       if (t !== '+') la++;
@@ -834,8 +898,10 @@ function createReportCore(meta) {
     });
     if (hidden) html += gap(hidden);
     const cap = TIMELINE
-      ? '<span><span class="m del">− แดง</span> = บรรทัดเดิมในจุด "ก่อน" (หายไป)</span><span><span class="m add">+ เขียว</span> = บรรทัดใหม่ในจุด "หลัง"</span><span>เลขบรรทัด: ก่อน | หลัง</span>'
-      : '<span><span class="m del">− แดง</span> = บรรทัดในปลายทางตอนนี้ (จะหายไป)</span><span><span class="m add">+ เขียว</span> = บรรทัดจากต้นแบบ (จะใส่แทน)</span><span>เลขบรรทัด: ปลายทาง | ต้นแบบ</span>';
+      ? L('<span><span class="m del">− แดง</span> = บรรทัดเดิมในจุด "ก่อน" (หายไป)</span><span><span class="m add">+ เขียว</span> = บรรทัดใหม่ในจุด "หลัง"</span><span>เลขบรรทัด: ก่อน | หลัง</span>',
+        '<span><span class="m del">− red</span> = the line as it was at the "before" point (removed)</span><span><span class="m add">+ green</span> = the new line at the "after" point</span><span>Line numbers: before | after</span>')
+      : L('<span><span class="m del">− แดง</span> = บรรทัดในปลายทางตอนนี้ (จะหายไป)</span><span><span class="m add">+ เขียว</span> = บรรทัดจากต้นแบบ (จะใส่แทน)</span><span>เลขบรรทัด: ปลายทาง | ต้นแบบ</span>',
+        '<span><span class="m del">− red</span> = the line in the target now (will be removed)</span><span><span class="m add">+ green</span> = the line from the source (will replace it)</span><span>Line numbers: target | source</span>');
     return `<div class="code"><div class="cap">${cap}</div><table>${html}</table></div>`;
   }
 
@@ -844,8 +910,8 @@ function createReportCore(meta) {
     const fromSource = row.a !== null && row.a !== undefined;
     const text = fromSource ? row.a : row.b;
     const cap = TIMELINE
-      ? (fromSource ? 'โค้ดในจุด "ก่อน" (จุด "หลัง" ไม่มีแล้ว)' : 'โค้ดในจุด "หลัง"')
-      : (fromSource ? 'โค้ดของต้นแบบ (sync จะสร้างในปลายทาง)' : 'โค้ดของปลายทาง');
+      ? (fromSource ? L('โค้ดในจุด "ก่อน" (จุด "หลัง" ไม่มีแล้ว)', 'Code at the "before" point (gone at the "after" point)') : L('โค้ดในจุด "หลัง"', 'Code at the "after" point'))
+      : (fromSource ? L('โค้ดของต้นแบบ (sync จะสร้างในปลายทาง)', 'Source code (sync creates it in the target)') : L('โค้ดของปลายทาง', 'Target code'));
     const lines = text.split('\n').map((l, i) => `<tr><td class="ln">${i + 1}</td><td>${esc(l)}</td></tr>`).join('');
     return `<div class="code"><div class="cap">${cap}</div><table>${lines}</table></div>`;
   }
@@ -873,9 +939,10 @@ function createReportCore(meta) {
   }
   const pickLabel = r => KIND[r.status].t + ': ' + r.obj;
   // need: { object, needs } from the app, a chosen row that needs a new table which is not chosen.
-  const needText = n => `${n.object} ต้องใช้ตาราง ${n.needs} ซึ่งเป็นของใหม่และยังไม่ได้เลือก ถ้าไม่เลือกด้วย คำสั่งของ ${n.object} จะรันไม่ผ่านจนกว่าตารางนั้นจะมีอยู่`;
-  const savedText = (name, selected, total) => `ได้ไฟล์ ${name} จากที่เลือก ${selected} จาก ${total} รายการ`;
-  const shownText = (name, selected, total) => `เปิดดูไฟล์ ${name} ในแท็บใหม่แล้ว (เลือก ${selected} จาก ${total} รายการ)`;
+  const needText = n => L(`${n.object} ต้องใช้ตาราง ${n.needs} ซึ่งเป็นของใหม่และยังไม่ได้เลือก ถ้าไม่เลือกด้วย คำสั่งของ ${n.object} จะรันไม่ผ่านจนกว่าตารางนั้นจะมีอยู่`,
+    `${n.object} needs the table ${n.needs}, which is new and not selected. If you do not select it too, the commands for ${n.object} will fail until that table exists.`);
+  const savedText = (name, selected, total) => L(`ได้ไฟล์ ${name} จากที่เลือก ${selected} จาก ${total} รายการ`, `Saved ${name} (${selected} of ${total} items selected)`);
+  const shownText = (name, selected, total) => L(`เปิดดูไฟล์ ${name} ในแท็บใหม่แล้ว (เลือก ${selected} จาก ${total} รายการ)`, `Opened ${name} in a new tab (${selected} of ${total} items selected)`);
 
   // A page of its own that shows a script: the text to read, and buttons to copy it and to download it. It holds
   // the text itself, so it keeps working when the report that made it is closed. The text is the file as the app
@@ -894,6 +961,7 @@ function createReportCore(meta) {
       '.bar button.primary{background:#0a84ff;border-color:#6cb2ff;font-weight:650}.bar #say{color:#34d65c;font-size:14px}' +
       'pre{margin:0;padding:16px;font:14px/1.55 Consolas,"Cascadia Mono","Leelawadee UI",monospace;white-space:pre-wrap;overflow-wrap:anywhere}';
     const script = `var TEXT = ${embed(text)}, NAME = ${embed(data.name)};
+var COPIED = ${embed(L('คัดลอกแล้ว', 'Copied'))}, NOT_COPIED = ${embed(L('คัดลอกไม่สำเร็จ ลากคลุมข้อความแล้วกด Ctrl+C', 'Could not copy. Select the text and press Ctrl+C'))}, SAVED = ${embed(L('ดาวน์โหลดแล้ว', 'Downloaded'))};
 var BODY = TEXT.charAt(0) === '\\uFEFF' ? TEXT.slice(1) : TEXT;
 function say(t) { document.getElementById('say').textContent = t; }
 document.getElementById('copy').addEventListener('click', function () {
@@ -903,25 +971,26 @@ document.getElementById('copy').addEventListener('click', function () {
     var ok = false;
     try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
     ta.remove();
-    say(ok ? 'คัดลอกแล้ว' : 'คัดลอกไม่สำเร็จ ลากคลุมข้อความแล้วกด Ctrl+C');
+    say(ok ? COPIED : NOT_COPIED);
   }
-  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(BODY).then(function () { say('คัดลอกแล้ว'); }, fallback);
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(BODY).then(function () { say(COPIED); }, fallback);
   else fallback();
 });
 document.getElementById('save').addEventListener('click', function () {
   var a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([TEXT], { type: 'text/plain;charset=utf-8' }));
   a.download = NAME; document.body.appendChild(a); a.click(); a.remove();
-  say('ดาวน์โหลดแล้ว');
+  say(SAVED);
 });`;
-    return '<!doctype html><html lang="th"><head><meta charset="utf-8"><title>' + esc(data.name) + '</title><style>' + css + '</style></head><body>' +
-      '<div class="bar"><div><h1>' + esc(data.name) + '</h1><div class="sub">เลือก ' + data.selected + ' จาก ' + data.total + ' รายการ · อ่านแล้วคัดลอกไปวางใน SSMS ได้เลย</div></div>' +
-      '<span class="sp"></span><span id="say" role="status"></span><button id="copy" class="primary">คัดลอก</button><button id="save">ดาวน์โหลด</button></div>' +
+    const sub = L('เลือก ' + data.selected + ' จาก ' + data.total + ' รายการ · อ่านแล้วคัดลอกไปวางใน SSMS ได้เลย', data.selected + ' of ' + data.total + ' items selected · read it, then copy it into SSMS');
+    return '<!doctype html><html lang="' + L('th', 'en') + '"><head><meta charset="utf-8"><title>' + esc(data.name) + '</title><style>' + css + '</style></head><body>' +
+      '<div class="bar"><div><h1>' + esc(data.name) + '</h1><div class="sub">' + sub + '</div></div>' +
+      '<span class="sp"></span><span id="say" role="status"></span><button id="copy" class="primary">' + L('คัดลอก', 'Copy') + '</button><button id="save">' + L('ดาวน์โหลด', 'Download') + '</button></div>' +
       '<pre id="text">' + esc(shown) + '</pre><script>' + script + '<\/script></body></html>';
   }
 
   return {
-    TIMELINE, KIND, CAT, SIDE, HIDDEN_DEFINITION, esc, cat, catWord, propLabel, val, toRows, parseDetail, leafOf, sentence,
+    L, TIMELINE, KIND, CAT, SIDE, HIDDEN_DEFINITION, esc, cat, catWord, propLabel, val, toRows, parseDetail, leafOf, sentence,
     setOptionsHint, shownFacts, groupRows, groupStatus, lineKey, diffLines, renderDiff, renderPlain,
     selectionTarget, scriptRequest, tickState, pickLabel, needText, savedText, shownText, viewerPage
   };
@@ -930,11 +999,25 @@ document.getElementById('save').addEventListener('click', function () {
 // The page itself. Not run where there is no document (the tests).
 if (typeof document !== 'undefined') (function () {
   'use strict';
-  const core = createReportCore(META);
-  const KIND = core.KIND, esc = core.esc, TIMELINE = core.TIMELINE;
+  // The language is the one chosen on the main page of the app (the same key), and Thai where there is none
+  // or the browser keeps nothing. A change of it words the page again in place: what is ticked and what is
+  // filtered stay as they are.
+  const LANG_KEY = 'database-diff.language';
+  let LANG = 'th';
+  try { if (localStorage.getItem(LANG_KEY) === 'en') LANG = 'en'; } catch (e) { /* storage may be blocked */ }
+  const L = (th, en) => (LANG === 'en' ? en : th);
+  // What holds words is made again for the language; the rows are the engine's own text and stay.
+  let core = createReportCore(META, LANG);
+  let KIND = core.KIND, parsed, groups;
+  const esc = core.esc, TIMELINE = core.TIMELINE;
   const rows = core.toRows(DATA);
-  const parsed = rows.map(core.parseDetail);
-  const groups = core.groupRows(rows, META.categories);
+  function build() {
+    core = createReportCore(META, LANG);
+    KIND = core.KIND;
+    parsed = rows.map(core.parseDetail);
+    groups = core.groupRows(rows, META.categories);
+  }
+  build();
   const state = { q: '', status: 'all', cat: 'all' };
   const $ = id => document.getElementById(id);
 
@@ -949,46 +1032,54 @@ if (typeof document !== 'undefined') (function () {
     : '<span></span>');
   // The box of a table's card: ticks the rows that the card shows.
   const groupBox = g => (selecting
-    ? `<label class="pickg-l"><input type="checkbox" class="pickg" data-pickg="${groups.tables.indexOf(g)}">เลือกทั้งตาราง</label>`
+    ? `<label class="pickg-l"><input type="checkbox" class="pickg" data-pickg="${groups.tables.indexOf(g)}">${L('เลือกทั้งตาราง', 'Select the whole table')}</label>`
     : '');
 
   // ---- header ----
-  const title = TIMELINE ? 'โครงสร้างฐานข้อมูลที่เปลี่ยนไป (schema drift)' : 'เทียบโครงสร้างฐานข้อมูล';
-  document.title = title;
-  $('title').textContent = title;
-  $('m-source').textContent = META.source;
-  $('m-target').textContent = META.target;
-  if (TIMELINE) {
-    $('role-source').textContent = 'ก่อน: จุดเริ่ม (จาก)';
-    $('role-target').textContent = 'หลัง: จุดที่เอามาเทียบ (ถึง)';
-    $('arrow-text').textContent = 'เวลาผ่านไป';
-    $('lead').textContent = 'รายงานนี้บอกว่าโครงสร้างของฐานข้อมูลเปลี่ยนไปอย่างไรจากจุด "ก่อน" ถึงจุด "หลัง" (ไม่ได้จะ sync ไปทางไหน) กดกล่องด้านล่างเพื่อดูเฉพาะแบบนั้น';
-  } else {
-    $('card-source').classList.add('model');
-    $('role-source').textContent = 'ต้นแบบ: ตัวที่ถูกต้อง (source)';
-    $('role-target').textContent = 'ปลายทาง: ตัวที่จะถูกปรับ (target)';
-    $('arrow-text').textContent = 'ปรับให้เหมือน';
-    $('lead').textContent = 'รายงานนี้บอกว่าปลายทางต่างจากต้นแบบตรงไหน และไฟล์ sync จะทำอะไรกับปลายทางเพื่อให้เหมือนต้นแบบ (รายงานนี้ไม่ได้แก้ฐานข้อมูลใดๆ) กดกล่องด้านล่างเพื่อดูเฉพาะแบบนั้น';
-  }
-  const options = [
-    META.ignoreWhitespace ? 'ไม่สนช่องว่าง' : '', META.ignoreCase ? 'ไม่สนตัวพิมพ์เล็ก/ใหญ่' : '',
-    META.ignoreCollation ? 'ไม่เทียบ collation' : '', META.compareColumnOrder ? 'เทียบลำดับคอลัมน์ด้วย' : ''
-  ].filter(Boolean);
-  $('m-options').textContent = 'สร้างเมื่อ ' + META.generated + ' · หมวดที่เทียบ: ' + META.categories.map(core.cat).join(', ') +
-    (options.length ? ' · ตัวเลือก: ' + options.join(', ') : '');
-
   // A side read without VIEW DEFINITION: objects hidden from that login show as being on the
   // other side only, and definitions it cannot read as "cannot check".
-  const incomplete = (META.noViewDefinition || []).map(w => {
-    const seenAs = KIND[w[0] === 'target' ? 'OnlyInSource' : 'OnlyInTarget'].t;
-    return `<div class="warn"><b>ผลเทียบไม่ครบ</b>login ${esc(w[1])} ไม่มีสิทธิ์ VIEW DEFINITION ใน${core.SIDE[w[0]]}: ` +
-      `ของที่ login นี้มองไม่เห็นจะขึ้นเป็น "${seenAs}" ทั้งที่อาจมีอยู่จริง และโค้ดที่อ่านไม่ได้จะขึ้นเป็น "${KIND.Unverified.t}"</div>`;
-  });
-  // Any other warning of the engine is shown as it wrote it.
-  const otherWarnings = (META.warnings || []).filter(w => !(incomplete.length && /has no VIEW DEFINITION permission/.test(w)))
-    .map(w => `<div class="warn"><b>ผลเทียบไม่ครบ</b>${esc(w)}</div>`);
-  $('warnings').innerHTML = incomplete.concat(otherWarnings).join('');
-  $('warnings').hidden = !(incomplete.length + otherWarnings.length);
+  let incomplete = [], otherWarnings = [];
+  function renderHeader() {
+    const title = L(TIMELINE ? 'โครงสร้างฐานข้อมูลที่เปลี่ยนไป (schema drift)' : 'เทียบโครงสร้างฐานข้อมูล',
+      TIMELINE ? 'Database structure changes (schema drift)' : 'Database structure comparison');
+    document.title = title;
+    $('title').textContent = title;
+    $('m-source').textContent = META.source;
+    $('m-target').textContent = META.target;
+    if (TIMELINE) {
+      $('role-source').textContent = L('ก่อน: จุดเริ่ม (จาก)', 'Before: the starting point (from)');
+      $('role-target').textContent = L('หลัง: จุดที่เอามาเทียบ (ถึง)', 'After: the point compared (to)');
+      $('arrow-text').textContent = L('เวลาผ่านไป', 'time passes');
+      $('lead').textContent = L('รายงานนี้บอกว่าโครงสร้างของฐานข้อมูลเปลี่ยนไปอย่างไรจากจุด "ก่อน" ถึงจุด "หลัง" (ไม่ได้จะ sync ไปทางไหน) กดกล่องด้านล่างเพื่อดูเฉพาะแบบนั้น',
+        'This report shows how the structure of the database changed from the "before" point to the "after" point (it does not say which way to sync). Click a box below to see only that kind.');
+    } else {
+      $('card-source').classList.add('model');
+      $('role-source').textContent = L('ต้นแบบ: ตัวที่ถูกต้อง (source)', 'Source: the reference schema');
+      $('role-target').textContent = L('ปลายทาง: ตัวที่จะถูกปรับ (target)', 'Target: the schema to update');
+      $('arrow-text').textContent = L('ปรับให้เหมือน', 'update to match');
+      $('lead').textContent = L('รายงานนี้บอกว่าปลายทางต่างจากต้นแบบตรงไหน และไฟล์ sync จะทำอะไรกับปลายทางเพื่อให้เหมือนต้นแบบ (รายงานนี้ไม่ได้แก้ฐานข้อมูลใดๆ) กดกล่องด้านล่างเพื่อดูเฉพาะแบบนั้น',
+        'This report shows where the target differs from the source, and what the sync file will do to the target to make it match the source (this report does not change any database). Click a box below to see only that kind.');
+    }
+    const options = [
+      META.ignoreWhitespace ? L('ไม่สนช่องว่าง', 'Ignore whitespace') : '', META.ignoreCase ? L('ไม่สนตัวพิมพ์เล็ก/ใหญ่', 'Ignore case') : '',
+      META.ignoreCollation ? L('ไม่เทียบ collation', 'Ignore collation') : '', META.compareColumnOrder ? L('เทียบลำดับคอลัมน์ด้วย', 'Compare column order') : ''
+    ].filter(Boolean);
+    $('m-options').textContent = L('สร้างเมื่อ ', 'Created ') + META.generated + L(' · หมวดที่เทียบ: ', ' · Categories compared: ') + META.categories.map(core.cat).join(', ') +
+      (options.length ? L(' · ตัวเลือก: ', ' · Options: ') + options.join(', ') : '');
+
+    incomplete = (META.noViewDefinition || []).map(w => {
+      const seenAs = KIND[w[0] === 'target' ? 'OnlyInSource' : 'OnlyInTarget'].t;
+      return L(`<div class="warn"><b>ผลเทียบไม่ครบ</b>login ${esc(w[1])} ไม่มีสิทธิ์ VIEW DEFINITION ใน${core.SIDE[w[0]]}: ` +
+        `ของที่ login นี้มองไม่เห็นจะขึ้นเป็น "${seenAs}" ทั้งที่อาจมีอยู่จริง และโค้ดที่อ่านไม่ได้จะขึ้นเป็น "${KIND.Unverified.t}"</div>`,
+      `<div class="warn"><b>Incomplete comparison</b>The login "${esc(w[1])}" has no VIEW DEFINITION permission ${core.SIDE[w[0]]}: ` +
+        `objects this login cannot see show up as "${seenAs}" even though they may really exist, and code it cannot read shows up as "${KIND.Unverified.t}"</div>`);
+    });
+    // Any other warning of the engine is shown as it wrote it.
+    otherWarnings = (META.warnings || []).filter(w => !(incomplete.length && /has no VIEW DEFINITION permission/.test(w)))
+      .map(w => `<div class="warn"><b>${L('ผลเทียบไม่ครบ', 'Incomplete comparison')}</b>${esc(w)}</div>`);
+    $('warnings').innerHTML = incomplete.concat(otherWarnings).join('');
+    $('warnings').hidden = !(incomplete.length + otherWarnings.length);
+  }
 
   const total = s => rows.filter(r => r.status === s).length;
 
@@ -1002,7 +1093,7 @@ if (typeof document !== 'undefined') (function () {
 
   function renderFilters() {
     const used = META.categories.filter(c => rows.some(r => r.cat === c));
-    $('f-cat').innerHTML = `<option value="all">ทุกชนิด (${rows.length})</option>` +
+    $('f-cat').innerHTML = `<option value="all">${L('ทุกชนิด', 'All kinds')} (${rows.length})</option>` +
       used.map(c => `<option value="${esc(c)}">${esc(core.cat(c))} (${rows.filter(r => r.cat === c).length})</option>`).join('');
   }
 
@@ -1023,10 +1114,12 @@ if (typeof document !== 'undefined') (function () {
   function codeHtml(r) {
     const one = r.a !== null ? r.a : r.b;
     if (one === null) return '';
-    if (r.status !== 'Different' && one === core.HIDDEN_DEFINITION) return '<div class="say">อ่านโค้ดไม่ได้ (ถูกเข้ารหัส เป็น CLR หรือไม่มีสิทธิ์ VIEW DEFINITION)</div>';
+    if (r.status !== 'Different' && one === core.HIDDEN_DEFINITION) {
+      return '<div class="say">' + L('อ่านโค้ดไม่ได้ (ถูกเข้ารหัส เป็น CLR หรือไม่มีสิทธิ์ VIEW DEFINITION)', 'Cannot read the code (encrypted, CLR, or no VIEW DEFINITION permission)') + '</div>';
+    }
     return `<button class="linkbtn" data-code="${r.id}" aria-expanded="false">${codeLabel(r, false)}</button><div class="codebox" id="code-${r.id}" hidden></div>`;
   }
-  const codeLabel = (r, open) => (open ? 'ซ่อนโค้ด' : r.status === 'Different' ? 'ดูว่าโค้ดต่างกันตรงไหน' : 'ดูโค้ด');
+  const codeLabel = (r, open) => (open ? L('ซ่อนโค้ด', 'Hide code') : r.status === 'Different' ? L('ดูว่าโค้ดต่างกันตรงไหน', 'See where the code differs') : L('ดูโค้ด', 'View code'));
 
   // What is said about one row: the sentence, then the details.
   function bodyHtml(r, self) {
@@ -1034,8 +1127,8 @@ if (typeof document !== 'undefined') (function () {
     let h = `<div class="say">${esc(core.sentence(r, p, { self }))}</div>`;
     if (p.changes.length) {
       h += '<div class="changes">' + p.changes.map(c =>
-        `<div class="ch"><span class="p">${esc(c.label)}</span><span class="ft"><span class="sr">เดิม </span><span class="from">${esc(c.from)}</span>` +
-        `<span class="arr" aria-hidden="true">&rarr;</span><span class="sr">ใหม่ </span><span class="to">${esc(c.to)}</span></span></div>`).join('') + '</div>';
+        `<div class="ch"><span class="p">${esc(c.label)}</span><span class="ft"><span class="sr">${L('เดิม ', 'was ')}</span><span class="from">${esc(c.from)}</span>` +
+        `<span class="arr" aria-hidden="true">&rarr;</span><span class="sr">${L('ใหม่ ', 'now ')}</span><span class="to">${esc(c.to)}</span></span></div>`).join('') + '</div>';
     }
     const facts = core.shownFacts(r, p);
     if (facts.length) h += '<div class="facts">' + facts.map(f => `<span>${esc(f.label)}: <b>${esc(f.value)}</b></span>`).join('') + '</div>';
@@ -1062,9 +1155,9 @@ if (typeof document !== 'undefined') (function () {
 
   function tableHtml(group, v) {
     let h = `<div class="panel tcard"><div class="tcard-h"><span class="obj">${nameHtml(group.name)}</span>${chip(core.groupStatus(group))}` +
-      `<span class="note">${v.count} รายการ</span>${groupBox(group)}</div>`;
+      `<span class="note">${L(v.count + ' รายการ', v.count + (v.count === 1 ? ' item' : ' items'))}</span>${groupBox(group)}</div>`;
     if (v.self) {
-      h += `<div class="titem">${pickCell(v.self)}${symbol(v.self)}<div class="what">${esc(core.cat('Table'))}<b>ทั้งตาราง</b></div>` +
+      h += `<div class="titem">${pickCell(v.self)}${symbol(v.self)}<div class="what">${esc(core.cat('Table'))}<b>${L('ทั้งตาราง', 'whole table')}</b></div>` +
         `<div class="body">${bodyHtml(v.self, null)}</div></div>`;
     }
     return h + v.items.map(r => itemHtml(r, group.self)).join('') + '</div>';
@@ -1076,36 +1169,40 @@ if (typeof document !== 'undefined') (function () {
     let h = `<div class="row">${pickCell(self)}<div>${self ? rowChip(self) : chip(core.groupStatus(group))}</div><div class="body">` +
       `<div class="obj">${nameHtml(name)}${group.cat === 'Database' ? '' : ` <span class="note">${esc(core.cat(group.cat))}</span>`}</div>`;
     if (self) h += bodyHtml(self, null);
-    else if (group.self) h += '<div class="say">ตัว view ไม่ตรงกับตัวกรองนี้ ด้านล่างคือของที่อยู่บน view นี้</div>';
-    else h += `<div class="say">${TIMELINE ? 'ตัว view เหมือนเดิม ที่เปลี่ยนคือของที่อยู่บน view นี้' : 'ตัว view เหมือนกัน ที่ต่างคือของที่อยู่บน view นี้'}</div>`;
+    else if (group.self) h += '<div class="say">' + L('ตัว view ไม่ตรงกับตัวกรองนี้ ด้านล่างคือของที่อยู่บน view นี้', 'The view itself does not match this filter; below are the things on this view') + '</div>';
+    else {
+      h += '<div class="say">' + (TIMELINE
+        ? L('ตัว view เหมือนเดิม ที่เปลี่ยนคือของที่อยู่บน view นี้', 'The view itself is unchanged; what changed are the things on this view')
+        : L('ตัว view เหมือนกัน ที่ต่างคือของที่อยู่บน view นี้', 'The view itself is the same; what differs are the things on this view')) + '</div>';
+    }
     if (v.items.length) h += '<div class="kids">' + v.items.map(r => itemHtml(r, group.self)).join('') + '</div>';
     return h + '</div></div>';
   }
 
   function renderResults() {
     const shown = rows.filter(matches).length;
-    $('count').textContent = `แสดง ${shown} จาก ${rows.length} รายการ`;
+    $('count').textContent = L(`แสดง ${shown} จาก ${rows.length} รายการ`, `Showing ${shown} of ${rows.length} items`);
     $('clear').hidden = state.status === 'all' && state.cat === 'all' && !state.q;
     $('results').classList.toggle('selecting', selecting);
     if (!rows.length) {
       $('results').innerHTML = '<div class="panel empty">' + (incomplete.length + otherWarnings.length
-        ? 'ไม่พบความต่างในส่วนที่อ่านได้ (ผลเทียบไม่ครบ ดูคำเตือนด้านบน)'
-        : TIMELINE ? 'ไม่มีอะไรเปลี่ยน โครงสร้างเหมือนเดิม' : 'ไม่มีความต่าง โครงสร้างตรงกัน') + '</div>';
+        ? L('ไม่พบความต่างในส่วนที่อ่านได้ (ผลเทียบไม่ครบ ดูคำเตือนด้านบน)', 'No differences found in the parts that could be read (the comparison is incomplete; see the warning above)')
+        : TIMELINE ? L('ไม่มีอะไรเปลี่ยน โครงสร้างเหมือนเดิม', 'Nothing changed; the structure is the same') : L('ไม่มีความต่าง โครงสร้างตรงกัน', 'No differences; the structures match')) + '</div>';
       return;
     }
     if (!shown) {
-      $('results').innerHTML = '<div class="panel empty">ไม่มีรายการที่ตรงกับตัวกรอง</div>';
+      $('results').innerHTML = '<div class="panel empty">' + L('ไม่มีรายการที่ตรงกับตัวกรอง', 'No items match the filter') + '</div>';
       return;
     }
     let html = '';
     const tables = groups.tables.map(g => [g, visible(g)]).filter(x => x[1].count);
     if (tables.length) {
-      html += `<div class="group-h"><h2>ตาราง</h2><span class="note">${tables.length} ตาราง รวมคอลัมน์ index constraint และ trigger ของแต่ละตาราง</span></div>` +
+      html += `<div class="group-h"><h2>${L('ตาราง', 'Tables')}</h2><span class="note">${L(`${tables.length} ตาราง รวมคอลัมน์ index constraint และ trigger ของแต่ละตาราง`, `${tables.length} ${tables.length === 1 ? 'table' : 'tables'}, with the columns, indexes, constraints and triggers of each`)}</span></div>` +
         '<div class="tables">' + tables.map(x => tableHtml(x[0], x[1])).join('') + '</div>';
     }
     const others = groups.others.map(g => [g, visible(g)]).filter(x => x[1].count);
     if (others.length) {
-      html += '<div class="group-h"><h2>โค้ดและของอื่น</h2><span class="note">view, procedure, function, type, sequence, synonym, schema, database trigger</span></div>' +
+      html += '<div class="group-h"><h2>' + L('โค้ดและของอื่น', 'Code and other objects') + '</h2><span class="note">view, procedure, function, type, sequence, synonym, schema, database trigger</span></div>' +
         '<div class="panel rows">' + others.map(x => otherHtml(x[0], x[1])).join('') + '</div>';
     }
     $('results').innerHTML = html;
@@ -1113,8 +1210,8 @@ if (typeof document !== 'undefined') (function () {
   }
 
   function renderTotals() {
-    $('totals').innerHTML = '<summary>ดูจำนวน object ที่อ่านได้ของแต่ละฝั่ง</summary><table><thead><tr><th>หมวด</th>' +
-      `<th>${TIMELINE ? 'ก่อน' : 'ต้นแบบ'}</th><th>${TIMELINE ? 'หลัง' : 'ปลายทาง'}</th><th>รายการในรายงาน</th></tr></thead><tbody>` +
+    $('totals').innerHTML = '<summary>' + L('ดูจำนวน object ที่อ่านได้ของแต่ละฝั่ง', 'See how many objects could be read on each side') + '</summary><table><thead><tr><th>' + L('หมวด', 'Category') + '</th>' +
+      `<th>${TIMELINE ? L('ก่อน', 'Before') : L('ต้นแบบ', 'Source')}</th><th>${TIMELINE ? L('หลัง', 'After') : L('ปลายทาง', 'Target')}</th><th>${L('รายการในรายงาน', 'Items in the report')}</th></tr></thead><tbody>` +
       META.summary.map(s => `<tr><td>${esc(core.cat(s[0]))}</td><td>${s[1]}</td><td>${s[2]}</td><td>${s[3] + s[4] + s[5] + s[6]}</td></tr>`).join('') +
       '</tbody></table>';
   }
@@ -1166,19 +1263,23 @@ if (typeof document !== 'undefined') (function () {
       box.indeterminate = state === 'some';
     });
   }
-  function showMessage(m) {
-    $('pick-msg').hidden = !m;
-    if (!m) return;
+  // What the bar says now is kept as the function that words it, so that it can be worded again for another language.
+  let speaking = null;
+  function showMessage(make) {
+    speaking = make;
+    $('pick-msg').hidden = !make;
+    if (!make) return;
+    const m = make();
     $('pick-msg').className = 'pickmsg ' + m.cls;
     $('pick-msg').innerHTML = m.html;
   }
   function updateBar() {
     const n = chosen.size;
     $('pickdock').hidden = !selecting;
-    $('pick-count').textContent = n ? `เลือกแล้ว ${n} จาก ${rows.length} รายการ` : 'ยังไม่ได้เลือก ติ๊กช่องหน้ารายการที่ต้องการ';
+    $('pick-count').textContent = n ? L(`เลือกแล้ว ${n} จาก ${rows.length} รายการ`, `${n} of ${rows.length} items selected`) : L('ยังไม่ได้เลือก ติ๊กช่องหน้ารายการที่ต้องการ', 'Nothing selected yet. Tick the box in front of the items you want');
     for (const id of ['pick-view-sync', 'pick-sync', 'pick-view-rollback', 'pick-rollback', 'pick-clear']) $(id).disabled = busy || !n;
     $('pick-toggle').setAttribute('aria-pressed', String(selecting));
-    $('pick-toggle').textContent = selecting ? 'เลิกเลือก' : 'เลือกรายการเพื่อสร้าง script';
+    $('pick-toggle').textContent = selecting ? L('เลิกเลือก', 'Stop selecting') : L('เลือกรายการเพื่อสร้าง script', 'Select items to build a script');
     $('pick-all').hidden = !selecting;
   }
   function setSelecting(on) {
@@ -1202,7 +1303,7 @@ if (typeof document !== 'undefined') (function () {
     a.href = url; a.download = data.name;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 10000);
-    showMessage({ cls: 'ok', html: esc(core.savedText(data.name, data.selected, data.total)) });
+    showMessage(() => ({ cls: 'ok', html: esc(core.savedText(data.name, data.selected, data.total)) }));
   }
   // The script in a tab of its own, to read and copy (see viewerPage). The tab is opened by the click, before the
   // script is made: a popup blocker lets nothing through after a wait. It says so while it waits.
@@ -1210,50 +1311,56 @@ if (typeof document !== 'undefined') (function () {
     const w = window.open('', '_blank');
     if (w) {
       w.document.open();
-      w.document.write('<!doctype html><meta charset="utf-8"><title>กำลังสร้าง script</title><body style="background:#0b0d13;color:#f2f3f5;font:15px sans-serif;padding:24px">กำลังสร้าง script รายการมากอาจใช้เวลาครู่หนึ่ง</body>');
+      w.document.write('<!doctype html><meta charset="utf-8"><title>' + L('กำลังสร้าง script', 'Building the script') + '</title><body style="background:#0b0d13;color:#f2f3f5;font:15px sans-serif;padding:24px">' +
+        L('กำลังสร้าง script รายการมากอาจใช้เวลาครู่หนึ่ง', 'Building the script. A long list can take a moment') + '</body>');
       w.document.close();
     }
     return w;
   }
+  // The browser would not open the tab for the script.
+  const blocked = () => ({ cls: 'bad', html: L('<b>เบราว์เซอร์บล็อกแท็บใหม่</b> อนุญาต popup ของหน้านี้ แล้วกดดูอีกครั้ง', '<b>The browser blocked the new tab</b> Allow pop-ups for this page, then click View again') });
   function showScript(data, win) {
     // The tab opened for it, or a new one when that was closed meanwhile (this runs from a click).
     const w = win && !win.closed ? win : window.open('', '_blank');
-    if (!w) { showMessage({ cls: 'bad', html: '<b>เบราว์เซอร์บล็อกแท็บใหม่</b> อนุญาต popup ของหน้านี้ แล้วกดดูอีกครั้ง' }); return; }
+    if (!w) { showMessage(blocked); return; }
     pending = null;
     w.document.open();
     w.document.write(core.viewerPage(data));
     w.document.close();
-    showMessage({ cls: 'ok', html: esc(core.shownText(data.name, data.selected, data.total)) });
+    showMessage(() => ({ cls: 'ok', html: esc(core.shownText(data.name, data.selected, data.total)) }));
   }
   // action: 'save' downloads the file, 'view' shows it in a tab of its own.
   function deliver(data, action, win) { if (action === 'view') showScript(data, win); else saveFile(data); }
   function showNeeds(data, action, win) {
     pending = { data, action, win };
     // The tab opened for the script says what it waits for, not that the script is being made.
-    if (win && !win.closed) win.document.body.textContent = 'ในหน้ารายงานมีข้อความให้ตัดสินใจก่อน (ตัวที่ต้องพึ่งของที่ไม่ได้เลือก) ตัดสินใจที่นั่น แล้วหน้านี้จะแสดง script';
-    showMessage({ cls: 'need', html: '<b>ในที่เลือกมีตัวที่ต้องพึ่งของที่ไม่ได้เลือก</b><ul>' +
+    if (win && !win.closed) {
+      win.document.body.textContent = L('ในหน้ารายงานมีข้อความให้ตัดสินใจก่อน (ตัวที่ต้องพึ่งของที่ไม่ได้เลือก) ตัดสินใจที่นั่น แล้วหน้านี้จะแสดง script',
+        'The report page has a question to decide first (something selected depends on something that is not selected). Decide there, and this page will show the script');
+    }
+    showMessage(() => ({ cls: 'need', html: L('<b>ในที่เลือกมีตัวที่ต้องพึ่งของที่ไม่ได้เลือก</b><ul>', '<b>Something selected depends on something that is not selected</b><ul>') +
       data.needs.map(n => `<li>${esc(core.needText(n))}</li>`).join('') + '</ul>' +
-      '<div class="acts"><button class="linkbtn" data-act="take">เลือกให้ด้วย</button>' +
-      `<button class="linkbtn" data-act="go">${action === 'view' ? 'เปิดดูเลย' : 'ดาวน์โหลดเลย'}</button></div>` });
+      '<div class="acts"><button class="linkbtn" data-act="take">' + L('เลือกให้ด้วย', 'Select it too') + '</button>' +
+      `<button class="linkbtn" data-act="go">${action === 'view' ? L('เปิดดูเลย', 'View anyway') : L('ดาวน์โหลดเลย', 'Download anyway')}</button></div>` }));
   }
   async function ask(kind, action) {
     if (busy || !chosen.size) return;
     const win = action === 'view' ? openViewer() : null;
-    if (action === 'view' && !win) { showMessage({ cls: 'bad', html: '<b>เบราว์เซอร์บล็อกแท็บใหม่</b> อนุญาต popup ของหน้านี้ แล้วกดดูอีกครั้ง' }); return; }
+    if (action === 'view' && !win) { showMessage(blocked); return; }
     dropPending();
     busy = true;
     updateBar();
-    showMessage({ cls: '', html: 'กำลังสร้างไฟล์ รายการมากอาจใช้เวลาครู่หนึ่ง' });
+    showMessage(() => ({ cls: '', html: L('กำลังสร้างไฟล์ รายการมากอาจใช้เวลาครู่หนึ่ง', 'Building the file. A long list can take a moment') }));
     const req = core.scriptRequest(target, kind, chosen);
     try {
       const res = await fetch(req.url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Database-Diff': '1' }, body: JSON.stringify(req.body) });
       let data = {};
       try { data = await res.json(); } catch (e) { data = {}; }
-      if (!res.ok) throw new Error(data.error || 'แอปตอบ ' + res.status);
+      if (!res.ok) throw new Error(data.error || L('แอปตอบ ', 'The app answered ') + res.status);
       if (data.needs && data.needs.length) showNeeds(data, action, win); else deliver(data, action, win);
     } catch (err) {
       if (win && !win.closed) win.close();
-      showMessage({ cls: 'bad', html: `<b>สร้างไฟล์ไม่สำเร็จ</b> ${esc(err.message)}<br>รายงานนี้ต้องเปิดจากแอปที่กำลังทำงานอยู่` });
+      showMessage(() => ({ cls: 'bad', html: `<b>${L('สร้างไฟล์ไม่สำเร็จ', 'Could not build the file')}</b> ${esc(err.message)}<br>${L('รายงานนี้ต้องเปิดจากแอปที่กำลังทำงานอยู่', 'This report has to be opened from the running app')}` }));
     } finally {
       busy = false;
       updateBar();
@@ -1289,10 +1396,54 @@ if (typeof document !== 'undefined') (function () {
       syncRowBoxes();
       syncGroupBoxes();
       updateBar();
-      showMessage({ cls: 'ok', html: 'เลือกตารางที่ขาดให้แล้ว กดดาวน์โหลดอีกครั้ง' });
+      showMessage(() => ({ cls: 'ok', html: L('เลือกตารางที่ขาดให้แล้ว กดดาวน์โหลดอีกครั้ง', 'The missing tables are selected. Click Download again') }));
     });
   }
 
+  // ---- the language ----
+  // The words of the page that is not made by the script above: set again for the language.
+  function applyStatic() {
+    document.documentElement.lang = LANG;
+    $('q').placeholder = L('ค้นชื่อ เช่น Orders หรือ pGetOrder', 'Search by name, e.g. Orders or pGetOrder');
+    $('q').setAttribute('aria-label', L('ค้นหา', 'Search'));
+    $('f-cat').setAttribute('aria-label', L('ชนิดของ', 'Kind of object'));
+    $('clear').textContent = L('ล้างตัวกรอง', 'Clear filters');
+    $('pick-all').textContent = L('เลือกที่แสดงอยู่ทั้งหมด', 'Select all shown');
+    $('pick-clear').textContent = L('ล้างที่เลือก', 'Clear selection');
+    for (const id of ['pick-view-sync', 'pick-view-rollback']) {
+      $(id).textContent = L('ดู', 'View');
+      $(id).title = L('เปิดแท็บใหม่ให้อ่านและคัดลอกได้เลย', 'Opens a new tab to read and copy');
+    }
+    for (const id of ['pick-sync', 'pick-rollback']) $(id).textContent = L('ดาวน์โหลด', 'Download');
+    $('lang').value = LANG;
+    $('lang').setAttribute('aria-label', L('ภาษา', 'Language'));
+    $('lang').title = L('ภาษา', 'Language');
+  }
+
+  function setLanguage(next, keep) {
+    if (next !== 'th' && next !== 'en') return;
+    if (keep !== false) { try { localStorage.setItem(LANG_KEY, next); } catch (e) { /* it still changes for this page */ } }
+    if (next === LANG) return;
+    LANG = next;
+    // The boxes of code that are open are opened again after the page is worded again.
+    const open = Array.from(document.querySelectorAll('.codebox:not([hidden])')).map(box => box.id.replace(/^code-/, ''));
+    build();
+    applyStatic();
+    renderHeader();
+    renderFilters();
+    $('f-cat').value = state.cat;
+    renderTotals();
+    refresh();
+    updateBar();
+    if (speaking) showMessage(speaking);
+    open.forEach(id => { const btn = document.querySelector('[data-code="' + id + '"]'); if (btn) btn.click(); });
+  }
+  $('lang').addEventListener('change', e => setLanguage(e.target.value));
+  // Another tab of the app (or of a report) changed it.
+  window.addEventListener('storage', e => { if (e.key === LANG_KEY) setLanguage(e.newValue === 'en' ? 'en' : 'th', false); });
+
+  applyStatic();
+  renderHeader();
   renderFilters();
   renderTotals();
   refresh();

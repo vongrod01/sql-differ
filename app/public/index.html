@@ -12,15 +12,23 @@
   <div class="topbar-inner">
     <a class="brand" href="#/compare">Database diff</a>
     <nav class="nav" id="nav">
-      <a href="#/compare" data-page="compare">เปรียบเทียบ</a>
-      <a href="#/history" data-page="history">ประวัติ</a>
+      <a href="#/compare" data-page="compare" data-i18n="เปรียบเทียบ">เปรียบเทียบ</a>
+      <a href="#/history" data-page="history" data-i18n="ประวัติ">ประวัติ</a>
       <a href="#/drift" data-page="drift">Schema drift</a>
-      <a href="#/schedules" data-page="schedules">ตั้งเวลา</a>
+      <a href="#/schedules" data-page="schedules" data-i18n="ตั้งเวลา">ตั้งเวลา</a>
       <a href="#/servers" data-page="servers">Servers</a>
     </nav>
+    <div class="language-picker">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c5 5 5 13 0 18-5-5-5-13 0-18Z"/></svg>
+      <select id="language-select" data-language-select aria-label="ภาษา" title="ภาษา">
+        <option value="th" lang="th">ไทย</option>
+        <option value="en" lang="en">Eng</option>
+      </select>
+    </div>
   </div>
 </header>
 <main class="wrap" id="app"></main>
+<script src="i18n.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

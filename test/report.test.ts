@@ -40,6 +40,8 @@ interface Group {
 
 interface Core {
   TIMELINE: boolean;
+  SIDE: Record<string, string>;
+  cat(category: string): string;
   KIND: Record<string, { cls: string; sym: string; t: string; d: string }>;
   HIDDEN_DEFINITION: string;
   propLabel(category: string, key: string): string;
@@ -84,7 +86,7 @@ interface Meta {
 interface ReportScript {
   META: Meta;
   DATA: unknown[][];
-  createReportCore(meta: Partial<Meta>): Core;
+  createReportCore(meta: Partial<Meta>, lang?: string): Core;
 }
 
 const ALL_CATEGORIES = [
@@ -120,9 +122,8 @@ function loadsNothing(html: string, { template = false } = {}): void {
   const script = html.indexOf('<script>');
   assert.ok(script > 0);
   const page = (template ? html : html.slice(0, script)).replace('<link rel="icon" href="data:,">', '');
-  // The only url() is an SVG that is written out in the page itself (the backdrop, checked below).
   // URL.createObjectURL() is not one: it makes the file of a script that was just built in the page.
-  assert.doesNotMatch(page, /<link|<script src|@import|(?<!object)url\((?!"data:image\/svg\+xml,)|https?:\/\/|fonts\.|cdn/i);
+  assert.doesNotMatch(page, /<link|<script src|@import|(?<!object)url\(|https?:\/\/|fonts\.|cdn/i);
 }
 
 test('report: the templates are Thai pages that load nothing from outside', () => {
@@ -141,19 +142,17 @@ test('report: the templates are Thai pages that load nothing from outside', () =
   }
 });
 
-// The dark backdrop is a circuit layer and a code layer, two SVG images written out inside the CSS
-// (data, not files), so a report is still one file that opens offline. They are drawn once and do not
-// move. The web app's stylesheet carries the same two layers and is held to the same rule.
-test('report: the circuit and the code backdrop are inline images that load nothing from outside', () => {
+// The app and offline reports share plain dark backgrounds and opaque reading surfaces.
+test('report: the plain dark theme needs no background images or external resources', () => {
   for (const file of [['templates', 'report.html'], ['templates', 'index.html'], ['app', 'public', 'app.css']]) {
     const name = file.join('/');
     const css = readFileSync(path.join(ROOT, ...file), 'utf8');
-    assert.equal(css.match(/url\("data:image\/svg\+xml,/g)?.length, 2, `${name}: one circuit and one code image`);
-    assert.doesNotMatch(css, /url\((?!"data:image\/svg\+xml,)/, name);
+    assert.doesNotMatch(css, /(?<!object)url\(|body::before|body::after|html::after/i, name);
     assert.doesNotMatch(css, /@import|https?:\/\/|fonts\./i, name);
-    assert.match(css, /body::after, html::after \{[^}]*content: ""/, `${name}: the two layers`);
-    // Not printed, and gone for a person who asked for more contrast.
-    assert.match(css, /@media print, \(prefers-contrast: more\), \(forced-colors: active\) \{\s*body::after, html::after \{ display: none; \}/, name);
+    assert.match(css, /--fill-reg: #[0-9a-f]{6};/, name);
+    assert.match(css, /--fill-clear: #[0-9a-f]{6};/, name);
+    assert.match(css, /--fill-inset: #[0-9a-f]{6};/, name);
+    assert.match(css, /--code-bg: #[0-9a-f]{6};/, name);
   }
 });
 
@@ -992,7 +991,7 @@ interface IndexRow {
 
 interface IndexScript {
   INDEX: { source: string; target: string; rows: IndexRow[] };
-  createIndexCore(): {
+  createIndexCore(lang?: string): {
     KIND: { key: string; cls: string; sym: string; t: string; d: string }[];
     resultHtml(row: IndexRow): string;
     rowHtml(row: IndexRow): string;
@@ -1114,4 +1113,182 @@ test('report: the page that shows a script holds the text once, safely, with a c
   // A name with markup in it is text in the title too.
   assert.match(sync.viewerPage({ ...data, name: 'a<b>.sql' }), /<title>a&lt;b&gt;\.sql<\/title>/);
   assert.equal(sync.shownText('plmobileapp.selected.sync.sql', 3, 22), 'เปิดดูไฟล์ plmobileapp.selected.sync.sql ในแท็บใหม่แล้ว (เลือก 3 จาก 22 รายการ)');
+});
+
+// ---------------------------------------------------------------------------------------------
+// English
+// ---------------------------------------------------------------------------------------------
+
+// The page says what it says in the language the person chose on the main page of the app. The Thai is the
+// original and every test above holds it to the letter; the English sits beside it at each place that words
+// something, and none of it may be left in Thai, whatever the row.
+const english = (meta: Partial<Meta> = {}): Core => {
+  const script = templateScript(meta);
+  return script.createReportCore(script.META, 'en');
+};
+const syncEn = english();
+const driftEn = english({ perspective: 'timeline' });
+const hiddenEn = english({ noViewDefinition: [['target', 'someone']] });
+
+test('report: in English a sentence about a row is English, for every kind of row', () => {
+  const T: [string, string] = ['table', 'dbo.T'];
+  const V: [string, string] = ['view', 'dbo.v'];
+  const cases: [string, string, string, string, [string, string] | null][] = [
+    ['Table', 'dbo.T', 'OnlyInSource', '', T],
+    ['Column', 'dbo.T.C', 'OnlyInSource', 'Type: int; Nullable: NULL', T],
+    ['Column', 'dbo.T.C', 'OnlyInSource', 'Type: (not readable); Nullable: NULL', T],
+    ['Column', 'dbo.T.C', 'OnlyInSource', 'Type: int; Nullable: NULL; Computed: (not readable)', T],
+    ['Index', 'dbo.T.IX', 'OnlyInSource', 'Kind: INDEX; Type: NONCLUSTERED COLUMNSTORE; Columns: A', T],
+    ['Index', 'dbo.T.IX', 'OnlyInSource', 'Kind: INDEX; Type: NONCLUSTERED; Columns: A; Filter: (not readable)', T],
+    ['Check constraint', 'dbo.T.CK', 'OnlyInSource', 'Expression: (not readable); State: ENABLED', T],
+    ['Check constraint', 'dbo.T (check: ([a]>(0)))', 'OnlyInSource', 'Expression: ([a]>(0)); State: ENABLED', T],
+    ['Index', 'dbo.v.IX', 'OnlyInSource', 'Kind: UNIQUE INDEX; Type: CLUSTERED; Columns: A', V],
+    ['Stored procedure', 'dbo.p', 'OnlyInSource', 'Type: SQL_STORED_PROCEDURE', null],
+    ['Synonym', 'dbo.s', 'OnlyInSource', 'BaseObject: [other].[dbo].[a]', null],
+    ['Synonym', 'dbo.s', 'OnlyInSource', 'BaseObject: [dbo].[a]', null],
+    ['Column', 'dbo.T.C', 'OnlyInTarget', 'Type: int', T],
+    ['Index', 'dbo.v.IX', 'OnlyInTarget', 'Kind: INDEX', V],
+    ['View', 'dbo.v', 'Unverified', 'Definition: not readable on target', null],
+    ['Column', 'dbo.T.C', 'Different', 'Type: source bigint, target int', T],
+    ['Column', 'dbo.T.C', 'Different', 'Collation: source Thai_CI_AS, target Thai_BIN', T],
+    ['Column', 'dbo.T.C', 'Different', 'Default: source ((1)), target ((0))\nOrdinal: source 2, target 3', T],
+    ['Column', 'dbo.T.C', 'Different', 'Nullable: source NOT NULL, target NULL\nPersisted: source PERSISTED, target (none)', T],
+    ['Column', 'dbo.T.C', 'Different', 'Type: source bigint, target int\nDefault: not readable on target (not compared)', T],
+    ['Column', 'dbo.T.C', 'Different', 'Type: source bigint, target int\nDefault: not readable on source (not compared)', T],
+    ['Column', 'dbo.T.C', 'Different', 'Nullable: source NULL, target NOT NULL\nType: not readable on target (not compared)', T],
+    ['Column', 'dbo.T.C', 'Different', 'Identity: source IDENTITY(1,1), target (none)', T],
+    ['Column', 'dbo.T.C', 'Different', 'Ordinal: source 2, target 3', T],
+    ['Index', 'dbo.T (primary key)', 'Different', 'Columns: source Id, target Code', T],
+    ['Foreign key', 'dbo.T.FK_a', 'Different', 'Name: source FK_a, target FK_b', T],
+    ['Check constraint', 'dbo.T.CK', 'Different', 'State: source ENABLED, target DISABLED', T],
+    ['Index', 'dbo.T.IX', 'Different', 'Include: source A, target (none)', T],
+    ['Index', 'dbo.T.IX', 'Different', 'Columns: source A, target B\nFilter: not readable on source (not compared)', T],
+    ['Index', 'dbo.T.IX', 'Different', 'Type: source CLUSTERED COLUMNSTORE, target CLUSTERED', T],
+    ['Index', 'dbo.v.IX', 'Different', 'Include: source A, target (none)', V],
+    ['Index', 'dbo.v.IX', 'Different', 'Type: source CLUSTERED, target NONCLUSTERED', V],
+    ['Stored procedure', 'dbo.p', 'Different', 'Definition differs', null],
+    ['Stored procedure', 'dbo.p', 'Different', 'SetOptions: source QUOTED_IDENTIFIER OFF, target (none)', null],
+    ['Function', 'dbo.f', 'Different', 'Definition differs\nType: source SQL_SCALAR_FUNCTION, target SQL_INLINE_TABLE_VALUED_FUNCTION', null],
+    ['Trigger', 'dbo.tr', 'Different', 'State: source DISABLED, target ENABLED\nDefinition: not readable on target (not compared)', T],
+    ['View', 'dbo.v', 'Different', 'SetOptions: source ANSI_NULLS OFF, target (none)\nDefinition: not readable on target (not compared)', null],
+    ['User-defined type', 'dbo.t', 'Different', 'Spec: source varchar(10) NULL, target varchar(20) NULL', null],
+    ['Sequence', 'dbo.s', 'Different', 'Increment: source 1, target 2', null],
+    ['Synonym', 'dbo.s', 'Different', 'BaseObject: source [dbo].[a], target [dbo].[b]', null],
+    ['Synonym', 'dbo.s', 'Different', 'BaseObject: source [other].[dbo].[a], target [dbo].[b]', null],
+    ['Database', '(database)', 'Different', 'Collation: source Thai_CI_AS, target Thai_BIN', null],
+  ];
+  for (const core of [syncEn, driftEn, hiddenEn, english({ categories: ['Table', 'Column'] })]) {
+    for (const [cat, obj, status, detail, group] of cases) {
+      const r = row(core, cat, obj, status, detail, group, cat === 'Stored procedure' && status === 'OnlyInSource' ? core.HIDDEN_DEFINITION : null);
+      const parsed = core.parseDetail(r);
+      const everything = [
+        core.sentence(r, parsed, { self: group ? row(core, group[0] === 'view' ? 'View' : 'Table', group[1], 'OnlyInSource', '', group, 'a', null) : null }),
+        core.sentence(r, parsed, { self: null }),
+        ...parsed.changes.flatMap((c) => [c.label, c.from, c.to]), ...parsed.facts.flatMap((f) => [f.label, f.value]), ...parsed.notes.map((n) => n.text),
+        ...core.setOptionsHint(parsed), core.leafOf(r).name, core.leafOf(r).kind, core.pickLabel(r),
+      ];
+      for (const text of everything) assert.ok(!hasThai(text) && text.length > 0, `${cat} ${status} ${detail}: ${text}`);
+    }
+  }
+
+  // A few of them read as they should.
+  const say = (core: Core, cat: string, obj: string, status: string, detail: string, group: [string, string] | null = null) => {
+    const r = row(core, cat, obj, status, detail, group);
+    return core.sentence(r, core.parseDetail(r), { self: null });
+  };
+  assert.equal(say(syncEn, 'Column', 'dbo.T.C', 'OnlyInSource', 'Type: int', T), 'The target does not have this column yet. Sync creates it.');
+  assert.equal(say(syncEn, 'Index', 'dbo.T.IX', 'OnlyInSource', 'Kind: INDEX', T), 'The target does not have this index yet. Sync creates it.');
+  assert.match(say(syncEn, 'Column', 'dbo.T.C', 'OnlyInTarget', 'Type: int', T), /^Only in the target\. Sync does not delete it/);
+  assert.equal(say(syncEn, 'Column', 'dbo.T.C', 'Different', 'Default: source ((1)), target ((0))', T), 'Sync changes the target from the struck-through value to the new one.');
+  assert.equal(say(syncEn, 'Column', 'dbo.T.C', 'Different', 'Type: source bigint, target int', T),
+    'Sync changes the target from the struck-through value to the new one (if it is a computed column or a computed column uses this column, sync writes it as a comment for you to run by hand instead).');
+  assert.match(say(syncEn, 'Table', 'dbo.T', 'OnlyInSource', '', T), /including its indexes, checks and foreign keys\.$/);
+  assert.equal(say(driftEn, 'Column', 'dbo.T.C', 'OnlyInSource', 'Type: int', T), 'Existed at the "before" point but is gone at the "after" point.');
+  assert.equal(say(driftEn, 'Column', 'dbo.T.C', 'OnlyInTarget', 'Type: int', T), 'Did not exist at the "before" point; first appears at the "after" point.');
+  // The kinds, the values and the names of things.
+  assert.deepEqual(Object.values(plain(syncEn.KIND)).map((k) => k.t), ['To add', 'Extra', 'To change', 'Unverified']);
+  assert.deepEqual(Object.values(plain(driftEn.KIND)).map((k) => k.t), ['Removed', 'Added', 'Changed', 'Unverified']);
+  assert.equal(syncEn.val('Nullable', 'NOT NULL'), 'No (NOT NULL)');
+  assert.equal(syncEn.val('Default', '(none)'), 'None');
+  assert.equal(syncEn.val('Type', '(not readable)'), 'Unreadable');
+  assert.equal(syncEn.propLabel('Column', 'Type'), 'Data type');
+  assert.equal(syncEn.propLabel('Index', 'Type'), 'Index type');
+  assert.equal(syncEn.cat('Table'), 'table');
+  assert.equal(syncEn.SIDE.target, 'on the target side');
+  assert.equal(driftEn.SIDE.target, 'at the "after" point');
+  // A name that is not one stays as it is.
+  assert.equal(syncEn.val('Default', '((0))'), '((0))');
+});
+
+test('report: in English the chips, the code boxes and the messages of the selection are English too', () => {
+  const T: [string, string] = ['table', 'dbo.T'];
+  for (const core of [syncEn, driftEn]) {
+    const texts: string[] = [];
+    const table = (status?: string) => {
+      const group = core.groupRows(core.toRows([['Table', 'dbo.T', status ?? 'Different', '', null, null, ['table', 'dbo.T']]]), ['Table'])['tables'][0] as Group;
+      return core.groupStatus(group).text;
+    };
+    texts.push(table('OnlyInSource'), table('OnlyInTarget'), table('Different'), table('Unverified'));
+    const view = core.groupRows(core.toRows([['View', 'dbo.v', 'OnlyInSource', '', 'x', null, ['view', 'dbo.v']]]), ['View'])['others'][0] as Group;
+    texts.push(core.groupStatus(view).text);
+    // The code of a module: a diff, and a module on one side only.
+    const both = row(core, 'Stored procedure', 'dbo.p', 'Different', 'Definition differs', null, 'a\nb\nc\nd\ne\nf\ng\nh\ni\nj', 'a\nb\nc\nd\ne\nf\ng\nh\ni\nK');
+    texts.push(core.renderDiff(both), core.renderPlain(row(core, 'View', 'dbo.v', 'OnlyInSource', '', null, 'x', null)), core.renderPlain(row(core, 'View', 'dbo.v', 'OnlyInTarget', '', null, null, 'x')));
+    texts.push(core.needText({ row: 1, object: 'dbo.p', needsRow: 2, needs: 'dbo.T' }), core.savedText('x.sql', 2, 5), core.shownText('x.sql', 2, 5));
+    for (const text of texts) assert.ok(!hasThai(text) && text.length > 0, text);
+    // The code is the engine's own text and is shown as it is.
+    assert.match(core.renderDiff(both), /<td>K<\/td>/);
+  }
+  assert.match(syncEn.needText({ row: 1, object: 'dbo.p', needsRow: 2, needs: 'dbo.T' }), /^dbo\.p needs the table dbo\.T, which is new and not selected\./);
+  assert.equal(syncEn.savedText('x.sql', 2, 5), 'Saved x.sql (2 of 5 items selected)');
+  assert.equal(syncEn.shownText('x.sql', 2, 5), 'Opened x.sql in a new tab (2 of 5 items selected)');
+  assert.equal(syncEn.groupStatus(syncEn.groupRows(syncEn.toRows([['Table', 'dbo.T', 'OnlyInSource', '', null, null, T]]), ['Table'])['tables'][0] as Group).text, 'new table');
+
+  // The page that shows a script: English words, and a script that says them in English too.
+  const viewer = syncEn.viewerPage({ name: 'x.sql', text: '\uFEFFSELECT 1', selected: 2, total: 5 });
+  assert.ok(viewer.includes('<html lang="en">'));
+  assert.ok(viewer.includes('2 of 5 items selected · read it, then copy it into SSMS'));
+  assert.ok(viewer.includes('>Copy</button><button id="save">Download</button>'));
+  assert.ok(!hasThai(viewer), 'the page that shows a script has no Thai in English');
+  assert.ok(sync.viewerPage({ name: 'x.sql', text: 'SELECT 1', selected: 2, total: 5 }).includes('<html lang="th">'));
+});
+
+test('report: in English the index of a batch is English, and the Thai is what it was', () => {
+  const template = readFileSync(path.join(ROOT, 'templates', 'index.html'), 'utf8');
+  const page = runScript<IndexScript>(template.replace('__INDEX_JSON__', () => 'null'), '{ INDEX, createIndexCore }');
+  const en = page.createIndexCore('en');
+  const th = page.createIndexCore();
+  const rows = [
+    { database: 'a', report: 'a.html', onlyInSource: 1, onlyInTarget: 0, different: 2, unverified: 0, incomplete: ['target'] },
+    { database: 'b', report: 'b.html', onlyInSource: 0, onlyInTarget: 0, different: 0, unverified: 0, incomplete: ['source', 'target'] },
+    { database: 'c', report: 'c.html', onlyInSource: 0, onlyInTarget: 0, different: 0, unverified: 1, incomplete: [] },
+    { database: 'd', report: 'd.html', onlyInSource: 0, onlyInTarget: 0, different: 0, unverified: 0, incomplete: [] },
+    { database: 'e', error: 'login failed' },
+    { database: 'f', report: 'f.html', onlyInSource: 0, onlyInTarget: 1, different: 0, unverified: 0, incomplete: [] },
+  ];
+  const all = rows.map((r) => en.rowHtml(r as never));
+  for (const html of all) assert.ok(!hasThai(html), html);
+  assert.match(all[0] ?? '', /3 differences/);
+  assert.match(all[0] ?? '', /no VIEW DEFINITION permission on the target</);
+  assert.match(all[1] ?? '', /on the source and target</);
+  assert.match(all[3] ?? '', /Identical/);
+  assert.match(all[4] ?? '', /Comparison failed: login failed/);
+  assert.match(all[5] ?? '', /1 difference</);
+  assert.deepEqual(plain(en.KIND.map((k) => k.t)), ['To add', 'Extra', 'To change', 'Unverified']);
+  assert.ok(en.KIND.every((k) => !hasThai(k.d)));
+  assert.match(th.rowHtml(rows[3] as never), /ตรงกัน/);
+  assert.match(th.rowHtml(rows[0] as never), /ต่างกัน 3 รายการ/);
+});
+
+test('report: both pages carry the language choice, shared with the main page, and do not print it', () => {
+  for (const name of ['report.html', 'index.html']) {
+    const template = readFileSync(path.join(ROOT, 'templates', name), 'utf8');
+    // The same key as the main page, so one choice does for both; Thai when there is none.
+    assert.ok(template.includes("'database-diff.language'"), name);
+    assert.match(template, /<select id="lang" aria-label="ภาษา" title="ภาษา">\s*<option value="th" lang="th">ไทย<\/option>\s*<option value="en" lang="en">Eng<\/option>/, name);
+    assert.match(template, /@media print \{[^}]*\.langbar[^}]*display: none/, name);
+    assert.match(template, /addEventListener\('storage'/, name);
+    // Still one script and nothing loaded from outside: the words are in the page itself.
+    assert.equal([...template.matchAll(/<script>[\s\S]*?<\/script>/g)].length, 1, name);
+  }
 });

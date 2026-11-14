@@ -1,10 +1,14 @@
 'use strict';
 
+const t = window.DatabaseDiffI18n.t;
+
 // ---------------------------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------------------------
 
 const $app = document.getElementById('app');
+let readLanguageEditor = null;
+let reopenLanguageEditor = null;
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 async function api(method, url, body) {
@@ -33,19 +37,19 @@ function fmtTime(iso) {
 function kindWords(kind) {
   if (kind === 'drift') {
     return {
-      source: { cls: 'src', label: 'หายไป', hint: 'เคยมีในจุด "จาก" แต่จุด "ถึง" ไม่มีแล้ว' },
-      target: { cls: 'tgt', label: 'เพิ่มขึ้นมา', hint: 'จุด "จาก" ยังไม่มี เพิ่งมีในจุด "ถึง"' },
-      different: { cls: 'chg', label: 'ถูกแก้', hint: 'มีทั้งสองจุด แต่ไม่เหมือนเดิม' },
-      unverified: { cls: 'unk', label: 'ตรวจไม่ได้', hint: 'อ่านค่าไม่ได้ (ไม่มีสิทธิ์ หรือถูกเข้ารหัส) จึงบอกไม่ได้ว่าเปลี่ยนหรือไม่' },
-      same: 'เหมือนเดิม',
+      source: { cls: 'src', label: t('หายไป'), hint: t('เคยมีในจุด "จาก" แต่จุด "ถึง" ไม่มีแล้ว') },
+      target: { cls: 'tgt', label: t('เพิ่มขึ้นมา'), hint: t('จุด "จาก" ยังไม่มี เพิ่งมีในจุด "ถึง"') },
+      different: { cls: 'chg', label: t('ถูกแก้'), hint: t('มีทั้งสองจุด แต่ไม่เหมือนเดิม') },
+      unverified: { cls: 'unk', label: t('ตรวจไม่ได้'), hint: t('อ่านค่าไม่ได้ (ไม่มีสิทธิ์ หรือถูกเข้ารหัส) จึงบอกไม่ได้ว่าเปลี่ยนหรือไม่') },
+      same: t('เหมือนเดิม'),
     };
   }
   return {
-    source: { cls: 'tgt', label: 'ต้องเพิ่ม', hint: 'ต้นแบบมี แต่ปลายทางยังไม่มี sync จะสร้างให้ ยกเว้นส่วนที่ไฟล์ sync เขียนไว้เป็นหมายเหตุให้ทำเอง' },
-    target: { cls: 'src', label: 'มีเกิน', hint: 'ปลายทางมีแต่ต้นแบบไม่มี sync ไม่ลบให้ แค่เขียนคำสั่งลบไว้เป็นหมายเหตุ' },
-    different: { cls: 'chg', label: 'ต้องแก้', hint: 'มีทั้งคู่แต่ไม่เหมือนกัน sync จะแก้ปลายทางให้ตรงต้นแบบ ยกเว้นส่วนที่ไฟล์ sync เขียนไว้เป็นหมายเหตุให้ทำเอง' },
-    unverified: { cls: 'unk', label: 'ตรวจไม่ได้', hint: 'อ่านค่าไม่ได้ (ไม่มีสิทธิ์ หรือถูกเข้ารหัส) จึงเทียบไม่ได้ และไม่เขียนคำสั่งให้' },
-    same: 'ตรงกัน',
+    source: { cls: 'tgt', label: t('ต้องเพิ่ม'), hint: t('ต้นแบบมี แต่ปลายทางยังไม่มี sync จะสร้างให้ ยกเว้นส่วนที่ไฟล์ sync เขียนไว้เป็นหมายเหตุให้ทำเอง') },
+    target: { cls: 'src', label: t('มีเกิน'), hint: t('ปลายทางมีแต่ต้นแบบไม่มี sync ไม่ลบให้ แค่เขียนคำสั่งลบไว้เป็นหมายเหตุ') },
+    different: { cls: 'chg', label: t('ต้องแก้'), hint: t('มีทั้งคู่แต่ไม่เหมือนกัน sync จะแก้ปลายทางให้ตรงต้นแบบ ยกเว้นส่วนที่ไฟล์ sync เขียนไว้เป็นหมายเหตุให้ทำเอง') },
+    unverified: { cls: 'unk', label: t('ตรวจไม่ได้'), hint: t('อ่านค่าไม่ได้ (ไม่มีสิทธิ์ หรือถูกเข้ารหัส) จึงเทียบไม่ได้ และไม่เขียนคำสั่งให้') },
+    same: t('ตรงกัน'),
   };
 }
 
@@ -61,15 +65,15 @@ function countsHtml(c, incomplete, kind, errors) {
   if (c.onlyInTarget) parts.push(`<span class="tag ${w.target.cls}">${w.target.label} ${c.onlyInTarget}</span>`);
   if (c.different) parts.push(`<span class="tag chg">${w.different.label} ${c.different}</span>`);
   if (c.unverified) parts.push(`<span class="tag">${w.unverified.label} ${c.unverified}</span>`);
-  if (incomplete) parts.push('<span class="tag err">ผลไม่ครบ</span>');
-  if (errors) parts.push(`<span class="tag err">เทียบไม่สำเร็จ ${Number(errors)} ฐาน</span>`);
+  if (incomplete) parts.push(t('<span class="tag err">ผลไม่ครบ</span>'));
+  if (errors) parts.push(t`<span class="tag err">เทียบไม่สำเร็จ ${Number(errors)} ฐาน</span>`);
   return `<div class="counts">${parts.join('')}</div>`;
 }
 
 function statusTag(status) {
-  if (status === 'running') return '<span class="tag run"><span class="spinner"></span> กำลังรัน</span>';
-  if (status === 'done') return '<span class="tag ok">เสร็จ</span>';
-  return '<span class="tag err">ล้มเหลว</span>';
+  if (status === 'running') return t('<span class="tag run"><span class="spinner"></span> กำลังรัน</span>');
+  if (status === 'done') return t('<span class="tag ok">เสร็จ</span>');
+  return t('<span class="tag err">ล้มเหลว</span>');
 }
 
 // 1536 -> "1.5 KB".
@@ -84,11 +88,11 @@ function fmtBytes(bytes) {
 // The line under the history list: how much history there is, and when runs are deleted
 // automatically (s: the answer of /api/storage). Plain text, set with textContent.
 function storageText(s) {
-  const size = `ประวัติ ${Number(s.runs)} รายการ ใช้พื้นที่ ${fmtBytes(s.bytes)}`;
-  if (s.invalid) return `${size} · ไม่ลบอัตโนมัติ เพราะค่า DATABASE_DIFF_RETENTION_DAYS "${s.invalid}" ไม่ใช่จำนวนวัน`;
-  if (!s.days) return `${size} · ไม่ลบอัตโนมัติ (DATABASE_DIFF_RETENTION_DAYS=0)`;
+  const size = t`ประวัติ ${Number(s.runs)} รายการ ใช้พื้นที่ ${fmtBytes(s.bytes)}`;
+  if (s.invalid) return t`${size} · ไม่ลบอัตโนมัติ เพราะค่า DATABASE_DIFF_RETENTION_DAYS "${s.invalid}" ไม่ใช่จำนวนวัน`;
+  if (!s.days) return t`${size} · ไม่ลบอัตโนมัติ (DATABASE_DIFF_RETENTION_DAYS=0)`;
   // Counted back from the newest run, not from today: see prune in app/lib/retention.js.
-  return `${size} · ลบอัตโนมัติเมื่อเก่ากว่า ${Number(s.days)} วัน นับถอยจากการรันครั้งล่าสุด แต่เก็บ ${Number(s.keep)} รายการล่าสุดไว้เสมอ`;
+  return t`${size} · ลบอัตโนมัติเมื่อเก่ากว่า ${Number(s.days)} วัน นับถอยจากการรันครั้งล่าสุด แต่เก็บ ${Number(s.keep)} รายการล่าสุดไว้เสมอ`;
 }
 
 const KIND_LABEL = { compare: 'ฐานเดียว', batch: 'หลายฐาน', drift: 'Drift' };
@@ -96,7 +100,7 @@ const KIND_LABEL = { compare: 'ฐานเดียว', batch: 'หลาย�
 function runTitle(run) {
   const s = run.spec;
   if (s.kind === 'batch') {
-    const dbs = s.allDatabases ? 'ทุกฐานที่ชื่อตรงกัน' : s.databases.join(', ');
+    const dbs = s.allDatabases ? t('ทุกฐานที่ชื่อตรงกัน') : s.databases.join(', ');
     return `${esc(s.source.serverLabel)} &rarr; ${esc(s.target.serverLabel)}<div class="muted small">${esc(dbs)}</div>`;
   }
   const src = run.sourceLabel || (s.source.snapshot ? `snapshot ${s.source.database || ''}` : `${s.source.serverLabel} / ${s.source.database}`);
@@ -109,7 +113,7 @@ function armDelete(button, action) {
   if (!button.classList.contains('armed')) {
     button.classList.add('armed');
     button.dataset.label = button.textContent;
-    button.textContent = 'กดอีกครั้งเพื่อยืนยัน';
+    button.textContent = t('กดอีกครั้งเพื่อยืนยัน');
     setTimeout(() => {
       if (button.isConnected) { button.classList.remove('armed'); button.textContent = button.dataset.label; }
     }, 4000);
@@ -161,7 +165,7 @@ const CATEGORY_LABEL = { Database: 'Database settings' };
 function categoryBox(selected) {
   const chosen = new Set(selected && selected.length ? selected : MAIN_CATEGORIES);
   const box = (c) => `<label class="check"><input type="checkbox" data-category="${esc(c)}"${chosen.has(c) ? ' checked' : ''}>${esc(CATEGORY_LABEL[c] || c)}</label>`;
-  return `<div class="panel" data-role="categories">
+  return t`<div class="panel" data-role="categories">
     <div class="side-title">หมวดที่เปรียบเทียบ</div>
     <div class="cat-row"><span class="cat-label">หลัก</span><div>${MAIN_CATEGORIES.map(box).join('')}</div></div>
     <div class="cat-row"><span class="cat-label">เพิ่มเติม</span><div>${EXTRA_CATEGORIES.map(box).join('')}</div></div>
@@ -178,7 +182,7 @@ function wireCategoryBox(root) {
 
 function readCategories(root) {
   const list = [...root.querySelectorAll('[data-category]:checked')].map((c) => c.dataset.category);
-  if (!list.length) throw new Error('เลือกหมวดที่จะเปรียบเทียบอย่างน้อย 1 หมวด');
+  if (!list.length) throw new Error(t('เลือกหมวดที่จะเปรียบเทียบอย่างน้อย 1 หมวด'));
   return list;
 }
 
@@ -195,8 +199,8 @@ async function specForm(root, initial, opts = {}) {
   const list = await getServers();
   // A saved server that no longer exists is shown as missing (and blocks saving) rather than
   // letting the browser fall back to the first server in the list.
-  const missing = (id) => (id && !list.some((s) => s.id === id) ? `<option value="" selected>ไม่พบ server: ${esc(id)}</option>` : '');
-  const side = (name, title) => `
+  const missing = (id) => (id && !list.some((s) => s.id === id) ? t`<option value="" selected>ไม่พบ server: ${esc(id)}</option>` : '');
+  const side = (name, title) => t`
     <div class="panel">
       <div class="side-title">${title}</div>
       <label class="field"><span>Server</span>
@@ -206,12 +210,12 @@ async function specForm(root, initial, opts = {}) {
       <div class="hint" data-role="${name}-info"></div>
     </div>`;
 
-  root.innerHTML = `
+  root.innerHTML = t`
     <div class="segmented" role="radiogroup" aria-label="รูปแบบ">
       <label><input type="radio" name="kind" value="compare"${spec.kind !== 'batch' ? ' checked' : ''}>ฐานเดียว</label>
       <label><input type="radio" name="kind" value="batch"${spec.kind === 'batch' ? ' checked' : ''}>หลายฐาน (batch)</label>
     </div>
-    <div class="grid2">${side('source', 'ต้นแบบ: ตัวที่ถูกต้อง (source)')}${side('target', 'ปลายทาง: ตัวที่จะถูกปรับ (target)')}</div>
+    <div class="grid2">${side('source', t('ต้นแบบ: ตัวที่ถูกต้อง (source)'))}${side('target', t('ปลายทาง: ตัวที่จะถูกปรับ (target)'))}</div>
     <div class="panel batch-only">
       <div class="side-title">ฐานที่จะเทียบ</div>
       <label class="check"><input type="radio" name="dbmode" value="all"${spec.allDatabases ? ' checked' : ''}>ทุกฐานที่ชื่อตรงกันทั้งสองฝั่ง (รวมฐานที่จะเพิ่มทีหลังด้วย)</label>
@@ -224,7 +228,7 @@ async function specForm(root, initial, opts = {}) {
     ${categoryBox(spec.categories)}
     <div class="panel">
       <div class="side-title">ตัวเลือก</div>
-      ${OPTIONS.map(([k, label]) => `<label class="check"><input type="checkbox" data-option="${k}"${spec.options && spec.options[k] ? ' checked' : ''}>${label}</label>`).join('')}
+      ${OPTIONS.map(([k, label]) => `<label class="check"><input type="checkbox" data-option="${k}"${spec.options && spec.options[k] ? ' checked' : ''}>${t(label)}</label>`).join('')}
     </div>`;
 
   const q = (role) => root.querySelector(`[data-role="${role}"]`);
@@ -243,17 +247,18 @@ async function specForm(root, initial, opts = {}) {
   const renderGrid = () => {
     const grid = q('db-grid');
     const failed = ['source', 'target'].filter((n) => failures[n]);
-    if (failed.length) { grid.innerHTML = `<span class="warn-text">โหลดรายชื่อฐานฝั่ง ${failed.join(', ')} ไม่ได้ ดูรายละเอียดใต้ช่อง Server</span>`; return; }
-    if (!state.source || !state.target) { grid.innerHTML = '<span class="muted">กำลังโหลด...</span>'; return; }
+    if (failed.length) { grid.innerHTML = t`<span class="warn-text">โหลดรายชื่อฐานฝั่ง ${failed.join(', ')} ไม่ได้ ดูรายละเอียดใต้ช่อง Server</span>`; return; }
+    if (!state.source || !state.target) { grid.innerHTML = t('<span class="muted">กำลังโหลด...</span>'); return; }
     const targetByName = new Map(state.target.databases.map((d) => [d.name.toLowerCase(), d]));
     const common = state.source.databases.filter((d) => targetByName.has(d.name.toLowerCase()));
-    if (!common.length) { grid.innerHTML = '<span class="muted">ไม่มีฐานที่ชื่อตรงกันทั้งสองฝั่ง</span>'; return; }
+    if (!common.length) { grid.innerHTML = t('<span class="muted">ไม่มีฐานที่ชื่อตรงกันทั้งสองฝั่ง</span>'); return; }
     grid.innerHTML = common.map((d) => {
-      const t = targetByName.get(d.name.toLowerCase());
-      const blocked = [d.hasAccess === false ? 'source' : '', t.hasAccess === false ? 'target' : ''].filter(Boolean);
+      // Not called t: that is the translation function, used a few lines down.
+      const peer = targetByName.get(d.name.toLowerCase());
+      const blocked = [d.hasAccess === false ? 'source' : '', peer.hasAccess === false ? 'target' : ''].filter(Boolean);
       // A database the login cannot open is listed (so the list is complete) but cannot be picked.
       if (blocked.length) picked.delete(d.name);
-      const note = blocked.length ? ` <span class="muted small">(เข้าไม่ได้ฝั่ง ${blocked.join(', ')})</span>` : '';
+      const note = blocked.length ? t` <span class="muted small">(เข้าไม่ได้ฝั่ง ${blocked.join(', ')})</span>` : '';
       return `<label class="check"><input type="checkbox" value="${esc(d.name)}"${picked.has(d.name) ? ' checked' : ''}${blocked.length ? ' disabled' : ''}>${esc(d.name)}${note}</label>`;
     }).join('');
   };
@@ -262,14 +267,14 @@ async function specForm(root, initial, opts = {}) {
     const select = q(`${name}-db`);
     const info = q(`${name}-info`);
     const serverId = q(`${name}-server`).value;
-    select.innerHTML = '<option value="">กำลังโหลด...</option>';
+    select.innerHTML = t('<option value="">กำลังโหลด...</option>');
     info.textContent = '';
     state[name] = null;
     failures[name] = false;
     if (!serverId) {
       // A saved job or draft whose server has since been deleted.
-      select.innerHTML = '<option value="">เลือก server ก่อน</option>';
-      info.innerHTML = '<span class="warn-text">ไม่พบ server เดิมแล้ว เลือก server ใหม่</span>';
+      select.innerHTML = t('<option value="">เลือก server ก่อน</option>');
+      info.innerHTML = t('<span class="warn-text">ไม่พบ server เดิมแล้ว เลือก server ใหม่</span>');
       failures[name] = true;
       renderGrid();
       return;
@@ -280,10 +285,10 @@ async function specForm(root, initial, opts = {}) {
       state[name] = result;
       // No database is picked for the user; only an edited job (preferred) comes back selected.
       // Databases the login cannot open stay in the list (disabled) so it matches what the server has.
-      select.innerHTML = '<option value="">-- เลือก database --</option>' +
+      select.innerHTML = t('<option value="">-- เลือก database --</option>') +
         result.databases.map((d) => {
           const open = d.hasAccess !== false;
-          const note = !open ? ' (เข้าไม่ได้)' : d.canViewDefinition ? '' : ' (ไม่มีสิทธิ์ VIEW DEFINITION)';
+          const note = !open ? t(' (เข้าไม่ได้)') : d.canViewDefinition ? '' : t(' (ไม่มีสิทธิ์ VIEW DEFINITION)');
           return `<option value="${esc(d.name)}"${open && d.name === preferred ? ' selected' : ''}${open ? '' : ' disabled'}>${esc(d.name)}${note}</option>`;
         }).join('');
       const accessible = result.databases.filter((d) => d.hasAccess !== false);
@@ -292,11 +297,11 @@ async function specForm(root, initial, opts = {}) {
       info.innerHTML = `${esc(result.edition)} ${esc(result.version)}` +
         (result.serverName ? ` &middot; ${esc(result.serverName)}` : '') + ` &middot; login ${esc(result.login)}` +
         instanceMismatchHtml(result) +
-        (noAccess ? `<div class="warn-text">login นี้เข้าได้ ${accessible.length} จาก ${result.databases.length} ฐาน (ฐานที่เข้าไม่ได้แสดงไว้แต่เลือกไม่ได้)</div>` : '') +
-        (noView ? `<div class="warn-text">ไม่มีสิทธิ์ VIEW DEFINITION ใน ${noView} ฐานที่เข้าได้ ผลเทียบของฐานเหล่านั้นจะไม่ครบ</div>` : '');
+        (noAccess ? t`<div class="warn-text">login นี้เข้าได้ ${accessible.length} จาก ${result.databases.length} ฐาน (ฐานที่เข้าไม่ได้แสดงไว้แต่เลือกไม่ได้)</div>` : '') +
+        (noView ? t`<div class="warn-text">ไม่มีสิทธิ์ VIEW DEFINITION ใน ${noView} ฐานที่เข้าได้ ผลเทียบของฐานเหล่านั้นจะไม่ครบ</div>` : '');
     } catch (err) {
       if (q(`${name}-server`).value !== serverId) return;
-      select.innerHTML = '<option value="">โหลดไม่ได้</option>';
+      select.innerHTML = t('<option value="">โหลดไม่ได้</option>');
       info.innerHTML = `<span class="warn-text">${esc(err.message)}</span>`;
       failures[name] = true;
     }
@@ -355,17 +360,17 @@ async function specForm(root, initial, opts = {}) {
         categories: readCategories(root),
         options,
       };
-      if (!out.source.serverId || !out.target.serverId) throw new Error('เลือก server ทั้งสองฝั่งก่อน');
+      if (!out.source.serverId || !out.target.serverId) throw new Error(t('เลือก server ทั้งสองฝั่งก่อน'));
       if (out.kind === 'batch') {
         out.allDatabases = root.querySelector('input[name=dbmode]:checked').value === 'all';
         // Only what the grid shows ticked: a pick kept from another server or an old draft is not
         // on screen and must not be sent.
         out.databases = out.allDatabases ? [] : [...q('db-grid').querySelectorAll('input:checked:not(:disabled)')].map((i) => i.value);
-        if (!out.allDatabases && !out.databases.length) throw new Error('เลือกฐานอย่างน้อย 1 ฐาน');
+        if (!out.allDatabases && !out.databases.length) throw new Error(t('เลือกฐานอย่างน้อย 1 ฐาน'));
       } else {
         out.source.database = q('source-db').value;
         out.target.database = q('target-db').value;
-        if (!out.source.database || !out.target.database) throw new Error('เลือก database ทั้งสองฝั่งก่อน');
+        if (!out.source.database || !out.target.database) throw new Error(t('เลือก database ทั้งสองฝั่งก่อน'));
       }
       return out;
     },
@@ -400,7 +405,7 @@ function clearDraft() {
 }
 
 async function pageCompare() {
-  $app.innerHTML = `
+  $app.innerHTML = t`
     <div class="page-head"><div><h1>เปรียบเทียบ schema</h1>
       <div class="muted">อ่านอย่างเดียว ไม่แก้ไขฐานข้อมูลใดๆ</div></div></div>
     <div id="form"></div>
@@ -449,30 +454,30 @@ function scriptNotes(final, drift, combinedSync, combinedRollback) {
   const hasSync = Boolean(final.syncScript) || databases.some((d) => d.syncScript);
   const hasRollback = !drift && (Boolean(final.rollbackScript) || databases.some((d) => d.rollbackScript));
   // The same three facts for every script the engine writes.
-  const how = 'ระบบไม่รัน script ให้ ต้อง review แล้วรันเองใน SSMS ' +
-    'script เริ่มด้วย USE ของฐานปลายทาง ถ้าเข้าฐานนั้นไม่ได้จะไม่รันคำสั่งใดเลย ' +
-    'index, constraint และ default ที่เปลี่ยนจะถูกแทนที่ใน transaction เดียว ส่วนคำสั่ง DROP ถูก comment ไว้ท้ายไฟล์';
+  const how = t('ระบบไม่รัน script ให้ ต้อง review แล้วรันเองใน SSMS ') +
+    t('script เริ่มด้วย USE ของฐานปลายทาง ถ้าเข้าฐานนั้นไม่ได้จะไม่รันคำสั่งใดเลย ') +
+    t('index, constraint และ default ที่เปลี่ยนจะถูกแทนที่ใน transaction เดียว ส่วนคำสั่ง DROP ถูก comment ไว้ท้ายไฟล์');
   let html = '';
   if (hasSync) {
     html += drift
-      ? `<div class="notice"><b>Script ย้อนกลับ</b> รันบนฝั่ง "ถึง" เพื่อให้ schema กลับไปเป็นแบบ "จาก" ${how}</div>`
-      : `<div class="notice"><b>Sync script</b> รันบน target เพื่อให้ schema ตรงกับ source ${how}</div>`;
+      ? t`<div class="notice"><b>Script ย้อนกลับ</b> รันบนฝั่ง "ถึง" เพื่อให้ schema กลับไปเป็นแบบ "จาก" ${how}</div>`
+      : t`<div class="notice"><b>Sync script</b> รันบน target เพื่อให้ schema ตรงกับ source ${how}</div>`;
   }
   if (hasRollback) {
-    html += '<div class="notice"><b>Rollback script</b> รันบน target หลังรัน sync script เพื่อย้อน schema กลับเป็นแบบตอนเปรียบเทียบ ' +
-      '(ใช้ได้เมื่อหลังเปรียบเทียบ target ถูกแก้โดย sync script เท่านั้น) ของที่ sync script สร้างจะถูก DROP ' +
-      'ยกเว้น table และ column ที่ถูก comment ไว้ท้ายไฟล์ เพราะลบแล้วข้อมูลหาย</div>';
+    html += t('<div class="notice"><b>Rollback script</b> รันบน target หลังรัน sync script เพื่อย้อน schema กลับเป็นแบบตอนเปรียบเทียบ ') +
+      t('(ใช้ได้เมื่อหลังเปรียบเทียบ target ถูกแก้โดย sync script เท่านั้น) ของที่ sync script สร้างจะถูก DROP ') +
+      t('ยกเว้น table และ column ที่ถูก comment ไว้ท้ายไฟล์ เพราะลบแล้วข้อมูลหาย</div>');
   }
   // Only for a comparison that could not see everything: the scripts are more careful then.
   if (hasSync && final.incomplete) {
-    html += '<div class="notice warn">ถ้าฝั่งที่ไม่มีสิทธิ์ VIEW DEFINITION คือ target: object ที่มีแค่ใน source จะถูกเขียนเป็น CREATE ธรรมดา ' +
-      '(ถ้ามีอยู่แล้วจะ error ไม่เขียนทับ) และบางคำสั่งใน sync script กับคำสั่ง DROP ใน rollback script จะถูก comment ไว้ให้ตรวจก่อนรัน</div>';
+    html += t('<div class="notice warn">ถ้าฝั่งที่ไม่มีสิทธิ์ VIEW DEFINITION คือ target: object ที่มีแค่ใน source จะถูกเขียนเป็น CREATE ธรรมดา ') +
+      t('(ถ้ามีอยู่แล้วจะ error ไม่เขียนทับ) และบางคำสั่งใน sync script กับคำสั่ง DROP ใน rollback script จะถูก comment ไว้ให้ตรวจก่อนรัน</div>');
   }
   if (combinedSync) {
-    html += '<div class="notice"><b>Sync script ทั้งหมด</b> รวม sync script ของทุก database ที่มีของต้องสร้างหรือแก้ไว้ในไฟล์เดียว ' +
-      'เปิดใน SSMS ที่ต่อกับ server target แล้วรันทีเดียวได้ แต่ละส่วนเริ่มด้วย USE ของ database นั้น ' +
-      'ถ้าเข้า database ไหนไม่ได้ script จะหยุดทั้งไฟล์ database ที่ไม่มีอะไรต้องแก้ไม่ได้ใส่ไว้ (รายชื่ออยู่ที่หัวไฟล์)' +
-      (combinedRollback ? ' ส่วน <b>Rollback script ทั้งหมด</b> ใช้ย้อนหลังรัน Sync script ทั้งหมดแล้ว' : '') + '</div>';
+    html += t('<div class="notice"><b>Sync script ทั้งหมด</b> รวม sync script ของทุก database ที่มีของต้องสร้างหรือแก้ไว้ในไฟล์เดียว ') +
+      t('เปิดใน SSMS ที่ต่อกับ server target แล้วรันทีเดียวได้ แต่ละส่วนเริ่มด้วย USE ของ database นั้น ') +
+      t('ถ้าเข้า database ไหนไม่ได้ script จะหยุดทั้งไฟล์ database ที่ไม่มีอะไรต้องแก้ไม่ได้ใส่ไว้ (รายชื่ออยู่ที่หัวไฟล์)') +
+      (combinedRollback ? t(' ส่วน <b>Rollback script ทั้งหมด</b> ใช้ย้อนหลังรัน Sync script ทั้งหมดแล้ว') : '') + '</div>';
   }
   return html;
 }
@@ -489,17 +494,17 @@ function canPickRows(d) {
 // script of what is ticked is made there, for sync and for rollback.
 function pickLink(runId, report, label) {
   return `<a class="btn primary" href="/runs/${runId}/${encodeURIComponent(report)}#select" target="_blank" rel="noopener" ` +
-    `title="เปิดรายงานแล้วติ๊กรายการที่ต้องการ จะได้ทั้ง sync script และ rollback script ของที่เลือก">${label}</a>`;
+    t`title="เปิดรายงานแล้วติ๊กรายการที่ต้องการ จะได้ทั้ง sync script และ rollback script ของที่เลือก">${label}</a>`;
 }
 
 // The buttons of one database of a batch run: its report, its script for the whole database, its script for
 // the rows ticked in the report, and its rollback for the whole database.
 function databaseActions(runId, d) {
   const link = (file, label) => `<a class="btn" href="/runs/${runId}/${encodeURIComponent(file)}" target="_blank" rel="noopener">${label}</a>`;
-  return (d.report ? link(d.report, 'รายงาน') : '') +
-    (d.syncScript ? link(d.syncScript, 'sync script ทั้งฐาน') : '') +
-    (canPickRows(d) ? pickLink(runId, d.report, 'sync script เลือกเอง') : '') +
-    (d.rollbackScript ? link(d.rollbackScript, 'rollback script ทั้งฐาน') : '');
+  return (d.report ? link(d.report, t('รายงาน')) : '') +
+    (d.syncScript ? link(d.syncScript, t('sync script ทั้งฐาน')) : '') +
+    (canPickRows(d) ? pickLink(runId, d.report, t('sync script เลือกเอง')) : '') +
+    (d.rollbackScript ? link(d.rollbackScript, t('rollback script ทั้งฐาน')) : '');
 }
 
 async function pageRun(id) {
@@ -510,10 +515,10 @@ async function pageRun(id) {
   } catch (err) {
     return showError($app, err);
   }
-  $app.innerHTML = `
+  $app.innerHTML = t`
     <div class="page-head"><div>
-      <h1>${KIND_LABEL[meta.spec.kind]} <span id="status">${statusTag(meta.status)}</span></h1>
-      <div class="muted small">เริ่ม ${fmtTime(meta.createdAt)}${meta.spec.jobName ? ` &middot; ตั้งเวลา: ${esc(meta.spec.jobName)}` : ''}</div>
+      <h1>${t(KIND_LABEL[meta.spec.kind])} <span id="status">${statusTag(meta.status)}</span></h1>
+      <div class="muted small">เริ่ม ${fmtTime(meta.createdAt)}${meta.spec.jobName ? t` &middot; ตั้งเวลา: ${esc(meta.spec.jobName)}` : ''}</div>
     </div><div class="actions" id="links"></div></div>
     <div class="panel">${runTitle(meta)}
       <div class="muted small" style="margin-top:6px">หมวดที่เปรียบเทียบ: ${esc((meta.spec.categories || MAIN_CATEGORIES).map((c) => CATEGORY_LABEL[c] || c).join(', '))}</div></div>
@@ -526,7 +531,7 @@ async function pageRun(id) {
     const links = document.getElementById('links');
     const result = document.getElementById('result');
     if (final.status !== 'done') {
-      result.innerHTML = `<div class="notice error">การรันล้มเหลว ${esc(final.resultError || '')} ดูรายละเอียดใน log</div>`;
+      result.innerHTML = t`<div class="notice error">การรันล้มเหลว ${esc(final.resultError || '')} ดูรายละเอียดใน log</div>`;
       return;
     }
     // Open and download buttons of one script.
@@ -543,43 +548,43 @@ async function pageRun(id) {
     const combinedRollback = toApply('rollbackScript');
     // In a drift run the sync script is already the way back, so it has no rollback button.
     const drift = final.spec.kind === 'drift';
-    links.innerHTML = `<a class="btn primary" href="/runs/${final.id}/${final.report}" target="_blank" rel="noopener">เปิดรายงาน</a>` +
+    links.innerHTML = t`<a class="btn primary" href="/runs/${final.id}/${final.report}" target="_blank" rel="noopener">เปิดรายงาน</a>` +
       (drift
-        ? scriptButtons(final.syncScript, 'Script ย้อนกลับ', 'ดาวน์โหลด .sql')
-        : scriptButtons(final.syncScript, 'Sync script', 'ดาวน์โหลด sync .sql') +
-          scriptButtons(final.rollbackScript, 'Rollback script', 'ดาวน์โหลด rollback .sql') +
+        ? scriptButtons(final.syncScript, t('Script ย้อนกลับ'), t('ดาวน์โหลด .sql'))
+        : scriptButtons(final.syncScript, 'Sync script', t('ดาวน์โหลด sync .sql')) +
+          scriptButtons(final.rollbackScript, 'Rollback script', t('ดาวน์โหลด rollback .sql')) +
           // A single comparison: the report opened to tick the rows (a batch has this button on each database below).
           (!final.databases && canPickRows({ error: '', report: final.report, syncScript: final.syncScript, counts: final.counts })
-            ? pickLink(final.id, final.report, 'Sync script เลือกเอง') : '')) +
-      (combinedSync ? linkButtons(`/runs/${final.id}/combined/sync.sql`, 'Sync script ทั้งหมด', 'ดาวน์โหลด sync ทั้งหมด .sql') : '') +
-      (combinedRollback ? linkButtons(`/runs/${final.id}/combined/rollback.sql`, 'Rollback script ทั้งหมด', 'ดาวน์โหลด rollback ทั้งหมด .sql') : '');
+            ? pickLink(final.id, final.report, t('Sync script เลือกเอง')) : '')) +
+      (combinedSync ? linkButtons(`/runs/${final.id}/combined/sync.sql`, t('Sync script ทั้งหมด'), t('ดาวน์โหลด sync ทั้งหมด .sql')) : '') +
+      (combinedRollback ? linkButtons(`/runs/${final.id}/combined/rollback.sql`, t('Rollback script ทั้งหมด'), t('ดาวน์โหลด rollback ทั้งหมด .sql')) : '');
     const c = final.counts || {};
     const w = kindWords(final.spec.kind);
     // One card per kind: the count, its word, and what the word means.
     const card = (k, n) => `<div class="card ${k.cls}"><span class="n">${n || 0}</span><span class="t">${k.label}</span><span class="d">${k.hint}</span></div>`;
     let html = `<div class="cards">${card(w.source, c.onlyInSource)}${card(w.target, c.onlyInTarget)}${card(w.different, c.different)}${card(w.unverified, c.unverified)}</div>`;
     if (final.errors) {
-      html += `<div class="notice error">เทียบไม่สำเร็จ ${Number(final.errors)} จาก ${(final.databases || []).length} ฐาน ตัวเลขด้านบนนับเฉพาะฐานที่เทียบได้ ` +
-        'ฐานที่เทียบไม่สำเร็จไม่มีรายงานและไม่มี script สาเหตุของแต่ละฐานอยู่ในตารางด้านล่าง</div>';
+      html += t`<div class="notice error">เทียบไม่สำเร็จ ${Number(final.errors)} จาก ${(final.databases || []).length} ฐาน ตัวเลขด้านบนนับเฉพาะฐานที่เทียบได้ ` +
+        t('ฐานที่เทียบไม่สำเร็จไม่มีรายงานและไม่มี script สาเหตุของแต่ละฐานอยู่ในตารางด้านล่าง</div>');
     }
     if (final.incomplete) {
-      html += `<div class="notice warn">ผลไม่ครบ: login อย่างน้อยหนึ่งฝั่งไม่มีสิทธิ์ VIEW DEFINITION ของที่ login มองไม่เห็นจะขึ้นเป็น "${w.source.label}" หรือ "${w.target.label}" ` +
-        `ทั้งที่อาจมีอยู่จริง และโค้ดที่อ่านไม่ได้จะขึ้นเป็น "${w.unverified.label}"</div>`;
+      html += t`<div class="notice warn">ผลไม่ครบ: login อย่างน้อยหนึ่งฝั่งไม่มีสิทธิ์ VIEW DEFINITION ของที่ login มองไม่เห็นจะขึ้นเป็น "${w.source.label}" หรือ "${w.target.label}" ` +
+        t`ทั้งที่อาจมีอยู่จริง และโค้ดที่อ่านไม่ได้จะขึ้นเป็น "${w.unverified.label}"</div>`;
     }
-    if (final.syncError) html += `<div class="notice error">สร้าง sync script ไม่สำเร็จ: ${esc(final.syncError)}</div>`;
-    if (!drift && final.rollbackError) html += `<div class="notice error">สร้าง rollback script ไม่สำเร็จ: ${esc(final.rollbackError)}</div>`;
+    if (final.syncError) html += t`<div class="notice error">สร้าง sync script ไม่สำเร็จ: ${esc(final.syncError)}</div>`;
+    if (!drift && final.rollbackError) html += t`<div class="notice error">สร้าง rollback script ไม่สำเร็จ: ${esc(final.rollbackError)}</div>`;
     html += scriptNotes(final, drift, combinedSync, combinedRollback);
     if (final.databases) {
-      html += `<div class="table-wrap"><table><thead><tr><th>Database</th><th>ผลลัพธ์</th><th></th></tr></thead><tbody>${final.databases.map((d) => `
+      html += t`<div class="table-wrap"><table><thead><tr><th>Database</th><th>ผลลัพธ์</th><th></th></tr></thead><tbody>${final.databases.map((d) => `
         <tr><td>${esc(d.database)}</td>
         <td>${d.error ? `<span class="warn-text">${esc(d.error)}</span>` : countsHtml(d.counts, d.incomplete, final.spec.kind)}</td>
         <td><div class="actions">${databaseActions(final.id, d)}</div></td></tr>`).join('')}
       </tbody></table></div>`;
-      if (final.onlyOnSource && final.onlyOnSource.length) html += `<p class="muted small">ฐานที่มีแค่บน server ต้นแบบ (source): ${esc(final.onlyOnSource.join(', '))}</p>`;
-      if (final.onlyOnTarget && final.onlyOnTarget.length) html += `<p class="muted small">ฐานที่มีแค่บน server ปลายทาง (target): ${esc(final.onlyOnTarget.join(', '))}</p>`;
+      if (final.onlyOnSource && final.onlyOnSource.length) html += t`<p class="muted small">ฐานที่มีแค่บน server ต้นแบบ (source): ${esc(final.onlyOnSource.join(', '))}</p>`;
+      if (final.onlyOnTarget && final.onlyOnTarget.length) html += t`<p class="muted small">ฐานที่มีแค่บน server ปลายทาง (target): ${esc(final.onlyOnTarget.join(', '))}</p>`;
       if (final.noAccess && final.noAccess.length) {
         const names = final.noAccess.map((d) => `${d.database} (${[d.source ? '' : 'source', d.target ? '' : 'target'].filter(Boolean).join(', ')})`);
-        html += `<div class="notice warn">มีทั้งสองฝั่งแต่ login เข้าไม่ได้ ${final.noAccess.length} ฐาน จึงไม่ได้เทียบ: ${esc(names.join(', '))}</div>`;
+        html += t`<div class="notice warn">มีทั้งสองฝั่งแต่ login เข้าไม่ได้ ${final.noAccess.length} ฐาน จึงไม่ได้เทียบ: ${esc(names.join(', '))}</div>`;
       }
     }
     result.innerHTML = html;
@@ -601,7 +606,7 @@ async function pageRun(id) {
 }
 
 async function pageHistory() {
-  $app.innerHTML = '<div class="page-head"><h1>ประวัติการเปรียบเทียบ</h1></div><div id="list"><div class="empty"><span class="spinner"></span></div></div><p id="storage" class="muted small"></p>';
+  $app.innerHTML = t('<div class="page-head"><h1>ประวัติการเปรียบเทียบ</h1></div><div id="list"><div class="empty"><span class="spinner"></span></div></div><p id="storage" class="muted small"></p>');
   const target = document.getElementById('list');
   // Asked for on its own: measuring the run folders can take a moment, and the list must not
   // wait for it. Nothing is shown when it fails, or when another page has been opened meanwhile.
@@ -616,19 +621,19 @@ async function pageHistory() {
     return showError(target, err);
   }
   if (!list.length) {
-    target.innerHTML = '<div class="panel empty">ยังไม่มีประวัติ เริ่มจากหน้า "เปรียบเทียบ"</div>';
+    target.innerHTML = t('<div class="panel empty">ยังไม่มีประวัติ เริ่มจากหน้า "เปรียบเทียบ"</div>');
     return;
   }
-  target.innerHTML = `<div class="table-wrap"><table><thead><tr>
+  target.innerHTML = t`<div class="table-wrap"><table><thead><tr>
     <th>เวลา</th><th>ประเภท</th><th>Source &rarr; Target</th><th>ผลลัพธ์</th><th>สถานะ</th><th></th></tr></thead><tbody>
     ${list.map((r) => `<tr class="clickable" data-id="${r.id}">
       <td class="mono small">${fmtTime(r.createdAt)}</td>
-      <td>${KIND_LABEL[r.spec.kind]}${r.spec.trigger === 'schedule' ? '<div class="muted small">ตั้งเวลา</div>' : ''}</td>
+      <td>${t(KIND_LABEL[r.spec.kind])}${r.spec.trigger === 'schedule' ? t('<div class="muted small">ตั้งเวลา</div>') : ''}</td>
       <td>${runTitle(r)}</td>
       <td>${r.status === 'done' ? countsHtml(r.counts, r.incomplete, r.spec.kind, r.errors) : ''}</td>
       <td>${statusTag(r.status)}</td>
-      <td><div class="actions">${r.report ? `<a class="btn" href="/runs/${r.id}/${r.report}" target="_blank" rel="noopener">รายงาน</a>` : ''}
-        ${r.status !== 'running' ? `<button class="danger" data-delete="${r.id}">ลบ</button>` : ''}</div></td></tr>`).join('')}
+      <td><div class="actions">${r.report ? t`<a class="btn" href="/runs/${r.id}/${r.report}" target="_blank" rel="noopener">รายงาน</a>` : ''}
+        ${r.status !== 'running' ? t`<button class="danger" data-delete="${r.id}">ลบ</button>` : ''}</div></td></tr>`).join('')}
     </tbody></table></div>`;
   target.addEventListener('click', (e) => {
     const del = e.target.closest('[data-delete]');
@@ -643,7 +648,7 @@ async function pageHistory() {
           const done = await api('DELETE', `/api/runs/${del.dataset.delete}`);
           said();
           del.closest('tr').remove();
-          if (done.leftover) target.insertAdjacentHTML('afterbegin', '<div class="notice warn">ลบ run ออกจากประวัติแล้ว แต่ไฟล์บางส่วนยังลบไม่ได้ (อาจมีโปรแกรมอื่นเปิดอยู่) ระบบจะลบที่เหลือให้เองตอนเปิด server ครั้งถัดไป หรือรอบล้างประวัติประจำวัน ยกเว้นเมื่อรันด้วย npm run dev ซึ่งไม่ลบอะไรเลย</div>');
+          if (done.leftover) target.insertAdjacentHTML('afterbegin', t('<div class="notice warn">ลบ run ออกจากประวัติแล้ว แต่ไฟล์บางส่วนยังลบไม่ได้ (อาจมีโปรแกรมอื่นเปิดอยู่) ระบบจะลบที่เหลือให้เองตอนเปิด server ครั้งถัดไป หรือรอบล้างประวัติประจำวัน ยกเว้นเมื่อรันด้วย npm run dev ซึ่งไม่ลบอะไรเลย</div>'));
         } catch (err) { said(); alertInline(target, err); }
       });
       return;
@@ -659,7 +664,7 @@ function alertInline(target, err) {
 }
 
 async function pageDrift() {
-  $app.innerHTML = `<div class="page-head"><div><h1>Schema drift</h1>
+  $app.innerHTML = t`<div class="page-head"><div><h1>Schema drift</h1>
     <div class="muted">ดูว่า schema ของฐานหนึ่งเปลี่ยนไปอย่างไรระหว่างสองช่วงเวลา ใช้ snapshot ที่เก็บไว้ทุกครั้งที่รันเปรียบเทียบ</div></div></div>
     <div id="body"><div class="empty"><span class="spinner"></span></div></div>`;
   const body = document.getElementById('body');
@@ -678,11 +683,11 @@ async function pageDrift() {
     if (!g.items.some((i) => i.runId === s.runId)) g.items.push(s);
   }
   if (!groups.size) {
-    body.innerHTML = '<div class="panel empty">ยังไม่มี snapshot รันการเปรียบเทียบอย่างน้อยหนึ่งครั้งก่อน</div>';
+    body.innerHTML = t('<div class="panel empty">ยังไม่มี snapshot รันการเปรียบเทียบอย่างน้อยหนึ่งครั้งก่อน</div>');
     return;
   }
   const sorted = [...groups.values()].sort((a, b) => (a.serverLabel + a.database).localeCompare(b.serverLabel + b.database));
-  body.innerHTML = `
+  body.innerHTML = t`
     <div class="panel"><label class="field"><span>Server / database</span>
       <select id="group">${sorted.map((g) => `<option value="${esc(g.key)}">${esc(g.serverLabel)} / ${esc(g.database)} (${g.items.length} snapshot)</option>`).join('')}</select></label></div>
     <div id="points"></div>
@@ -692,12 +697,12 @@ async function pageDrift() {
 
   const renderPoints = () => {
     const g = groups.get(document.getElementById('group').value);
-    const rows = g.items.map((s, i) => `<tr>
+    const rows = g.items.map((s, i) => t`<tr>
       <td><input type="radio" name="from" value="${i}"${i === 0 ? ' checked' : ''} aria-label="จาก"></td>
       <td><input type="radio" name="to" value="${i}" aria-label="ถึง"></td>
       <td class="mono small">${fmtTime(s.capturedAt)}</td>
       <td><a href="#/runs/${s.runId}">ดูการรันที่เก็บ snapshot นี้</a></td></tr>`).join('');
-    document.getElementById('points').innerHTML = `<div class="table-wrap" style="margin-top:16px"><table>
+    document.getElementById('points').innerHTML = t`<div class="table-wrap" style="margin-top:16px"><table>
       <thead><tr><th>จาก</th><th>ถึง</th><th>เวลาที่เก็บ snapshot</th><th></th></tr></thead><tbody>
       <tr><td></td><td><input type="radio" name="to" value="live" checked aria-label="ถึง ปัจจุบัน"></td><td colspan="2"><b>ปัจจุบัน (อ่านจากฐานจริงตอนนี้)</b></td></tr>
       ${rows}</tbody></table></div>
@@ -722,7 +727,7 @@ async function pageDrift() {
     if (toValue === 'live') spec.target = { serverId: g.serverId, database: g.database };
     else {
       const to = g.items[Number(toValue)];
-      if (to === from) { msg.innerHTML = '<span class="warn-text">เลือกจุด "จาก" กับ "ถึง" ให้ต่างกัน</span>'; return; }
+      if (to === from) { msg.innerHTML = t('<span class="warn-text">เลือกจุด "จาก" กับ "ถึง" ให้ต่างกัน</span>'); return; }
       spec.target = { snapshot: { runId: to.runId, file: to.file }, serverId: g.serverId, database: g.database };
     }
     try {
@@ -739,19 +744,19 @@ async function pageDrift() {
 const DAY_LABELS = [['MON', 'จ'], ['TUE', 'อ'], ['WED', 'พ'], ['THU', 'พฤ'], ['FRI', 'ศ'], ['SAT', 'ส'], ['SUN', 'อา']];
 
 function scheduleText(s) {
-  if (s.type === 'weekly') return `ทุก ${s.days.map((d) => (DAY_LABELS.find((x) => x[0] === d) || [d, d])[1]).join(', ')} เวลา ${s.time}`;
-  return `ทุกวัน เวลา ${s.time}`;
+  if (s.type === 'weekly') return t`ทุก ${s.days.map((d) => t((DAY_LABELS.find((x) => x[0] === d) || [d, d])[1])).join(', ')} เวลา ${s.time}`;
+  return t`ทุกวัน เวลา ${s.time}`;
 }
 
 function specText(spec) {
   const servers = serverCache || [];
   const name = (id) => { const s = servers.find((x) => x.id === id); return s ? (s.kind === 'builtin' ? 'localhost' : s.name) : id; };
-  if (spec.kind === 'batch') return `${esc(name(spec.source.serverId))} &rarr; ${esc(name(spec.target.serverId))}: ${esc(spec.allDatabases ? 'ทุกฐานที่ชื่อตรงกัน' : spec.databases.join(', '))}`;
+  if (spec.kind === 'batch') return `${esc(name(spec.source.serverId))} &rarr; ${esc(name(spec.target.serverId))}: ${esc(spec.allDatabases ? t('ทุกฐานที่ชื่อตรงกัน') : spec.databases.join(', '))}`;
   return `${esc(name(spec.source.serverId))} / ${esc(spec.source.database)} &rarr; ${esc(name(spec.target.serverId))} / ${esc(spec.target.database)}`;
 }
 
 async function pageSchedules() {
-  $app.innerHTML = `<div class="page-head"><div><h1>ตั้งเวลารันอัตโนมัติ</h1>
+  $app.innerHTML = t`<div class="page-head"><div><h1>ตั้งเวลารันอัตโนมัติ</h1>
     <div class="muted">ใช้ Windows Task Scheduler รันเป็น user นี้ ขณะที่ login อยู่ ผลจะเข้าไปอยู่ในหน้าประวัติ (ไม่ต้องเปิดเว็บนี้ค้างไว้)</div></div>
     <button class="primary" id="new">สร้างงานใหม่</button></div><div id="editor"></div><div id="list"><div class="empty"><span class="spinner"></span></div></div>`;
   await getServers();
@@ -761,14 +766,14 @@ async function pageSchedules() {
   const load = async () => {
     let jobs;
     try { jobs = await api('GET', '/api/jobs'); } catch (err) { return showError(listEl, err); }
-    if (!jobs.length) { listEl.innerHTML = '<div class="panel empty">ยังไม่มีงานที่ตั้งเวลาไว้</div>'; return; }
-    listEl.innerHTML = `<div class="table-wrap"><table><thead><tr><th>ชื่องาน</th><th>เปรียบเทียบ</th><th>เวลา</th><th>รอบถัดไป</th><th>ผลล่าสุด</th><th></th></tr></thead><tbody>
-      ${jobs.map((j) => `<tr>
-        <td><b>${esc(j.name)}</b>${j.enabled ? '' : '<div><span class="tag">ปิดอยู่</span></div>'}</td>
+    if (!jobs.length) { listEl.innerHTML = t('<div class="panel empty">ยังไม่มีงานที่ตั้งเวลาไว้</div>'); return; }
+    listEl.innerHTML = t`<div class="table-wrap"><table><thead><tr><th>ชื่องาน</th><th>เปรียบเทียบ</th><th>เวลา</th><th>รอบถัดไป</th><th>ผลล่าสุด</th><th></th></tr></thead><tbody>
+      ${jobs.map((j) => t`<tr>
+        <td><b>${esc(j.name)}</b>${j.enabled ? '' : t('<div><span class="tag">ปิดอยู่</span></div>')}</td>
         <td class="small">${specText(j.spec)}</td>
         <td class="small">${scheduleText(j.schedule)}</td>
-        <td class="small">${j.enabled ? (j.task.registered ? esc(j.task.nextRun) : '<span class="warn-text">ไม่พบใน Task Scheduler</span>') : '-'}</td>
-        <td>${j.lastRun ? `<a href="#/runs/${j.lastRun.id}">${fmtTime(j.lastRun.createdAt)}</a>${j.lastRun.status === 'done' ? countsHtml(j.lastRun.counts, j.lastRun.incomplete, j.spec.kind, j.lastRun.errors) : statusTag(j.lastRun.status)}` : '<span class="muted">ยังไม่เคยรัน</span>'}</td>
+        <td class="small">${j.enabled ? (j.task.registered ? esc(j.task.nextRun) : t('<span class="warn-text">ไม่พบใน Task Scheduler</span>')) : '-'}</td>
+        <td>${j.lastRun ? `<a href="#/runs/${j.lastRun.id}">${fmtTime(j.lastRun.createdAt)}</a>${j.lastRun.status === 'done' ? countsHtml(j.lastRun.counts, j.lastRun.incomplete, j.spec.kind, j.lastRun.errors) : statusTag(j.lastRun.status)}` : t('<span class="muted">ยังไม่เคยรัน</span>')}</td>
         <td><div class="actions"><button data-run="${j.id}">รันตอนนี้</button><button data-edit="${j.id}">แก้ไข</button><button class="danger" data-delete="${j.id}">ลบ</button></div></td>
       </tr>`).join('')}</tbody></table></div>`;
     listEl.onclick = async (e) => {
@@ -787,17 +792,17 @@ async function pageSchedules() {
     };
   };
 
-  const openEditor = async (job) => {
-    const s = job ? job.schedule : { type: 'daily', time: '02:00', days: ['MON'] };
-    editor.innerHTML = `<div class="panel" style="margin-bottom:16px">
-      <h2 style="margin-top:0">${job ? 'แก้ไขงาน' : 'งานใหม่'}</h2>
-      <label class="field"><span>ชื่องาน</span><input type="text" id="job-name" value="${esc(job ? job.name : '')}" placeholder="เช่น local เทียบ test ทุกคืน"></label>
+  const openEditor = async (job, draft) => {
+    const s = draft ? draft.schedule : job ? job.schedule : { type: 'daily', time: '02:00', days: ['MON'] };
+    editor.innerHTML = t`<div class="panel" style="margin-bottom:16px">
+      <h2 style="margin-top:0">${job ? t('แก้ไขงาน') : t('งานใหม่')}</h2>
+      <label class="field"><span>ชื่องาน</span><input type="text" id="job-name" value="${esc(draft ? draft.name : job ? job.name : '')}" placeholder="เช่น local เทียบ test ทุกคืน"></label>
       <div id="job-spec"></div>
       <div class="panel"><div class="side-title">เวลา</div>
         <div class="segmented"><label><input type="radio" name="stype" value="daily"${s.type !== 'weekly' ? ' checked' : ''}>ทุกวัน</label><label><input type="radio" name="stype" value="weekly"${s.type === 'weekly' ? ' checked' : ''}>บางวัน</label></div>
-        <div id="days">${DAY_LABELS.map(([v, l]) => `<label class="check"><input type="checkbox" value="${v}"${s.days.includes(v) ? ' checked' : ''}>${l}</label>`).join('')}</div>
+        <div id="days">${DAY_LABELS.map(([v, l]) => `<label class="check"><input type="checkbox" value="${v}"${s.days.includes(v) ? ' checked' : ''}>${t(l)}</label>`).join('')}</div>
         <label class="field" style="max-width:180px"><span>เวลา (24 ชม.)</span><input type="time" id="job-time" value="${esc(s.time)}"></label>
-        <label class="check"><input type="checkbox" id="job-enabled"${!job || job.enabled ? ' checked' : ''}>เปิดใช้งาน</label>
+        <label class="check"><input type="checkbox" id="job-enabled"${(draft ? draft.enabled : !job || job.enabled) ? ' checked' : ''}>เปิดใช้งาน</label>
       </div>
       <div class="row" style="margin-top:16px"><button class="primary" id="job-save">บันทึก</button><button id="job-cancel">ยกเลิก</button><span id="job-msg"></span></div></div>`;
     const days = document.getElementById('days');
@@ -805,9 +810,19 @@ async function pageSchedules() {
     editor.querySelectorAll('input[name=stype]').forEach((r) => r.addEventListener('change', applyType));
     applyType();
     const saveButton = document.getElementById('job-save');
-    const form = await specForm(document.getElementById('job-spec'), job ? job.spec : undefined);
+    const form = await specForm(document.getElementById('job-spec'), draft ? draft.spec : job ? job.spec : undefined);
     // Another job was opened (or the page left) while the lists loaded: that editor owns the buttons.
     if (!saveButton.isConnected) return;
+    readLanguageEditor = () => ({ record: job, values: {
+      name: document.getElementById('job-name').value,
+      spec: form.getDraft(),
+      enabled: document.getElementById('job-enabled').checked,
+      schedule: {
+        type: editor.querySelector('input[name=stype]:checked').value,
+        time: document.getElementById('job-time').value,
+        days: [...days.querySelectorAll('input:checked')].map(input => input.value),
+      },
+    } });
     document.getElementById('job-cancel').onclick = () => { editor.innerHTML = ''; };
     saveButton.onclick = async (e) => {
       const msg = document.getElementById('job-msg');
@@ -835,6 +850,7 @@ async function pageSchedules() {
   };
 
   document.getElementById('new').onclick = () => openEditor(null);
+  reopenLanguageEditor = (saved) => openEditor(saved.record, saved.values);
   load();
 }
 
@@ -842,22 +858,22 @@ async function pageSchedules() {
 // same host can answer. The engine compares NAME with the instance that actually answered.
 function instanceMismatchHtml(r) {
   if (!r.instanceMismatch) return '';
-  return `<div class="warn-text">ต่อได้ instance ${esc(r.instance)} ไม่ใช่ ${esc(r.requestedInstance)} ที่ตั้งไว้: ` +
-    `เมื่อใส่ port ด้วย SQL Server จะต่อตาม port โดยไม่ดูชื่อ instance ให้แก้ server นี้ ลบ port ออก หรือใส่ port จริงของ ${esc(r.requestedInstance)}</div>`;
+  return t`<div class="warn-text">ต่อได้ instance ${esc(r.instance)} ไม่ใช่ ${esc(r.requestedInstance)} ที่ตั้งไว้: ` +
+    t`เมื่อใส่ port ด้วย SQL Server จะต่อตาม port โดยไม่ดูชื่อ instance ให้แก้ server นี้ ลบ port ออก หรือใส่ port จริงของ ${esc(r.requestedInstance)}</div>`;
 }
 
 function testResultHtml(r) {
   const accessible = r.databases.filter((d) => d.hasAccess !== false);
   const noView = accessible.filter((d) => !d.canViewDefinition).length;
   const limited = noView || accessible.length < r.databases.length || r.instanceMismatch;
-  return `<div class="notice ${limited ? 'warn' : 'ok'}">
+  return t`<div class="notice ${limited ? 'warn' : 'ok'}">
     <b>เชื่อมต่อได้</b>${r.serverName ? ` ${esc(r.serverName)}` : ''} &middot; ${esc(r.edition)} ${esc(r.version)} &middot; collation ${esc(r.collation)}<br>
-    login: ${esc(r.login)} &middot; เข้าได้ ${accessible.length} จาก ${r.databases.length} ฐาน &middot; VIEW ANY DEFINITION: ${r.viewAnyDefinition ? 'มี' : 'ไม่มี'}
-    ${noView ? `<br>ไม่มีสิทธิ์ VIEW DEFINITION ใน ${noView} ฐานที่เข้าได้: ผลเทียบของฐานเหล่านั้นจะไม่ครบ` : ''}${instanceMismatchHtml(r)}</div>`;
+    login: ${esc(r.login)} &middot; เข้าได้ ${accessible.length} จาก ${r.databases.length} ฐาน &middot; VIEW ANY DEFINITION: ${r.viewAnyDefinition ? t('มี') : t('ไม่มี')}
+    ${noView ? t`<br>ไม่มีสิทธิ์ VIEW DEFINITION ใน ${noView} ฐานที่เข้าได้: ผลเทียบของฐานเหล่านั้นจะไม่ครบ` : ''}${instanceMismatchHtml(r)}</div>`;
 }
 
 async function pageServers() {
-  $app.innerHTML = `<div class="page-head"><div><h1>Servers</h1>
+  $app.innerHTML = t`<div class="page-head"><div><h1>Servers</h1>
     <div class="muted">รหัสผ่านของ server ที่สร้างที่นี่เข้ารหัสด้วย Windows DPAPI: เปิดได้เฉพาะ Windows user นี้บนเครื่องนี้</div></div>
     <button class="primary" id="new">เพิ่ม server</button></div><div id="editor"></div><div id="list"><div class="empty"><span class="spinner"></span></div></div>`;
   const listEl = document.getElementById('list');
@@ -866,15 +882,15 @@ async function pageServers() {
   const load = async () => {
     let list;
     try { list = await getServers(true); } catch (err) { return showError(listEl, err); }
-    const kindText = { builtin: 'ในตัว', app: 'สร้างที่นี่', mcp: 'mssql-mcp (อ่านอย่างเดียว)' };
-    listEl.innerHTML = `<div class="table-wrap"><table><thead><tr><th>ชื่อ</th><th>Address</th><th>Login</th><th>ที่มา</th><th></th></tr></thead><tbody>
-      ${list.map((s) => `<tr>
+    const kindText = { builtin: t('ในตัว'), app: t('สร้างที่นี่'), mcp: t('mssql-mcp (อ่านอย่างเดียว)') };
+    listEl.innerHTML = t`<div class="table-wrap"><table><thead><tr><th>ชื่อ</th><th>Address</th><th>Login</th><th>ที่มา</th><th></th></tr></thead><tbody>
+      ${list.map((s) => t`<tr>
         <td><b>${esc(s.kind === 'builtin' ? 'localhost' : s.name)}</b></td>
         <td class="mono small">${esc(s.port ? `${s.server},${s.port}` : s.server)}</td>
         <td class="small">${s.auth === 'sql' ? `SQL: ${esc(s.user)}` : 'Windows auth'}</td>
         <td class="small">${kindText[s.kind]}</td>
         <td><div class="actions"><button data-test="${esc(s.id)}">ทดสอบ</button>
-          ${s.kind === 'app' ? `<button data-edit="${esc(s.id)}">แก้ไข</button><button class="danger" data-delete="${esc(s.id)}">ลบ</button>` : ''}</div></td>
+          ${s.kind === 'app' ? t`<button data-edit="${esc(s.id)}">แก้ไข</button><button class="danger" data-delete="${esc(s.id)}">ลบ</button>` : ''}</div></td>
       </tr><tr hidden data-result="${esc(s.id)}"><td colspan="5"></td></tr>`).join('')}</tbody></table></div>
       <p class="hint">profile ของ mssql-mcp อ่านจาก ~/.config/mssql-mcp/*.env (แก้ที่ไฟล์นั้น)</p>`;
     listEl.onclick = async (e) => {
@@ -884,7 +900,7 @@ async function pageServers() {
       if (test) {
         const row = listEl.querySelector(`tr[data-result="${CSS.escape(test.dataset.test)}"]`);
         row.hidden = false;
-        row.firstElementChild.innerHTML = '<span class="spinner"></span> กำลังทดสอบ...';
+        row.firstElementChild.innerHTML = t('<span class="spinner"></span> กำลังทดสอบ...');
         try { row.firstElementChild.innerHTML = testResultHtml(await getDatabases(test.dataset.test, true)); }
         catch (err) { row.firstElementChild.innerHTML = `<div class="notice error">${esc(err.message)}</div>`; }
       }
@@ -895,17 +911,17 @@ async function pageServers() {
     };
   };
 
-  const openEditor = (s) => {
-    const v = s || { name: '', server: '', port: 1433, auth: 'sql', user: '', encrypt: true, trustServerCertificate: true };
-    editor.innerHTML = `<div class="panel" style="margin-bottom:16px">
-      <h2 style="margin-top:0">${s ? 'แก้ไข server' : 'เพิ่ม server'}</h2>
+  const openEditor = (s, draft) => {
+    const v = draft || s || { name: '', server: '', port: 1433, auth: 'sql', user: '', encrypt: true, trustServerCertificate: true };
+    editor.innerHTML = t`<div class="panel" style="margin-bottom:16px">
+      <h2 style="margin-top:0">${s ? t('แก้ไข server') : t('เพิ่ม server')}</h2>
       <div class="grid2">
         <label class="field"><span>ชื่อ (ไว้เรียก)</span><input type="text" id="s-name" value="${esc(v.name)}" placeholder="เช่น test-197"></label>
         <label class="field"><span>Host หรือ IP</span><input type="text" id="s-server" value="${esc(v.server)}" placeholder="192.168.100.197"></label>
         <label class="field"><span>Port</span><input type="number" id="s-port" value="${esc(v.port || '')}" placeholder="1433"></label>
         <label class="field"><span>การยืนยันตัวตน</span><select id="s-auth"><option value="sql"${v.auth === 'sql' ? ' selected' : ''}>SQL login</option><option value="windows"${v.auth === 'windows' ? ' selected' : ''}>Windows auth</option></select></label>
         <label class="field sql-only"><span>User</span><input type="text" id="s-user" value="${esc(v.user)}" autocomplete="off"></label>
-        <label class="field sql-only"><span>Password</span><input type="password" id="s-password" autocomplete="new-password" placeholder="${s && s.hasPassword ? 'เว้นว่าง = ใช้รหัสเดิม' : ''}"></label>
+        <label class="field sql-only"><span>Password</span><input type="password" id="s-password" autocomplete="new-password" placeholder="${s && s.hasPassword ? t('เว้นว่าง = ใช้รหัสเดิม') : ''}"></label>
       </div>
       <div id="s-hint"></div>
       <label class="check"><input type="checkbox" id="s-encrypt"${v.encrypt ? ' checked' : ''}>Encrypt connection</label>
@@ -923,9 +939,9 @@ async function pageServers() {
       const m = /^\s*(?:tcp:)?[^\\,]+\\([^\\,]+?)\s*$/i.exec(serverInput.value);
       const named = m && !/^\s*\(localdb\)/i.test(serverInput.value) ? m[1] : '';
       document.getElementById('s-hint').innerHTML = named && portInput.value.trim()
-        ? `<p class="warn-text">ใส่ทั้งชื่อ instance (${esc(named)}) และ port: SQL Server จะต่อตาม port โดยไม่ดูชื่อ instance ` +
-          `ถ้า port ${esc(portInput.value.trim())} ไม่ใช่ของ ${esc(named)} จะได้ instance อื่นบนเครื่องเดียวกันแทน ` +
-          `เว้น port ว่างไว้ ให้หา instance จากชื่อ (ผ่าน SQL Browser) หรือใส่ port จริงของ ${esc(named)}</p>`
+        ? t`<p class="warn-text">ใส่ทั้งชื่อ instance (${esc(named)}) และ port: SQL Server จะต่อตาม port โดยไม่ดูชื่อ instance ` +
+          t`ถ้า port ${esc(portInput.value.trim())} ไม่ใช่ของ ${esc(named)} จะได้ instance อื่นบนเครื่องเดียวกันแทน ` +
+          t`เว้น port ว่างไว้ ให้หา instance จากชื่อ (ผ่าน SQL Browser) หรือใส่ port จริงของ ${esc(named)}</p>`
         : '';
     };
     serverInput.addEventListener('input', applyHint);
@@ -942,10 +958,12 @@ async function pageServers() {
       encrypt: document.getElementById('s-encrypt').checked,
       trustServerCertificate: document.getElementById('s-trust').checked,
     });
+    if (draft) document.getElementById('s-password').value = draft.password || '';
+    readLanguageEditor = () => ({ record: s, values: read() });
     const result = document.getElementById('s-result');
     document.getElementById('s-test').onclick = async (e) => {
       e.target.disabled = true;
-      result.innerHTML = '<p><span class="spinner"></span> กำลังทดสอบ...</p>';
+      result.innerHTML = t('<p><span class="spinner"></span> กำลังทดสอบ...</p>');
       try { result.innerHTML = testResultHtml(await api('POST', '/api/servers/test', read())); }
       catch (err) { result.innerHTML = `<div class="notice error">${esc(err.message)}</div>`; }
       e.target.disabled = false;
@@ -968,6 +986,7 @@ async function pageServers() {
   };
 
   document.getElementById('new').onclick = () => openEditor(null);
+  reopenLanguageEditor = (saved) => openEditor(saved.record, saved.values);
   load();
 }
 
@@ -978,13 +997,22 @@ async function pageServers() {
 const PAGES = { compare: pageCompare, history: pageHistory, drift: pageDrift, schedules: pageSchedules, servers: pageServers };
 
 function route() {
+  readLanguageEditor = null;
+  reopenLanguageEditor = null;
   if (activeStream) { activeStream.close(); activeStream = null; }
   const [, page = 'compare', arg] = location.hash.split('/');
   const current = page === 'runs' ? 'history' : page;
   document.querySelectorAll('#nav a').forEach((a) => a.classList.toggle('active', a.dataset.page === current));
   if (page === 'runs' && arg) return pageRun(arg);
-  (PAGES[page] || pageCompare)();
+  return (PAGES[page] || pageCompare)();
 }
 
 window.addEventListener('hashchange', route);
+window.addEventListener('languagechange', async () => {
+  // Keep unfinished editor values in memory while rebuilding translated labels.
+  const editor = document.getElementById('editor');
+  const saved = editor && editor.childElementCount && readLanguageEditor ? readLanguageEditor() : null;
+  await route();
+  if (saved && reopenLanguageEditor) await reopenLanguageEditor(saved);
+});
 route();

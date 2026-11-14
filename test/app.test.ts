@@ -360,6 +360,7 @@ function browserFunctions(names: string[]): Record<string, (...args: unknown[]) 
     throw new Error(`function ${name} does not end`);
   });
   const context = vm.createContext({});
+  vm.runInContext(readFileSync(path.join(ROOT, 'app', 'public', 'i18n.js'), 'utf8') + '\nconst t = DatabaseDiffI18n.t;', context);
   vm.runInContext(`${texts.join('\n')}\nthis.exported = { ${names.join(', ')} };`, context);
   return (context as { exported: Record<string, (...args: unknown[]) => string> }).exported;
 }
@@ -415,12 +416,13 @@ test('app: counts are worded as in the report, and a drift run uses time words',
     for (const key of ['source', 'target', 'different', 'unverified']) {
       const word = w[key];
       assert.ok(word, key);
-      assert.ok(template.includes(`t: '${word.label}'`), `the report has the word ${word.label}`);
+      // The report words each of them twice, Thai and English side by side: L('Thai', 'English').
+      assert.ok(template.includes(`t: L('${word.label}', `), `the report has the word ${word.label}`);
       assert.match(word.hint, /[ก-๛]/);
     }
   }
   // What a sync does with each kind is said in the same sentences as in the report.
-  for (const key of ['source', 'target', 'different']) assert.ok(template.includes(`d: '${words('compare')[key]?.hint ?? ''}'`), key);
+  for (const key of ['source', 'target', 'different']) assert.ok(template.includes(`d: L('${words('compare')[key]?.hint ?? ''}', `), key);
   for (const hint of [words('drift')['source']?.hint, words('drift')['target']?.hint]) assert.doesNotMatch(hint ?? 'sync', /sync|ต้นแบบ|ปลายทาง/);
   // The old words are gone from the page script.
   const page = readFileSync(path.join(ROOT, 'app', 'public', 'app.js'), 'utf8');

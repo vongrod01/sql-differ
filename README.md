@@ -277,7 +277,7 @@ npm run test:update-golden   # เขียน golden ใหม่จากผ�
 | `Compare-Database.ps1` | engine (อ่าน schema, เทียบ, เขียนรายงาน) |
 | `lib\SyncScript.ps1` | สร้าง sync script และ rollback script |
 | `lib\SelectedScript.ps1` | สร้าง sync/rollback script ของแถวที่เลือก จากผลและ snapshot ที่รันเก็บไว้ (`-ScriptFromResult`) |
-| `templates\` | template ของรายงาน HTML (`report.html`) และหน้าสรุปของ batch (`index.html`): ข้อความภาษาไทยของรายงานอยู่ที่นี่ engine ใส่ข้อมูลเป็น JSON ให้ |
+| `templates\` | template ของรายงาน HTML (`report.html`) และหน้าสรุปของ batch (`index.html`): ข้อความของรายงานอยู่ที่นี่ ทั้งไทยและอังกฤษ (เมนูภาษาอยู่มุมขวาบนของหน้า และใช้ค่าเดียวกับหน้าหลักของแอป) engine ใส่ข้อมูลเป็น JSON ให้ |
 | `app\` | หน้าเว็บ (Node, ไม่มี dependency) และ `cli.js` / `run-job.ps1` สำหรับงานตั้งเวลา |
 | `test\` | test ของ engine และหน้าเว็บ (TypeScript, `node:test`): fixture, golden, helper |
 | `scripts\` | script สำหรับพัฒนา (`update-golden.ts`) |

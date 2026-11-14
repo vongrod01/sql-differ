@@ -41,6 +41,12 @@ writeFileSync(path.join(dir, 'stub.html'), '<!doctype html><title>report</title>
 const INDEX_PAGE = '<!doctype html><body>INDEX</body><script>\nconst INDEX = {"a":1};\n// Everything that does not touch the page\n</script>';
 writeFileSync(path.join(dir, 'index.html'), INDEX_PAGE, 'utf8');
 
+// The index of a batch as an engine of an earlier day wrote it: the template with its one value filled in.
+const INDEX_TEMPLATE = readFileSync(path.join(ROOT, 'templates', 'index.html'), 'utf8');
+const INDEX_VALUE = '{"source":"srv / a","target":"srv / b","rows":[],"note":"__INDEX_JSON__ and $& and $1"}';
+const OLD_INDEX = `<!doctype html>\r\n<body>OLD INDEX</body>\r\n<script>\r\nconst INDEX = ${INDEX_VALUE};\r\n\r\n// The words and the text of a result, kept apart from the page: an earlier day\r\nfunction oldCore() {}\r\n</script>\r\n`;
+writeFileSync(path.join(dir, 'batch.html'), OLD_INDEX, 'utf8');
+
 async function get(base: string, file: string, query = ''): Promise<{ status: number; type: string; text: string }> {
   const res = await fetch(`${base}/runs/${RUN}/${file}${query}`);
   return { status: res.status, type: res.headers.get('content-type') ?? '', text: await res.text() };
@@ -76,6 +82,22 @@ test('report page: a page that is not a report, and the index of a batch, are se
     assert.equal((await get(base, 'index.html')).text, INDEX_PAGE);
     assert.equal((await get(base, 'nothing.html')).status, 404);
   });
+});
+
+test('report page: the index of an old batch is served on the current template, with its own value', async () => {
+  await withServer(async (base) => {
+    const page = await get(base, 'batch.html');
+    assert.equal(page.status, 200);
+    assert.equal(page.text, INDEX_TEMPLATE.replace('__INDEX_JSON__', () => INDEX_VALUE));
+    assert.doesNotMatch(page.text, /OLD INDEX/);
+    // It has what the old one never had: the choice of language.
+    assert.match(page.text, /id="lang"/);
+    // The value came out as it went in.
+    assert.ok(page.text.includes('"note":"__INDEX_JSON__ and $& and $1"'));
+    // A download is the file as it was saved.
+    assert.equal((await get(base, 'batch.html', '?download=1')).text, OLD_INDEX);
+  });
+  assert.equal(readFileSync(path.join(dir, 'batch.html'), 'utf8'), OLD_INDEX);
 });
 
 test('report page: a report that is already current is the same after being served again', async () => {
