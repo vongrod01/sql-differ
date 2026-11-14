@@ -1,0 +1,414 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-14T16:26:54.539Z",
+  "title": "Design System: database-diff",
+  "extensions": {
+    "colorMeta": {
+      "night-ink": {
+        "role": "neutral",
+        "displayName": "Night Ink",
+        "canonical": "oklch(16% 0.013 -90)",
+        "tonalRamp": [
+          "#0a0b0d",
+          "#232529",
+          "#3f4248",
+          "#5e6169",
+          "#7f828a",
+          "#a2a5ac",
+          "#c7c9ce",
+          "#eeeef0"
+        ]
+      },
+      "sheet-slate": {
+        "role": "neutral",
+        "displayName": "Sheet Slate",
+        "canonical": "oklch(22% 0.022 -91)",
+        "tonalRamp": [
+          "#0a0b0e",
+          "#22252c",
+          "#3e424d",
+          "#5c616e",
+          "#7d8290",
+          "#a0a5b1",
+          "#c6c9d1",
+          "#edeef1"
+        ]
+      },
+      "control-slate": {
+        "role": "neutral",
+        "displayName": "Control Slate",
+        "canonical": "oklch(28% 0.024 -96)",
+        "tonalRamp": [
+          "#090b0e",
+          "#21252d",
+          "#3c424e",
+          "#5a616f",
+          "#7b8391",
+          "#9fa5b1",
+          "#c5c9d1",
+          "#edeef1"
+        ]
+      },
+      "recess-ink": {
+        "role": "neutral",
+        "displayName": "Recess Ink",
+        "canonical": "oklch(17% 0.015 -93)",
+        "tonalRamp": [
+          "#0a0b0d",
+          "#23252a",
+          "#3f4249",
+          "#5d616a",
+          "#7e828c",
+          "#a1a5ad",
+          "#c7c9ce",
+          "#eeeef0"
+        ]
+      },
+      "paper-white": {
+        "role": "neutral",
+        "displayName": "Paper White",
+        "canonical": "oklch(96% 0.003 -95)",
+        "tonalRamp": [
+          "#0b0b0c",
+          "#252526",
+          "#414243",
+          "#606163",
+          "#818284",
+          "#a4a5a6",
+          "#c8c9ca",
+          "#eeeeef"
+        ]
+      },
+      "quiet-grey": {
+        "role": "neutral",
+        "displayName": "Quiet Grey",
+        "canonical": "oklch(73% 0.015 -87)",
+        "tonalRamp": [
+          "#0a0b0d",
+          "#23252a",
+          "#3f4249",
+          "#5e616a",
+          "#7f828b",
+          "#a2a5ad",
+          "#c7c9ce",
+          "#eeeef0"
+        ]
+      },
+      "nav-grey": {
+        "role": "neutral",
+        "displayName": "Nav Grey",
+        "canonical": "oklch(85% 0.012 -90)",
+        "tonalRamp": [
+          "#0a0b0d",
+          "#232529",
+          "#404248",
+          "#5e6168",
+          "#7f8289",
+          "#a3a5ab",
+          "#c7c9cd",
+          "#eeeef0"
+        ]
+      },
+      "action-blue": {
+        "role": "primary",
+        "displayName": "Action Blue",
+        "canonical": "oklch(62% 0.206 -105)",
+        "tonalRamp": [
+          "#000a24",
+          "#002350",
+          "#004084",
+          "#015ebb",
+          "#0e7ff5",
+          "#63a7fe",
+          "#a6ccff",
+          "#e4f0ff"
+        ]
+      },
+      "action-blue-text": {
+        "role": "primary",
+        "displayName": "Action Blue Text",
+        "canonical": "oklch(75% 0.133 -108)",
+        "tonalRamp": [
+          "#000b1c",
+          "#00254a",
+          "#00427b",
+          "#1a63a9",
+          "#4385cc",
+          "#73a9e5",
+          "#a9cdf5",
+          "#e4f0fd"
+        ]
+      },
+      "add-green": {
+        "role": "secondary",
+        "displayName": "Add Green",
+        "canonical": "oklch(77% 0.210 147)",
+        "tonalRamp": [
+          "#001001",
+          "#002f0a",
+          "#015119",
+          "#007628",
+          "#009d38",
+          "#4fc063",
+          "#99dda0",
+          "#e0f5e1"
+        ]
+      },
+      "extra-red": {
+        "role": "secondary",
+        "displayName": "Extra Red",
+        "canonical": "oklch(72% 0.178 26)",
+        "tonalRamp": [
+          "#1e0101",
+          "#4e0004",
+          "#80010d",
+          "#af2325",
+          "#d54f48",
+          "#f17f75",
+          "#ffb3ab",
+          "#fee9e6"
+        ]
+      },
+      "change-amber": {
+        "role": "secondary",
+        "displayName": "Change Amber",
+        "canonical": "oklch(81% 0.160 74)",
+        "tonalRamp": [
+          "#140800",
+          "#352000",
+          "#5b3a01",
+          "#845703",
+          "#af7401",
+          "#d4983d",
+          "#eac28c",
+          "#faecdc"
+        ]
+      },
+      "unverified-grey": {
+        "role": "secondary",
+        "displayName": "Unverified Grey",
+        "canonical": "oklch(83% 0.013 -89)",
+        "tonalRamp": [
+          "#0a0b0d",
+          "#232529",
+          "#404248",
+          "#5e6169",
+          "#7f828a",
+          "#a2a5ac",
+          "#c7c9ce",
+          "#eeeef0"
+        ]
+      },
+      "armed-red": {
+        "role": "secondary",
+        "displayName": "Armed Red",
+        "canonical": "oklch(55% 0.188 28)",
+        "tonalRamp": [
+          "#1f0000",
+          "#4e0000",
+          "#810104",
+          "#b31a16",
+          "#d94a3e",
+          "#f47c6e",
+          "#feb3a8",
+          "#ffe9e5"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "The count on a status card, in tabular figures."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "The page title, one per view."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Section headings inside a view."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Everything that is read, Thai included, at a 1.6 line height."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Chip text, table headers, side titles."
+      },
+      "code": {
+        "displayName": "Code",
+        "purpose": "Logs, scripts and object names."
+      }
+    },
+    "shadows": [
+      {
+        "name": "recess",
+        "value": "inset 0 1px 3px rgba(0, 0, 0, .45)",
+        "purpose": "Inputs, selects and checkbox wells. Nested panels use .35 and code blocks .5."
+      },
+      {
+        "name": "none-outside",
+        "value": "0 0 0 transparent",
+        "purpose": "The edge and lift tokens are empty on purpose: no outer shadows."
+      }
+    ],
+    "motion": [
+      {
+        "name": "state-ease",
+        "value": ".15s (background-color, border-color, color)",
+        "purpose": "Hover and active changes on controls, only when reduced motion is not requested."
+      },
+      {
+        "name": "spin",
+        "value": ".8s linear infinite",
+        "purpose": "The spinner on a running job."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "phone-narrow",
+        "value": "520px"
+      },
+      {
+        "name": "phone",
+        "value": "640px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Button",
+      "kind": "button",
+      "refersTo": "button",
+      "description": "The default capsule control: Control Slate with an Edge Line outline.",
+      "html": "<button class=\"ds-btn\">ดูรายงาน</button>",
+      "css": ".ds-btn { font: 15px/1.6 \"Leelawadee UI\", \"Segoe UI\", Tahoma, system-ui, sans-serif; color: var(--text, #f2f3f5); background: var(--fill-clear, #242a36); border: 1px solid var(--edge-line, rgba(255,255,255,.12)); border-radius: 999px; padding: 7px 18px; min-height: 40px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; } .ds-btn:hover { border-color: rgba(10, 132, 255, .8); background-image: linear-gradient(180deg, rgba(255,255,255,.24), rgba(255,255,255,.11)); } .ds-btn:focus-visible { outline: 2px solid var(--accent, #6cb2ff); outline-offset: 2px; } .ds-btn:active { transform: translateY(1px); }"
+    },
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The main action of a view: translucent Action Blue gradient with white text.",
+      "html": "<button class=\"ds-btn-primary\">เริ่มเปรียบเทียบ</button>",
+      "css": ".ds-btn-primary { font: 15px/1.6 \"Leelawadee UI\", \"Segoe UI\", Tahoma, system-ui, sans-serif; color: var(--text, #f2f3f5); background: var(--fill-clear, #242a36); border: 1px solid var(--edge-line, rgba(255,255,255,.12)); border-radius: 999px; padding: 7px 18px; min-height: 40px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; background: linear-gradient(180deg, rgba(10, 132, 255, .86), rgba(10, 132, 255, .54)); border-color: rgba(10, 132, 255, .7); color: #fff; font-weight: 650; } .ds-btn-primary:hover { background-image: linear-gradient(180deg, rgba(10, 132, 255, .96), rgba(10, 132, 255, .66)); } .ds-btn-primary:focus-visible { outline: 2px solid var(--accent, #6cb2ff); outline-offset: 2px; } .ds-btn-primary:active { transform: translateY(1px); }"
+    },
+    {
+      "name": "Armed Delete Button",
+      "kind": "button",
+      "refersTo": "button-danger-armed",
+      "description": "A delete button after its first click: filled red and waiting for the second click.",
+      "html": "<button class=\"ds-btn-danger\">ลบ</button> <button class=\"ds-btn-danger ds-armed\">ยืนยันลบ</button>",
+      "css": ".ds-btn-danger { font: 15px/1.6 \"Leelawadee UI\", \"Segoe UI\", Tahoma, system-ui, sans-serif; color: var(--text, #f2f3f5); background: var(--fill-clear, #242a36); border: 1px solid var(--edge-line, rgba(255,255,255,.12)); border-radius: 999px; padding: 7px 18px; min-height: 40px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; color: var(--err, #ff6f66); } .ds-btn-danger.ds-armed { background: linear-gradient(180deg, #ee4a3e, #c9332a); border-color: #ff6f66; color: #fff; } .ds-btn-danger:focus-visible { outline: 2px solid var(--accent, #6cb2ff); outline-offset: 2px; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "A Recess Ink well with a 14px radius and an inset shadow.",
+      "html": "<input class=\"ds-input\" type=\"text\" placeholder=\"ค้นหา\" value=\"sp_Orders\">",
+      "css": ".ds-input { font: 15px/1.6 \"Leelawadee UI\", \"Segoe UI\", Tahoma, system-ui, sans-serif; color: var(--text, #f2f3f5); width: 220px; min-height: 40px; padding: 7px 14px; background: var(--fill-inset, #0d1017); border: 1px solid var(--edge-line, rgba(255,255,255,.12)); border-radius: 14px; box-shadow: inset 0 1px 3px rgba(0,0,0,.45); } .ds-input::placeholder { color: #8b8e98; } .ds-input:focus { outline: 2px solid var(--accent, #6cb2ff); outline-offset: 2px; }"
+    },
+    {
+      "name": "Navigation Capsule",
+      "kind": "nav",
+      "refersTo": "nav-link",
+      "description": "The floating top capsule: brand, page links, language picker. The active page is brighter.",
+      "html": "<div class=\"ds-nav\"><span class=\"ds-brand\">Database diff</span><a class=\"ds-link ds-active\" href=\"#\">เปรียบเทียบ</a><a class=\"ds-link\" href=\"#\">ประวัติ</a><a class=\"ds-link\" href=\"#\">Servers</a></div>",
+      "css": ".ds-nav { display: inline-flex; align-items: center; gap: 2px; padding: 5px; background: var(--fill-clear, #242a36); border: 1px solid var(--edge-line, rgba(255,255,255,.12)); border-radius: 999px; font: 15px/1.6 \"Leelawadee UI\", \"Segoe UI\", Tahoma, system-ui, sans-serif; } .ds-brand { font-weight: 700; color: var(--text, #f2f3f5); padding: 6px 12px 6px 16px; white-space: nowrap; } .ds-link { color: #c9ccd4; text-decoration: none; padding: 7px 14px; border-radius: 999px; white-space: nowrap; } .ds-link:hover { color: var(--text, #f2f3f5); background: rgba(255,255,255,.08); } .ds-link.ds-active { color: #fff; font-weight: 650; background: linear-gradient(180deg, rgba(255,255,255,.28), rgba(255,255,255,.12)); box-shadow: inset 0 1px 0 rgba(255,255,255,.4); } .ds-link:focus-visible { outline: 2px solid var(--accent, #6cb2ff); outline-offset: -2px; }"
+    },
+    {
+      "name": "Status Chips",
+      "kind": "chip",
+      "refersTo": "chip-add",
+      "description": "Read-only labels for the state of a difference; the word always accompanies the colour.",
+      "html": "<span class=\"ds-chip ds-add\">เพิ่ม</span> <span class=\"ds-chip ds-extra\">เกิน</span> <span class=\"ds-chip ds-chg\">ต่างกัน</span> <span class=\"ds-chip ds-unk\">ตรวจไม่ได้</span>",
+      "css": ".ds-chip { display: inline-block; padding: 1px 11px; border-radius: 999px; font: 650 14px/1.6 \"Leelawadee UI\", \"Segoe UI\", Tahoma, system-ui, sans-serif; white-space: nowrap; } .ds-add { color: #34d65c; background: rgba(48,209,88,.17); } .ds-extra { color: #ff6f66; background: rgba(255,69,58,.18); } .ds-chg { color: #ffb02e; background: rgba(255,159,10,.17); } .ds-unk { color: #c3c6cf; background: rgba(255,255,255,.10); }"
+    },
+    {
+      "name": "Pill Picker",
+      "kind": "chip",
+      "refersTo": "chip-add",
+      "description": "A selectable choice (categories, days): unselected is a faint pill, selected turns to the blue gradient.",
+      "html": "<span class=\"ds-pick\">Table</span> <span class=\"ds-pick ds-on\">Stored procedure</span> <span class=\"ds-pick\">Function</span>",
+      "css": ".ds-pick { display: inline-block; padding: 3px 14px; border-radius: 999px; font: 15px/1.6 \"Leelawadee UI\", \"Segoe UI\", Tahoma, system-ui, sans-serif; color: #c9ccd4; background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.14); } .ds-pick.ds-on { color: #fff; font-weight: 600; background: linear-gradient(180deg, rgba(10, 132, 255, .64), rgba(10, 132, 255, .34)); border-color: rgba(10, 132, 255, .6); }"
+    },
+    {
+      "name": "Panel",
+      "kind": "card",
+      "refersTo": "panel",
+      "description": "The opaque reading sheet: Sheet Slate, 24px radius, Edge Line outline, no shadow.",
+      "html": "<div class=\"ds-panel\"><div class=\"ds-title\">Source</div><div class=\"ds-muted\">localhost · Orders</div></div>",
+      "css": ".ds-panel { font: 15px/1.6 \"Leelawadee UI\", \"Segoe UI\", Tahoma, system-ui, sans-serif; color: var(--text, #f2f3f5); width: 280px; background: var(--fill-reg, #171b26); border: 1px solid var(--edge-line, rgba(255,255,255,.12)); border-radius: 24px; padding: 16px 18px; } .ds-title { font-weight: 650; margin-bottom: 4px; } .ds-muted { color: var(--muted, #a3a6b0); font-size: 14px; }"
+    },
+    {
+      "name": "Status Card",
+      "kind": "card",
+      "refersTo": "panel",
+      "description": "A count of one kind of difference, tinted by its status colour.",
+      "html": "<div class=\"ds-card\"><span class=\"ds-n\">12</span><span class=\"ds-t\">เพิ่ม</span><span class=\"ds-d\">มีในต้นทาง ไม่มีในปลายทาง</span></div>",
+      "css": ".ds-card { font: 15px/1.6 \"Leelawadee UI\", \"Segoe UI\", Tahoma, system-ui, sans-serif; color: var(--text, #f2f3f5); width: 220px; padding: 12px 16px; border-radius: 20px; border: 1px solid rgba(48,209,88,.45); background: linear-gradient(180deg, rgba(48,209,88,.40), rgba(48,209,88,.16)), var(--fill-reg, #171b26); } .ds-n { display: block; font-size: 28px; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; color: #34d65c; } .ds-t { display: block; font-weight: 650; } .ds-d { display: block; font-size: 14px; color: #c3c6cf; }"
+    },
+    {
+      "name": "Code Block",
+      "kind": "custom",
+      "refersTo": "code-block",
+      "description": "A recessed well for logs and scripts: Recess Ink, Code type, inset shadow.",
+      "html": "<pre class=\"ds-code\">ALTER PROCEDURE dbo.sp_Orders\nAS SELECT 1;</pre>",
+      "css": ".ds-code { margin: 0; width: 280px; padding: 14px; background: #0d1017; border: 1px solid rgba(255,255,255,.10); border-radius: 20px; box-shadow: inset 0 1px 3px rgba(0,0,0,.5); color: var(--text, #f2f3f5); font: 14px/1.55 Consolas, \"Cascadia Mono\", \"Leelawadee UI\", monospace; white-space: pre-wrap; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Review Desk",
+    "overview": "A dark, quiet desk where one developer sits down with two versions of a database and decides what leaves it. Everything on the surface exists to be read first and acted on second: sheets of a single slate tone hold the text, a few capsule controls sit on them, and four status colours say what kind of difference each row is. Nothing decorates and nothing competes with the rows.\n\nThe page is Operate-mode work, so the system is plain on purpose. The canvas is solid Night Ink with no pattern or image behind it, and the reading sheets are opaque, so a Thai sentence or a SQL line never sits over anything that moves or blurs. The only softness is in the controls: buttons, chips, inputs, nav and filters share one capsule form, which gives the tool a calm, approachable character without turning the tables into ornament.\n\nThe HTML reports use the same tokens as the web app, so a report opened from disk reads as the same room as the app it came from.",
+    "keyCharacteristics": [
+      "Dark only; solid canvas, opaque sheets, no backdrop imagery, no blur.",
+      "One capsule form (pill, 999px) for every control; larger radii only for the sheets that hold content.",
+      "Four status hues carry difference state; one blue carries \"you can act on this\".",
+      "Depth is tonal: lighter slate means closer, near-black means recessed. There are no outer shadows.",
+      "Thai first: 15px body at a 1.6 line height with Leelawadee UI, so Thai vowel and tone marks have room."
+    ],
+    "rules": [
+      {
+        "name": "The Status Word Rule",
+        "body": "A status colour never appears alone. Green, red, amber and grey always sit beside the word that says what the row is (the kind words in the report and in `app.js`), so the colour confirms the meaning and never carries it.",
+        "section": "colors"
+      },
+      {
+        "name": "The One Blue Rule",
+        "body": "Blue means you can act on this. It is never used for decoration or for a difference state.",
+        "section": "colors"
+      },
+      {
+        "name": "The Opaque Reading Rule",
+        "body": "Text sits on Sheet Slate, Control Slate or Recess Ink, never directly on the canvas and never over a translucent or blurred layer.",
+        "section": "colors"
+      },
+      {
+        "name": "The Tabular Numbers Rule",
+        "body": "Any number that is counted, summed or compared (counts, sizes, durations, table cells in `.num`) uses tabular figures and right alignment.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat Floor Rule",
+        "body": "There is no backdrop image, pattern, glow or blur behind the content, and sheets do not cast shadows. Depth comes from the step between slates.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** keep every interactive control a full capsule (999px) and every content sheet a large soft rectangle (14 to 24px).",
+      "**Do** pair each status colour with its word and keep the meaning fixed: green adds, red is extra, amber changes, grey is unverified, blue is an action.",
+      "**Do** put text on Sheet Slate, Control Slate or Recess Ink, and use the step between slates to show depth.",
+      "**Do** use tabular figures and right alignment for every counted number.",
+      "**Do** keep the app and the HTML reports on the same tokens; change one and change the other.",
+      "**Do** honour reduced motion, reduced transparency, increased contrast and forced colors with the fallbacks already in the stylesheet."
+    ],
+    "donts": [
+      "**Don't** add a backdrop image, circuit or code pattern, gradient glow or any decoration behind the content. The plain Night Ink canvas is the confirmed, permanent design.",
+      "**Don't** use blur or translucent glass on anything that carries reading content.",
+      "**Don't** use a status colour for decoration, or blue for a difference state.",
+      "**Don't** add outer drop shadows; use a brighter outline or a different slate.",
+      "**Don't** add a light theme; the system is dark only."
+    ]
+  }
+}
