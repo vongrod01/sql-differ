@@ -6,5 +6,7 @@ node_modules/
 # Engine test output (inspect after a failing run)
 test/.out/
 
-# Design-tool working files
-.impeccable/
+# Impeccable: runtime folders under .impeccable/ ignore themselves, so PRODUCT.md, DESIGN.md and
+# .impeccable/config.json can be committed. The engine binary is downloaded per machine (21 MB).
+.impeccable/config.local.json
+.claude/skills/impeccable/scripts/bin/
