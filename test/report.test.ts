@@ -112,7 +112,8 @@ function loadsNothing(html: string, { template = false } = {}): void {
   const script = html.indexOf('<script>');
   assert.ok(script > 0);
   const page = (template ? html : html.slice(0, script)).replace('<link rel="icon" href="data:,">', '');
-  assert.doesNotMatch(page, /<link|<script src|@import|url\(|https?:\/\/|fonts\.|cdn/i);
+  // The only url() is an SVG that is written out in the page itself (the backdrop, checked below).
+  assert.doesNotMatch(page, /<link|<script src|@import|url\((?!"data:image\/svg\+xml,)|https?:\/\/|fonts\.|cdn/i);
 }
 
 test('report: the templates are Thai pages that load nothing from outside', () => {
@@ -128,6 +129,22 @@ test('report: the templates are Thai pages that load nothing from outside', () =
     // Text is never set smaller than 14px.
     const sizes = [...template.matchAll(/font(?:-size)?:\s*(\d+(?:\.\d+)?)px/g)].map((m) => Number(m[1]));
     assert.ok(sizes.length > 5 && Math.min(...sizes) >= 14, `${name}: ${sizes.join(', ')}`);
+  }
+});
+
+// The dark backdrop is a circuit layer and a code layer, two SVG images written out inside the CSS
+// (data, not files), so a report is still one file that opens offline. They are drawn once and do not
+// move. The web app's stylesheet carries the same two layers and is held to the same rule.
+test('report: the circuit and the code backdrop are inline images that load nothing from outside', () => {
+  for (const file of [['templates', 'report.html'], ['templates', 'index.html'], ['app', 'public', 'app.css']]) {
+    const name = file.join('/');
+    const css = readFileSync(path.join(ROOT, ...file), 'utf8');
+    assert.equal(css.match(/url\("data:image\/svg\+xml,/g)?.length, 2, `${name}: one circuit and one code image`);
+    assert.doesNotMatch(css, /url\((?!"data:image\/svg\+xml,)/, name);
+    assert.doesNotMatch(css, /@import|https?:\/\/|fonts\./i, name);
+    assert.match(css, /body::after, html::after \{[^}]*content: ""/, `${name}: the two layers`);
+    // Not printed, and gone for a person who asked for more contrast.
+    assert.match(css, /@media print, \(prefers-contrast: more\), \(forced-colors: active\) \{\s*body::after, html::after \{ display: none; \}/, name);
   }
 });
 

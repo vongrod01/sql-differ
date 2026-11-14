@@ -404,7 +404,7 @@ async function pageCompare() {
     <div class="page-head"><div><h1>เปรียบเทียบ schema</h1>
       <div class="muted">อ่านอย่างเดียว ไม่แก้ไขฐานข้อมูลใดๆ</div></div></div>
     <div id="form"></div>
-    <div class="row" style="margin-top:16px">
+    <div class="row actionbar">
       <button class="primary" id="start">เริ่มเปรียบเทียบ</button>
       <button id="reset">รีเซต</button>
       <span class="hint" style="margin:0">ระบบจำตัวเลือกไว้ให้จนกว่าจะกดรีเซต</span>
@@ -661,7 +661,7 @@ async function pageDrift() {
       <select id="group">${sorted.map((g) => `<option value="${esc(g.key)}">${esc(g.serverLabel)} / ${esc(g.database)} (${g.items.length} snapshot)</option>`).join('')}</select></label></div>
     <div id="points"></div>
     <div style="margin-top:16px">${categoryBox()}</div>
-    <div class="row" style="margin-top:16px"><button class="primary" id="go">เทียบ drift</button><span id="msg"></span></div>`;
+    <div class="row actionbar"><button class="primary" id="go">เทียบ drift</button><span id="msg"></span></div>`;
   wireCategoryBox(body);
 
   const renderPoints = () => {
