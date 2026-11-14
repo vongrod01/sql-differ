@@ -651,4 +651,54 @@ function combinedScript(id, kind) {
   return { name: `batch-${id}.${kind}.sql`, text: '\uFEFF' + out.join('\r\n') + '\r\n' };
 }
 
-module.exports = { start, recordFailure, list, readMeta, remove, removeWhenFree, sweepDeleted, readLog, subscribe, listSnapshots, file, combinedScript, runDir, normalizeSpec, RUN_ID, CATEGORIES, DEFAULT_CATEGORIES };
+// The sync or rollback script of the rows a person ticked in the report of a run. The engine builds it from
+// what the run kept (the result and the two snapshots next to the report), so no database is opened. A row
+// is the position of a difference in that result, the same as the id of its row in the report. The request
+// reaches the engine in files, not on its command line: thousands of rows do not fit in one (about 32,000
+// characters on Windows).
+const SELECTED_KINDS = ['sync', 'rollback'];
+// What the engine says when the request itself is wrong (lib/SelectedScript.ps1), as against a failure.
+const SELECTION_REFUSED = /^(The selection|The rows|Row \d)/;
+
+async function selectedScript(id, request) {
+  const { report, kind, rows } = request || {};
+  const meta = readMeta(id);
+  if (!SELECTED_KINDS.includes(kind)) throw httpError(400, 'kind must be "sync" or "rollback"');
+  if (typeof report !== 'string' || !/^[^\\/]+\.html$/i.test(report)) throw httpError(400, 'report must be the file name of a report of this run');
+  if (!Array.isArray(rows) || !rows.length || !rows.every((row) => Number.isInteger(row) && row >= 0)) {
+    throw httpError(400, 'rows must be a list of row numbers (whole numbers from 0)');
+  }
+  if (meta.status !== 'done') throw httpError(409, 'This run has not finished.');
+  if (meta.spec.kind === 'drift') throw httpError(409, 'A drift report has no selection: its script is already the way back.');
+  const isReport = meta.spec.kind === 'batch' ? (meta.databases || []).some((d) => d.report === report) : report === 'report.html';
+  if (!isReport) throw httpError(404, 'This run has no such report');
+
+  const base = report.slice(0, -'.html'.length);
+  const dir = runDir(id);
+  const missing = [`${base}.json`, `${base}.source.snapshot.json`, `${base}.target.snapshot.json`].filter((name) => !fs.existsSync(path.join(dir, name)));
+  if (missing.length) throw httpError(409, `This run no longer has ${missing.join(', ')}, so a script cannot be built from a selection. Compare again.`);
+
+  store.ensureDir(config.TMP);
+  const stem = path.join(config.TMP, `selected-${process.pid}-${crypto.randomBytes(4).toString('hex')}`);
+  const selection = `${stem}.rows.json`;
+  const output = `${stem}.sql`;
+  try {
+    fs.writeFileSync(selection, JSON.stringify({ rows: [...new Set(rows)].sort((a, b) => a - b) }), 'utf8');
+    const run = await runPowerShell(['-File', config.ENGINE, `-ScriptFromResult:${path.join(dir, `${base}.json`)}`,
+      `-ScriptSelection:${selection}`, `-ScriptKind:${kind}`, `-ScriptOutput:${output}`]);
+    if (run.code !== 0) {
+      const said = /^Error: (.*)$/m.exec(run.stdout);
+      const message = said ? said[1].trim() : (run.stderr.trim() || `The engine stopped with exit code ${run.code}.`);
+      throw httpError(SELECTION_REFUSED.test(message) ? 400 : 500, message);
+    }
+    let info;
+    try { info = JSON.parse(run.stdout.trim()); } catch { throw httpError(500, 'The engine did not answer with JSON.'); }
+    // The BOM the engine writes stays in the text: SSMS reads a file without one as ANSI, which breaks Thai text.
+    return { name: `${base}.selected.${kind}.sql`, text: fs.readFileSync(output, 'utf8'), selected: info.selected, total: info.total, needs: info.needs };
+  } finally {
+    fs.rmSync(selection, { force: true });
+    fs.rmSync(output, { force: true });
+  }
+}
+
+module.exports = { start, recordFailure, selectedScript, list, readMeta, remove, removeWhenFree, sweepDeleted, readLog, subscribe, listSnapshots, file, combinedScript, runDir, normalizeSpec, RUN_ID, CATEGORIES, DEFAULT_CATEGORIES };

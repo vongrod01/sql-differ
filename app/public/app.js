@@ -477,6 +477,31 @@ function scriptNotes(final, drift, combinedSync, combinedRollback) {
   return html;
 }
 
+// A database of a run has rows to choose from when the comparison listed anything: the rows of its report
+// are the differences and the ones that could not be compared.
+function canPickRows(d) {
+  const c = d.counts || {};
+  return !d.error && Boolean(d.report) && Boolean(d.syncScript) &&
+    (c.onlyInSource || 0) + (c.onlyInTarget || 0) + (c.different || 0) + (c.unverified || 0) > 0;
+}
+
+// The button that opens a report in the mode where its rows can be ticked (the report reads #select); the
+// script of what is ticked is made there, for sync and for rollback.
+function pickLink(runId, report, label) {
+  return `<a class="btn primary" href="/runs/${runId}/${encodeURIComponent(report)}#select" target="_blank" rel="noopener" ` +
+    `title="เปิดรายงานแล้วติ๊กรายการที่ต้องการ จะได้ทั้ง sync script และ rollback script ของที่เลือก">${label}</a>`;
+}
+
+// The buttons of one database of a batch run: its report, its script for the whole database, its script for
+// the rows ticked in the report, and its rollback for the whole database.
+function databaseActions(runId, d) {
+  const link = (file, label) => `<a class="btn" href="/runs/${runId}/${encodeURIComponent(file)}" target="_blank" rel="noopener">${label}</a>`;
+  return (d.report ? link(d.report, 'รายงาน') : '') +
+    (d.syncScript ? link(d.syncScript, 'sync script ทั้งฐาน') : '') +
+    (canPickRows(d) ? pickLink(runId, d.report, 'sync script เลือกเอง') : '') +
+    (d.rollbackScript ? link(d.rollbackScript, 'rollback script ทั้งฐาน') : '');
+}
+
 async function pageRun(id) {
   $app.innerHTML = '<div class="empty"><span class="spinner"></span></div>';
   let meta;
@@ -522,7 +547,10 @@ async function pageRun(id) {
       (drift
         ? scriptButtons(final.syncScript, 'Script ย้อนกลับ', 'ดาวน์โหลด .sql')
         : scriptButtons(final.syncScript, 'Sync script', 'ดาวน์โหลด sync .sql') +
-          scriptButtons(final.rollbackScript, 'Rollback script', 'ดาวน์โหลด rollback .sql')) +
+          scriptButtons(final.rollbackScript, 'Rollback script', 'ดาวน์โหลด rollback .sql') +
+          // A single comparison: the report opened to tick the rows (a batch has this button on each database below).
+          (!final.databases && canPickRows({ error: '', report: final.report, syncScript: final.syncScript, counts: final.counts })
+            ? pickLink(final.id, final.report, 'Sync script เลือกเอง') : '')) +
       (combinedSync ? linkButtons(`/runs/${final.id}/combined/sync.sql`, 'Sync script ทั้งหมด', 'ดาวน์โหลด sync ทั้งหมด .sql') : '') +
       (combinedRollback ? linkButtons(`/runs/${final.id}/combined/rollback.sql`, 'Rollback script ทั้งหมด', 'ดาวน์โหลด rollback ทั้งหมด .sql') : '');
     const c = final.counts || {};
@@ -545,9 +573,7 @@ async function pageRun(id) {
       html += `<div class="table-wrap"><table><thead><tr><th>Database</th><th>ผลลัพธ์</th><th></th></tr></thead><tbody>${final.databases.map((d) => `
         <tr><td>${esc(d.database)}</td>
         <td>${d.error ? `<span class="warn-text">${esc(d.error)}</span>` : countsHtml(d.counts, d.incomplete, final.spec.kind)}</td>
-        <td><div class="actions">${d.report ? `<a href="/runs/${final.id}/${encodeURIComponent(d.report)}" target="_blank" rel="noopener">รายงาน</a>` : ''}
-          ${d.syncScript ? `<a href="/runs/${final.id}/${encodeURIComponent(d.syncScript)}" target="_blank" rel="noopener">sync script</a>` : ''}
-          ${d.rollbackScript ? `<a href="/runs/${final.id}/${encodeURIComponent(d.rollbackScript)}" target="_blank" rel="noopener">rollback script</a>` : ''}</div></td></tr>`).join('')}
+        <td><div class="actions">${databaseActions(final.id, d)}</div></td></tr>`).join('')}
       </tbody></table></div>`;
       if (final.onlyOnSource && final.onlyOnSource.length) html += `<p class="muted small">ฐานที่มีแค่บน server ต้นแบบ (source): ${esc(final.onlyOnSource.join(', '))}</p>`;
       if (final.onlyOnTarget && final.onlyOnTarget.length) html += `<p class="muted small">ฐานที่มีแค่บน server ปลายทาง (target): ${esc(final.onlyOnTarget.join(', '))}</p>`;

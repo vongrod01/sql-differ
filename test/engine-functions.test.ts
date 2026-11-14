@@ -423,7 +423,7 @@ test('engine: dates are written in the Gregorian calendar whatever the culture o
 });
 
 test('engine: no date is formatted with Get-Date', () => {
-  for (const file of ['Compare-Database.ps1', path.join('lib', 'SyncScript.ps1')]) {
+  for (const file of ['Compare-Database.ps1', path.join('lib', 'SyncScript.ps1'), path.join('lib', 'SelectedScript.ps1')]) {
     const lines = readFileSync(path.join(ROOT, file), 'utf8').split(/\r?\n/);
     const found = lines.flatMap((line, i) => (/Get-Date/i.test(line) ? [`${file}:${i + 1}: ${line.trim()}`] : []));
     assert.deepEqual(found, [], 'use Get-Timestamp');

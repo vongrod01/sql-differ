@@ -180,7 +180,15 @@ param(
     [switch]$TrustServerCertificate,
     [int]$QueryTimeout = 120,
     [switch]$Open,
-    [switch]$PassThru
+    [switch]$PassThru,
+
+    # A script of part of a comparison, built from the files of a finished run (its result file and the
+    # two snapshots next to it) without opening a database: see Write-SelectedScript in lib\SelectedScript.ps1.
+    # -ScriptSelection is a JSON file { "rows": [...] }, -ScriptKind is sync or rollback.
+    [string]$ScriptFromResult,
+    [string]$ScriptSelection,
+    [string]$ScriptKind,
+    [string]$ScriptOutput
 )
 
 $ErrorActionPreference = 'Stop'
@@ -1655,6 +1663,7 @@ function Write-HtmlReport {
 }
 
 . (Join-Path $PSScriptRoot 'lib\SyncScript.ps1')
+. (Join-Path $PSScriptRoot 'lib\SelectedScript.ps1')
 
 # ---------------------------------------------------------------------------------------------
 # Main
@@ -2039,6 +2048,12 @@ function Get-BatchBaseName([string]$Database, $Used) {
 
 $exitCode = 0
 try {
+    # No profile, server or connection is needed for this: it reads files only. The answer is JSON on stdout.
+    if ($ScriptFromResult) {
+        Write-JsonStdout (Write-SelectedScript $ScriptFromResult $ScriptSelection $ScriptKind $ScriptOutput)
+        exit 0
+    }
+
     $SelectedCategories = Resolve-Categories $Categories
     if ($SourceSnapshot) { $Perspective = 'timeline' }
 

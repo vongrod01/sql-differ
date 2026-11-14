@@ -56,6 +56,14 @@ interface Core {
   diffLines(a: string[], b: string[]): [string, string][];
   renderDiff(row: Row): string;
   renderPlain(row: Row): string;
+  selectionTarget(location: { protocol: string; pathname: string }): { id: string; report: string } | null;
+  scriptRequest(target: { id: string; report: string }, kind: string, ids: Iterable<number>): { url: string; body: { report: string; kind: string; rows: number[] } };
+  tickState(ids: number[], chosen: Set<number>): string;
+  pickLabel(row: Row): string;
+  needText(need: { row: number; object: string; needsRow: number; needs: string }): string;
+  savedText(name: string, selected: number, total: number): string;
+  shownText(name: string, selected: number, total: number): string;
+  viewerPage(data: { name: string; text: string; selected: number; total: number }): string;
 }
 
 interface Meta {
@@ -113,7 +121,8 @@ function loadsNothing(html: string, { template = false } = {}): void {
   assert.ok(script > 0);
   const page = (template ? html : html.slice(0, script)).replace('<link rel="icon" href="data:,">', '');
   // The only url() is an SVG that is written out in the page itself (the backdrop, checked below).
-  assert.doesNotMatch(page, /<link|<script src|@import|url\((?!"data:image\/svg\+xml,)|https?:\/\/|fonts\.|cdn/i);
+  // URL.createObjectURL() is not one: it makes the file of a script that was just built in the page.
+  assert.doesNotMatch(page, /<link|<script src|@import|(?<!object)url\((?!"data:image\/svg\+xml,)|https?:\/\/|fonts\.|cdn/i);
 }
 
 test('report: the templates are Thai pages that load nothing from outside', () => {
@@ -1016,4 +1025,93 @@ test('report: the index of a batch uses the words of the report, and "the same" 
   const counted = core.rowHtml({ ...zero, onlyInSource: 3, unverified: 1 });
   assert.match(counted, /<a href="a_b\.html">a&lt;b<\/a>/);
   assert.match(counted, /<span class="num add"><b>3<\/b> ต้องเพิ่ม<\/span><span class="num zero"><b>0<\/b> มีเกิน<\/span><span class="num zero"><b>0<\/b> ต้องแก้<\/span><span class="num unk"><b>1<\/b> ตรวจไม่ได้<\/span>/);
+});
+
+// ---------------------------------------------------------------------------------------------
+// Choosing the rows of a sync script. A report opened from the app (http, /runs/<id>/<report>.html) can
+// tick rows and ask the app for the script of those rows; opened as a file it cannot, and shows nothing of it.
+// ---------------------------------------------------------------------------------------------
+
+const RUN = '20261114-154529-8610';
+
+test('report: a selection is offered only by a sync report that the app serves', () => {
+  const at = (core: Core, protocol: string, pathname: string) => {
+    const found = core.selectionTarget({ protocol, pathname });
+    return found === null ? null : plain(found);
+  };
+  assert.deepEqual(at(sync, 'http:', `/runs/${RUN}/plapp_prod.html`), { id: RUN, report: 'plapp_prod.html' });
+  assert.deepEqual(at(sync, 'http:', `/runs/${RUN}/report.html`), { id: RUN, report: 'report.html' });
+  // The name of a database may hold Thai letters or spaces, which the address carries percent-encoded.
+  assert.deepEqual(at(sync, 'http:', `/runs/${RUN}/${encodeURIComponent('ฐาน 1')}.html`), { id: RUN, report: 'ฐาน 1.html' });
+  // Opened as a file, or any page that is not a report of a run: nothing to ask.
+  assert.equal(at(sync, 'file:', `/runs/${RUN}/report.html`), null);
+  assert.equal(at(sync, 'file:', 'C:/Users/me/Downloads/report.html'), null);
+  assert.equal(at(sync, 'http:', '/report.html'), null);
+  assert.equal(at(sync, 'http:', `/runs/${RUN}/combined/sync.sql`), null);
+  assert.equal(at(sync, 'http:', `/runs/${RUN}/sub/report.html`), null);
+  // A drift report is not a sync: its script is already the way back.
+  assert.equal(at(drift, 'http:', `/runs/${RUN}/report.html`), null);
+});
+
+test('report: the request for a script names the report, the kind, and the rows once, in order', () => {
+  const target = { id: RUN, report: 'plapp_prod.html' };
+  assert.deepEqual(plain(sync.scriptRequest(target, 'sync', new Set([9, 2, 5]))), {
+    url: `/api/runs/${RUN}/script`, body: { report: 'plapp_prod.html', kind: 'sync', rows: [2, 5, 9] },
+  });
+  assert.deepEqual(plain(sync.scriptRequest(target, 'rollback', [10, 9, 10, 100])).body.rows, [9, 10, 100], 'ordered as numbers, not as text');
+});
+
+test('report: the box of a card is ticked when every row it shows is, half when some are, empty when none are', () => {
+  assert.equal(sync.tickState([1, 2, 3], new Set([1, 2, 3, 7])), 'all');
+  assert.equal(sync.tickState([1, 2, 3], new Set([2])), 'some');
+  assert.equal(sync.tickState([1, 2, 3], new Set([7])), 'none');
+  assert.equal(sync.tickState([], new Set([7])), 'none', 'a card that shows nothing has nothing to tick');
+});
+
+test('report: what a tick box and the messages of the selection say', () => {
+  const procedure = row(sync, 'Stored procedure', 'dbo.pNewOrder', 'OnlyInSource');
+  assert.equal(sync.pickLabel(procedure), 'ต้องเพิ่ม: dbo.pNewOrder');
+  assert.equal(sync.pickLabel(row(sync, 'Column', 'dbo.Orders.Qty', 'Different')), 'ต้องแก้: dbo.Orders.Qty');
+  assert.equal(
+    sync.needText({ row: 37, object: 'dbo.trAudit', needsRow: 2, needs: 'dbo.Audit' }),
+    'dbo.trAudit ต้องใช้ตาราง dbo.Audit ซึ่งเป็นของใหม่และยังไม่ได้เลือก ถ้าไม่เลือกด้วย คำสั่งของ dbo.trAudit จะรันไม่ผ่านจนกว่าตารางนั้นจะมีอยู่',
+  );
+  assert.equal(sync.savedText('plapp_prod.selected.sync.sql', 3, 22), 'ได้ไฟล์ plapp_prod.selected.sync.sql จากที่เลือก 3 จาก 22 รายการ');
+});
+
+test('report: the selection controls are hidden until the page knows it can ask, and are not printed', () => {
+  const template = readFileSync(path.join(ROOT, 'templates', 'report.html'), 'utf8');
+  for (const id of ['pick-toggle', 'pick-all']) assert.match(template, new RegExp(`id="${id}"[^>]*\\shidden`), id);
+  // The bar has, for each script, a button to look at it and one to download it.
+  for (const id of ['pick-view-sync', 'pick-sync', 'pick-view-rollback', 'pick-rollback']) assert.match(template, new RegExp(`id="${id}"`), id);
+  assert.match(template, /id="pickdock"[^>]*\shidden/);
+  // The call carries the header the app asks of every API request.
+  assert.match(template, /'X-Database-Diff': '1'/);
+  const print = template.slice(template.lastIndexOf('@media print'));
+  assert.match(print, /\.pickdock[^{]*\{[^}]*display: none/);
+  assert.match(print, /input\.pick[^{]*\{[^}]*display: none/);
+});
+
+// The script can be read in a tab of its own instead of downloaded: the page is written by the report, holds
+// the text itself (so it works after the report is closed), and has buttons to copy and to download it.
+test('report: the page that shows a script holds the text once, safely, with a copy and a download button', () => {
+  const data = { name: 'plmobileapp.selected.sync.sql', text: '\uFEFF-- a </script><b>"x"</b> & $&\r\nSELECT 1;\u2028', selected: 2, total: 22 };
+  const html = sync.viewerPage(data);
+  // Whatever the script says, it cannot end the script that carries it or open a tag of the page.
+  assert.equal(html.split('<script>').length - 1, 1);
+  assert.equal(html.split('</script>').length - 1, 1);
+  // The file as it is, BOM included: what the download saves.
+  const embedded = /var TEXT = (.*), NAME = /.exec(html)?.[1];
+  assert.ok(embedded);
+  assert.equal(JSON.parse(embedded), data.text);
+  // What is read and copied has no BOM (it would paste into SSMS as a character nobody sees), and is text, not markup.
+  const shown = /<pre id="text">([\s\S]*?)<\/pre>/.exec(html)?.[1];
+  assert.equal(shown, '-- a &lt;/script&gt;&lt;b&gt;&quot;x&quot;&lt;/b&gt; &amp; $&amp;\r\nSELECT 1;\u2028');
+  assert.match(html, /<title>plmobileapp\.selected\.sync\.sql<\/title>/);
+  assert.match(html, /<button id="copy"[^>]*>คัดลอก<\/button>/);
+  assert.match(html, /<button id="save"[^>]*>ดาวน์โหลด<\/button>/);
+  assert.match(html, /เลือก 2 จาก 22 รายการ/);
+  // A name with markup in it is text in the title too.
+  assert.match(sync.viewerPage({ ...data, name: 'a<b>.sql' }), /<title>a&lt;b&gt;\.sql<\/title>/);
+  assert.equal(sync.shownText('plmobileapp.selected.sync.sql', 3, 22), 'เปิดดูไฟล์ plmobileapp.selected.sync.sql ในแท็บใหม่แล้ว (เลือก 3 จาก 22 รายการ)');
 });

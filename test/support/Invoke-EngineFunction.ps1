@@ -21,7 +21,7 @@ $ErrorActionPreference = 'Stop'
 $harnessRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 
 $harnessCode = New-Object System.Text.StringBuilder
-foreach ($harnessFile in @('Compare-Database.ps1', 'lib\SyncScript.ps1')) {
+foreach ($harnessFile in @('Compare-Database.ps1', 'lib\SyncScript.ps1', 'lib\SelectedScript.ps1')) {
     $harnessTokens = $null
     $harnessErrors = $null
     $harnessAst = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $harnessRoot $harnessFile), [ref]$harnessTokens, [ref]$harnessErrors)

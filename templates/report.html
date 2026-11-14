@@ -230,6 +230,27 @@
   .cap .m.del { color: var(--del); }
   .cap .m.add { color: var(--add); }
 
+  /* Choosing the rows of a script. Only where the app serves the report (see selectionTarget): the
+     boxes, the bar at the bottom and its messages. In this mode every row gets a column for its box. */
+  input.pick, input.pickg { width: 20px; height: 20px; margin: 2px; accent-color: rgb(var(--accent-rgb)); cursor: pointer; }
+  .pickg-l { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--muted); cursor: pointer; }
+  .selecting .titem { grid-template-columns: 1.6rem 1.6rem 13rem minmax(0, 1fr); }
+  .selecting .row { grid-template-columns: 1.6rem 9.5rem minmax(0, 1fr); }
+  .linkbtn.primary { color: #fff; font-weight: 650; background: linear-gradient(180deg, rgba(var(--accent-rgb), .86), rgba(var(--accent-rgb), .54)); border-color: rgba(var(--accent-rgb), .7); }
+  .linkbtn:disabled { opacity: .55; cursor: not-allowed; }
+  .pickdock { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 6; width: min(940px, calc(100% - 24px)); display: grid; gap: 8px; justify-items: center; }
+  .pickbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 12px; padding: 8px 14px; max-width: 100%;
+    background: var(--fill-clear); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
+    border: 1px solid var(--edge-line); border-radius: 999px; box-shadow: var(--edge), var(--lift); }
+  .pickbar .count { font-size: 14px; }
+  .pickgrp { display: inline-flex; align-items: center; gap: 6px; padding: 3px 4px 3px 14px; border-radius: 999px; background: rgba(255, 255, 255, .07); }
+  .pickmsg { width: 100%; padding: 12px 16px; border-radius: 18px; border: 1px solid var(--edge-line); background: var(--fill-reg); box-shadow: var(--edge), var(--lift); font-size: 14px; }
+  .pickmsg.need { background: var(--tint-chg); border-color: var(--warn-line); }
+  .pickmsg.bad { background: var(--tint-del); border-color: var(--line-del); }
+  .pickmsg.ok { background: var(--tint-add); border-color: var(--line-add); }
+  .pickmsg ul { margin: 6px 0 10px 18px; padding: 0; }
+  .pickmsg .acts { display: flex; flex-wrap: wrap; gap: 8px; }
+
   details.totals { font-size: 14px; color: var(--muted); }
   details.totals summary { cursor: pointer; }
   details.totals table { border-collapse: collapse; margin-top: 8px; font-variant-numeric: tabular-nums; }
@@ -248,12 +269,18 @@
     .tcard-h .note { margin-left: 0; }
     /* Two rows of controls would cover too much of a small screen. */
     .toolbar { position: static; border-radius: 24px; }
+    .selecting .titem { grid-template-columns: 1.6rem 1.6rem minmax(0, 1fr); }
+    .selecting .titem .body { grid-column: 3; }
+    .selecting .row { grid-template-columns: 1.6rem minmax(0, 1fr); }
+    .selecting .row > .body { grid-column: 2; }
+    .pickbar { border-radius: 24px; }
   }
   @media (prefers-reduced-motion: no-preference) {
     .kind, .linkbtn { transition: border-color .15s; }
   }
   @media print {
     .toolbar { display: none; }
+    .pickdock, input.pick, input.pickg, .pickg-l { display: none; }
     .panel, .db, .kind { break-inside: avoid; }
   }
 </style>
@@ -276,10 +303,25 @@
     <input id="q" type="search" placeholder="ค้นชื่อ เช่น Orders หรือ pGetOrder" aria-label="ค้นหา">
     <select id="f-cat" aria-label="ชนิดของ"></select>
     <button class="linkbtn" id="clear" hidden>ล้างตัวกรอง</button>
+    <button class="linkbtn" id="pick-toggle" hidden aria-pressed="false">เลือกรายการเพื่อสร้าง script</button>
+    <button class="linkbtn" id="pick-all" hidden>เลือกที่แสดงอยู่ทั้งหมด</button>
     <span class="count" id="count"></span>
   </div>
   <div class="group" id="results"></div>
   <details class="totals" id="totals"></details>
+</div>
+<div class="pickdock" id="pickdock" hidden>
+  <div class="pickmsg" id="pick-msg" role="status" hidden></div>
+  <div class="pickbar">
+    <span class="count" id="pick-count"></span>
+    <button class="linkbtn" id="pick-clear">ล้างที่เลือก</button>
+    <span class="pickgrp"><span class="note">sync script</span>
+      <button class="linkbtn" id="pick-view-sync" title="เปิดแท็บใหม่ให้อ่านและคัดลอกได้เลย">ดู</button>
+      <button class="linkbtn primary" id="pick-sync">ดาวน์โหลด</button></span>
+    <span class="pickgrp"><span class="note">rollback script</span>
+      <button class="linkbtn" id="pick-view-rollback" title="เปิดแท็บใหม่ให้อ่านและคัดลอกได้เลย">ดู</button>
+      <button class="linkbtn" id="pick-rollback">ดาวน์โหลด</button></span>
+  </div>
 </div>
 <script>
 const META = __META_JSON__;
@@ -808,9 +850,80 @@ function createReportCore(meta) {
     return `<div class="code"><div class="cap">${cap}</div><table>${lines}</table></div>`;
   }
 
+  // ---- choosing the rows of a sync script ----
+  // Where this page can ask the app for a script: a sync report that the app serves, at
+  // /runs/<id>/<report>.html. Opened as a file (or anywhere else) there is nobody to ask, and nothing
+  // of the selection shows. A drift report has none: its script is already the way back.
+  function selectionTarget(location) {
+    if (TIMELINE) return null;
+    if (location.protocol !== 'http:' && location.protocol !== 'https:') return null;
+    const m = /^\/runs\/([^/]+)\/([^/]+\.html)$/.exec(location.pathname);
+    if (!m) return null;
+    try { return { id: decodeURIComponent(m[1]), report: decodeURIComponent(m[2]) }; } catch (e) { return null; }
+  }
+  // What is sent to the app for the script of the ticked rows: each row once, in order, as numbers.
+  function scriptRequest(target, kind, ids) {
+    const rows = Array.from(new Set(Array.from(ids))).sort((a, b) => a - b);
+    return { url: '/api/runs/' + encodeURIComponent(target.id) + '/script', body: { report: target.report, kind, rows } };
+  }
+  // The box of a card: all of the rows it shows are ticked, some of them, or none.
+  function tickState(ids, chosen) {
+    const n = ids.filter(id => chosen.has(id)).length;
+    return !n ? 'none' : n === ids.length ? 'all' : 'some';
+  }
+  const pickLabel = r => KIND[r.status].t + ': ' + r.obj;
+  // need: { object, needs } from the app, a chosen row that needs a new table which is not chosen.
+  const needText = n => `${n.object} ต้องใช้ตาราง ${n.needs} ซึ่งเป็นของใหม่และยังไม่ได้เลือก ถ้าไม่เลือกด้วย คำสั่งของ ${n.object} จะรันไม่ผ่านจนกว่าตารางนั้นจะมีอยู่`;
+  const savedText = (name, selected, total) => `ได้ไฟล์ ${name} จากที่เลือก ${selected} จาก ${total} รายการ`;
+  const shownText = (name, selected, total) => `เปิดดูไฟล์ ${name} ในแท็บใหม่แล้ว (เลือก ${selected} จาก ${total} รายการ)`;
+
+  // A page of its own that shows a script: the text to read, and buttons to copy it and to download it. It holds
+  // the text itself, so it keeps working when the report that made it is closed. The text is the file as the app
+  // made it, BOM included, for the download; what is shown and copied has no BOM, which would paste into SSMS as
+  // a character nobody sees.
+  function viewerPage(data) {
+    const text = String(data.text);
+    const shown = text.replace(/^\uFEFF/, '');
+    // In a script of a page, the text may hold the tag that ends the script, or a comment opener: so "<" is
+    // written <, and a line separator is escaped too.
+    const embed = v => JSON.stringify(v).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+    const css = 'body{margin:0;background:#0b0d13;color:#f2f3f5;font:15px/1.6 "Leelawadee UI","Segoe UI",Tahoma,system-ui,sans-serif}' +
+      '.bar{position:sticky;top:0;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:10px 16px;background:#171b26;border-bottom:1px solid rgba(255,255,255,.14)}' +
+      '.bar h1{font-size:16px;margin:0;font-weight:650;overflow-wrap:anywhere}.bar .sub{color:#a3a6b0;font-size:14px}.bar .sp{flex:1}' +
+      '.bar button{font:inherit;font-size:14px;color:#f2f3f5;background:#2a3040;border:1px solid rgba(255,255,255,.28);border-radius:999px;padding:5px 16px;cursor:pointer}' +
+      '.bar button.primary{background:#0a84ff;border-color:#6cb2ff;font-weight:650}.bar #say{color:#34d65c;font-size:14px}' +
+      'pre{margin:0;padding:16px;font:14px/1.55 Consolas,"Cascadia Mono","Leelawadee UI",monospace;white-space:pre-wrap;overflow-wrap:anywhere}';
+    const script = `var TEXT = ${embed(text)}, NAME = ${embed(data.name)};
+var BODY = TEXT.charAt(0) === '\\uFEFF' ? TEXT.slice(1) : TEXT;
+function say(t) { document.getElementById('say').textContent = t; }
+document.getElementById('copy').addEventListener('click', function () {
+  function fallback() {
+    var ta = document.createElement('textarea');
+    ta.value = BODY; document.body.appendChild(ta); ta.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    ta.remove();
+    say(ok ? 'คัดลอกแล้ว' : 'คัดลอกไม่สำเร็จ ลากคลุมข้อความแล้วกด Ctrl+C');
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(BODY).then(function () { say('คัดลอกแล้ว'); }, fallback);
+  else fallback();
+});
+document.getElementById('save').addEventListener('click', function () {
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([TEXT], { type: 'text/plain;charset=utf-8' }));
+  a.download = NAME; document.body.appendChild(a); a.click(); a.remove();
+  say('ดาวน์โหลดแล้ว');
+});`;
+    return '<!doctype html><html lang="th"><head><meta charset="utf-8"><title>' + esc(data.name) + '</title><style>' + css + '</style></head><body>' +
+      '<div class="bar"><div><h1>' + esc(data.name) + '</h1><div class="sub">เลือก ' + data.selected + ' จาก ' + data.total + ' รายการ · อ่านแล้วคัดลอกไปวางใน SSMS ได้เลย</div></div>' +
+      '<span class="sp"></span><span id="say" role="status"></span><button id="copy" class="primary">คัดลอก</button><button id="save">ดาวน์โหลด</button></div>' +
+      '<pre id="text">' + esc(shown) + '</pre><script>' + script + '<\/script></body></html>';
+  }
+
   return {
     TIMELINE, KIND, CAT, SIDE, HIDDEN_DEFINITION, esc, cat, catWord, propLabel, val, toRows, parseDetail, leafOf, sentence,
-    setOptionsHint, shownFacts, groupRows, groupStatus, lineKey, diffLines, renderDiff, renderPlain
+    setOptionsHint, shownFacts, groupRows, groupStatus, lineKey, diffLines, renderDiff, renderPlain,
+    selectionTarget, scriptRequest, tickState, pickLabel, needText, savedText, shownText, viewerPage
   };
 }
 
@@ -824,6 +937,20 @@ if (typeof document !== 'undefined') (function () {
   const groups = core.groupRows(rows, META.categories);
   const state = { q: '', status: 'all', cat: 'all' };
   const $ = id => document.getElementById(id);
+
+  // ---- choosing the rows of a script: the state, and the box that goes with a row ----
+  // target: where the app can be asked for the script of the ticked rows, or null (a file, a drift report).
+  const target = core.selectionTarget(location);
+  const chosen = new Set();
+  let selecting = false, busy = false, pending = null;
+  // The first cell of a row while choosing: its box, or an empty cell for a row that is not a difference itself.
+  const pickCell = r => (!selecting ? '' : r
+    ? `<input type="checkbox" class="pick" data-pick="${r.id}" aria-label="${esc(core.pickLabel(r))}"${chosen.has(r.id) ? ' checked' : ''}>`
+    : '<span></span>');
+  // The box of a table's card: ticks the rows that the card shows.
+  const groupBox = g => (selecting
+    ? `<label class="pickg-l"><input type="checkbox" class="pickg" data-pickg="${groups.tables.indexOf(g)}">เลือกทั้งตาราง</label>`
+    : '');
 
   // ---- header ----
   const title = TIMELINE ? 'โครงสร้างฐานข้อมูลที่เปลี่ยนไป (schema drift)' : 'เทียบโครงสร้างฐานข้อมูล';
@@ -922,7 +1049,7 @@ if (typeof document !== 'undefined') (function () {
   // One row of a table's card, or of a view: symbol, what it is, what happens.
   function itemHtml(r, self) {
     const leaf = core.leafOf(r);
-    return `<div class="titem">${symbol(r)}<div class="what">${esc(leaf.kind)}<b>${nameHtml(leaf.name)}</b></div>` +
+    return `<div class="titem">${pickCell(r)}${symbol(r)}<div class="what">${esc(leaf.kind)}<b>${nameHtml(leaf.name)}</b></div>` +
       `<div class="body"><span class="sr">${KIND[r.status].t}</span>${bodyHtml(r, self)}</div></div>`;
   }
 
@@ -935,9 +1062,9 @@ if (typeof document !== 'undefined') (function () {
 
   function tableHtml(group, v) {
     let h = `<div class="panel tcard"><div class="tcard-h"><span class="obj">${nameHtml(group.name)}</span>${chip(core.groupStatus(group))}` +
-      `<span class="note">${v.count} รายการ</span></div>`;
+      `<span class="note">${v.count} รายการ</span>${groupBox(group)}</div>`;
     if (v.self) {
-      h += `<div class="titem">${symbol(v.self)}<div class="what">${esc(core.cat('Table'))}<b>ทั้งตาราง</b></div>` +
+      h += `<div class="titem">${pickCell(v.self)}${symbol(v.self)}<div class="what">${esc(core.cat('Table'))}<b>ทั้งตาราง</b></div>` +
         `<div class="body">${bodyHtml(v.self, null)}</div></div>`;
     }
     return h + v.items.map(r => itemHtml(r, group.self)).join('') + '</div>';
@@ -946,7 +1073,7 @@ if (typeof document !== 'undefined') (function () {
   function otherHtml(group, v) {
     const self = v.self;
     const name = group.kind === 'single' && group.cat === 'Database' ? core.cat('Database') : group.name;
-    let h = `<div class="row"><div>${self ? rowChip(self) : chip(core.groupStatus(group))}</div><div class="body">` +
+    let h = `<div class="row">${pickCell(self)}<div>${self ? rowChip(self) : chip(core.groupStatus(group))}</div><div class="body">` +
       `<div class="obj">${nameHtml(name)}${group.cat === 'Database' ? '' : ` <span class="note">${esc(core.cat(group.cat))}</span>`}</div>`;
     if (self) h += bodyHtml(self, null);
     else if (group.self) h += '<div class="say">ตัว view ไม่ตรงกับตัวกรองนี้ ด้านล่างคือของที่อยู่บน view นี้</div>';
@@ -959,6 +1086,7 @@ if (typeof document !== 'undefined') (function () {
     const shown = rows.filter(matches).length;
     $('count').textContent = `แสดง ${shown} จาก ${rows.length} รายการ`;
     $('clear').hidden = state.status === 'all' && state.cat === 'all' && !state.q;
+    $('results').classList.toggle('selecting', selecting);
     if (!rows.length) {
       $('results').innerHTML = '<div class="panel empty">' + (incomplete.length + otherWarnings.length
         ? 'ไม่พบความต่างในส่วนที่อ่านได้ (ผลเทียบไม่ครบ ดูคำเตือนด้านบน)'
@@ -981,6 +1109,7 @@ if (typeof document !== 'undefined') (function () {
         '<div class="panel rows">' + others.map(x => otherHtml(x[0], x[1])).join('') + '</div>';
     }
     $('results').innerHTML = html;
+    syncGroupBoxes();
   }
 
   function renderTotals() {
@@ -1023,9 +1152,153 @@ if (typeof document !== 'undefined') (function () {
     btn.textContent = codeLabel(r, !box.hidden);
   });
 
+  // ---- choosing the rows of a script: the boxes, the bar, and asking the app ----
+  // The rows that a table's card shows now (the filter applies): what its box ticks.
+  const groupIds = g => { const v = visible(g); return (v.self ? [v.self.id] : []).concat(v.items.map(r => r.id)); };
+
+  function syncRowBoxes() {
+    document.querySelectorAll('input.pick').forEach(box => { box.checked = chosen.has(Number(box.dataset.pick)); });
+  }
+  function syncGroupBoxes() {
+    document.querySelectorAll('input.pickg').forEach(box => {
+      const state = core.tickState(groupIds(groups.tables[Number(box.dataset.pickg)]), chosen);
+      box.checked = state === 'all';
+      box.indeterminate = state === 'some';
+    });
+  }
+  function showMessage(m) {
+    $('pick-msg').hidden = !m;
+    if (!m) return;
+    $('pick-msg').className = 'pickmsg ' + m.cls;
+    $('pick-msg').innerHTML = m.html;
+  }
+  function updateBar() {
+    const n = chosen.size;
+    $('pickdock').hidden = !selecting;
+    $('pick-count').textContent = n ? `เลือกแล้ว ${n} จาก ${rows.length} รายการ` : 'ยังไม่ได้เลือก ติ๊กช่องหน้ารายการที่ต้องการ';
+    for (const id of ['pick-view-sync', 'pick-sync', 'pick-view-rollback', 'pick-rollback', 'pick-clear']) $(id).disabled = busy || !n;
+    $('pick-toggle').setAttribute('aria-pressed', String(selecting));
+    $('pick-toggle').textContent = selecting ? 'เลิกเลือก' : 'เลือกรายการเพื่อสร้าง script';
+    $('pick-all').hidden = !selecting;
+  }
+  function setSelecting(on) {
+    selecting = on;
+    if (!on) { dropPending(); showMessage(null); }
+    updateBar();
+    renderResults();
+  }
+  // What waits for an answer about needs: the script, what to do with it, and the tab opened for it.
+  function dropPending() {
+    if (pending && pending.win && !pending.win.closed) pending.win.close();
+    pending = null;
+  }
+  function changed() { showMessage(null); dropPending(); updateBar(); syncGroupBoxes(); }
+
+  // The file goes to the person's downloads; its text keeps the BOM that the app sends, which SSMS needs for Thai text.
+  function saveFile(data) {
+    pending = null;
+    const url = URL.createObjectURL(new Blob([data.text], { type: 'text/plain;charset=utf-8' }));
+    const a = document.createElement('a');
+    a.href = url; a.download = data.name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    showMessage({ cls: 'ok', html: esc(core.savedText(data.name, data.selected, data.total)) });
+  }
+  // The script in a tab of its own, to read and copy (see viewerPage). The tab is opened by the click, before the
+  // script is made: a popup blocker lets nothing through after a wait. It says so while it waits.
+  function openViewer() {
+    const w = window.open('', '_blank');
+    if (w) {
+      w.document.open();
+      w.document.write('<!doctype html><meta charset="utf-8"><title>กำลังสร้าง script</title><body style="background:#0b0d13;color:#f2f3f5;font:15px sans-serif;padding:24px">กำลังสร้าง script รายการมากอาจใช้เวลาครู่หนึ่ง</body>');
+      w.document.close();
+    }
+    return w;
+  }
+  function showScript(data, win) {
+    // The tab opened for it, or a new one when that was closed meanwhile (this runs from a click).
+    const w = win && !win.closed ? win : window.open('', '_blank');
+    if (!w) { showMessage({ cls: 'bad', html: '<b>เบราว์เซอร์บล็อกแท็บใหม่</b> อนุญาต popup ของหน้านี้ แล้วกดดูอีกครั้ง' }); return; }
+    pending = null;
+    w.document.open();
+    w.document.write(core.viewerPage(data));
+    w.document.close();
+    showMessage({ cls: 'ok', html: esc(core.shownText(data.name, data.selected, data.total)) });
+  }
+  // action: 'save' downloads the file, 'view' shows it in a tab of its own.
+  function deliver(data, action, win) { if (action === 'view') showScript(data, win); else saveFile(data); }
+  function showNeeds(data, action, win) {
+    pending = { data, action, win };
+    // The tab opened for the script says what it waits for, not that the script is being made.
+    if (win && !win.closed) win.document.body.textContent = 'ในหน้ารายงานมีข้อความให้ตัดสินใจก่อน (ตัวที่ต้องพึ่งของที่ไม่ได้เลือก) ตัดสินใจที่นั่น แล้วหน้านี้จะแสดง script';
+    showMessage({ cls: 'need', html: '<b>ในที่เลือกมีตัวที่ต้องพึ่งของที่ไม่ได้เลือก</b><ul>' +
+      data.needs.map(n => `<li>${esc(core.needText(n))}</li>`).join('') + '</ul>' +
+      '<div class="acts"><button class="linkbtn" data-act="take">เลือกให้ด้วย</button>' +
+      `<button class="linkbtn" data-act="go">${action === 'view' ? 'เปิดดูเลย' : 'ดาวน์โหลดเลย'}</button></div>` });
+  }
+  async function ask(kind, action) {
+    if (busy || !chosen.size) return;
+    const win = action === 'view' ? openViewer() : null;
+    if (action === 'view' && !win) { showMessage({ cls: 'bad', html: '<b>เบราว์เซอร์บล็อกแท็บใหม่</b> อนุญาต popup ของหน้านี้ แล้วกดดูอีกครั้ง' }); return; }
+    dropPending();
+    busy = true;
+    updateBar();
+    showMessage({ cls: '', html: 'กำลังสร้างไฟล์ รายการมากอาจใช้เวลาครู่หนึ่ง' });
+    const req = core.scriptRequest(target, kind, chosen);
+    try {
+      const res = await fetch(req.url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Database-Diff': '1' }, body: JSON.stringify(req.body) });
+      let data = {};
+      try { data = await res.json(); } catch (e) { data = {}; }
+      if (!res.ok) throw new Error(data.error || 'แอปตอบ ' + res.status);
+      if (data.needs && data.needs.length) showNeeds(data, action, win); else deliver(data, action, win);
+    } catch (err) {
+      if (win && !win.closed) win.close();
+      showMessage({ cls: 'bad', html: `<b>สร้างไฟล์ไม่สำเร็จ</b> ${esc(err.message)}<br>รายงานนี้ต้องเปิดจากแอปที่กำลังทำงานอยู่` });
+    } finally {
+      busy = false;
+      updateBar();
+    }
+  }
+
+  if (target && rows.length) {
+    $('pick-toggle').hidden = false;
+    $('pick-toggle').addEventListener('click', () => setSelecting(!selecting));
+    $('pick-all').addEventListener('click', () => { rows.filter(matches).forEach(r => chosen.add(r.id)); changed(); syncRowBoxes(); });
+    $('pick-clear').addEventListener('click', () => { chosen.clear(); changed(); syncRowBoxes(); });
+    $('pick-sync').addEventListener('click', () => ask('sync', 'save'));
+    $('pick-rollback').addEventListener('click', () => ask('rollback', 'save'));
+    $('pick-view-sync').addEventListener('click', () => ask('sync', 'view'));
+    $('pick-view-rollback').addEventListener('click', () => ask('rollback', 'view'));
+    $('results').addEventListener('change', e => {
+      const one = e.target.closest('[data-pick]'), card = e.target.closest('[data-pickg]');
+      if (one) {
+        const id = Number(one.dataset.pick);
+        if (one.checked) chosen.add(id); else chosen.delete(id);
+      } else if (card) {
+        for (const id of groupIds(groups.tables[Number(card.dataset.pickg)])) { if (card.checked) chosen.add(id); else chosen.delete(id); }
+        syncRowBoxes();
+      } else return;
+      changed();
+    });
+    $('pick-msg').addEventListener('click', e => {
+      const btn = e.target.closest('[data-act]');
+      if (!btn || !pending) return;
+      if (btn.dataset.act === 'go') { deliver(pending.data, pending.action, pending.win); return; }
+      pending.data.needs.forEach(n => chosen.add(n.needsRow));
+      dropPending();
+      syncRowBoxes();
+      syncGroupBoxes();
+      updateBar();
+      showMessage({ cls: 'ok', html: 'เลือกตารางที่ขาดให้แล้ว กดดาวน์โหลดอีกครั้ง' });
+    });
+  }
+
   renderFilters();
   renderTotals();
   refresh();
+  updateBar();
+  // The button "เลือกเอง" of the run page opens the report at #select.
+  if (target && rows.length && location.hash === '#select') setSelecting(true);
 })();
 </script>
 </body>

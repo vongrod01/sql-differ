@@ -8,6 +8,7 @@ const config = require('./lib/config');
 const store = require('./lib/store');
 const servers = require('./lib/servers');
 const runs = require('./lib/runs');
+const reportPage = require('./lib/report-page');
 const jobs = require('./lib/jobs');
 const retention = require('./lib/retention');
 
@@ -168,6 +169,8 @@ const routes = [
     return leftover ? { ok: true, leftover: true } : { ok: true };
   }],
   ['GET', /^\/api\/runs\/([^/]+)\/events$/, (m, body, req, res) => streamRun(req, res, m[1])],
+  // The script of the rows ticked in a report (see runs.selectedScript); a POST because the rows can be many.
+  ['POST', /^\/api\/runs\/([^/]+)\/script$/, (m, body) => runs.selectedScript(m[1], body)],
 
   ['GET', /^\/api\/snapshots$/, () => runs.listSnapshots()],
   // Size of the run history and how long it is kept, for the history page.
@@ -228,7 +231,13 @@ async function handle(req, res) {
   const runFile = /^\/runs\/([^/]+)\/(.+)$/.exec(pathname);
   if (runFile && req.method === 'GET') {
     const headers = download ? { 'Content-Disposition': attachmentHeader(path.basename(runFile[2])) } : {};
-    return sendFile(res, runs.file(runFile[1], runFile[2]), headers);
+    const found = runs.file(runFile[1], runFile[2]);
+    // A report is shown on the current template (see report-page.js); a download is the file as it was saved.
+    if (!download && /\.html$/i.test(found)) {
+      const page = reportPage.upgraded(found);
+      if (page !== null) return send(res, 200, page, TYPES['.html']);
+    }
+    return sendFile(res, found, headers);
   }
 
   if (req.method === 'GET') {

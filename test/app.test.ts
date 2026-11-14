@@ -664,3 +664,37 @@ test('app: the notes about the scripts mention VIEW DEFINITION only for an incom
   assert.equal(scriptNotes({ incomplete: true }, false, false, false), '');
   assert.equal(scriptNotes({ databases: [{ database: 'a', error: 'no access' }], incomplete: true }, false, false, false), '');
 });
+
+// The buttons of a database of a batch run (databaseActions in app/public/app.js): its report, its script
+// for the whole database, its script for the rows ticked in the report, and its rollback. All of them are
+// buttons, none a bare link, and the one for ticked rows is there only when the report has rows to tick.
+test('app: a database of a run has buttons for its report, its whole scripts and a script of chosen rows', () => {
+  const { databaseActions } = browserFunctions(['canPickRows', 'pickLink', 'databaseActions']);
+  assert.ok(databaseActions);
+  const run = '20261114-154529-8610';
+  const database = {
+    database: 'plapp_prod', report: 'plapp_prod.html', syncScript: 'plapp_prod.sync.sql', rollbackScript: 'plapp_prod.rollback.sql',
+    error: '', counts: { onlyInSource: 10, onlyInTarget: 0, different: 0, unverified: 0 },
+  };
+  const html = databaseActions(run, database);
+  const buttons = [...html.matchAll(/<a class="btn( primary)?" href="([^"]*)"[^>]*>([^<]*)<\/a>/g)].map((m) => [m[3], m[2], Boolean(m[1])]);
+  assert.deepEqual(buttons, [
+    ['รายงาน', `/runs/${run}/plapp_prod.html`, false],
+    ['sync script ทั้งฐาน', `/runs/${run}/plapp_prod.sync.sql`, false],
+    // The report opens in the mode where its rows can be ticked.
+    ['sync script เลือกเอง', `/runs/${run}/plapp_prod.html#select`, true],
+    ['rollback script ทั้งฐาน', `/runs/${run}/plapp_prod.rollback.sql`, false],
+  ]);
+  assert.doesNotMatch(html, /<a href/, 'no bare link');
+
+  // Nothing to tick: no such button, the others stay.
+  const same = databaseActions(run, { ...database, counts: { onlyInSource: 0, onlyInTarget: 0, different: 0, unverified: 0 } });
+  assert.doesNotMatch(same, /เลือกเอง/);
+  assert.match(same, /sync script ทั้งฐาน/);
+  // Only rows that cannot be compared are still rows of the report.
+  assert.match(databaseActions(run, { ...database, counts: { onlyInSource: 0, onlyInTarget: 0, different: 0, unverified: 2 } }), /เลือกเอง/);
+  // A database that failed has no report and no script, so no button at all.
+  assert.equal(databaseActions(run, { database: 'x', report: '', syncScript: '', rollbackScript: '', error: 'database not found', counts: {} }), '');
+  // A name with Thai letters or spaces is encoded in the address.
+  assert.match(databaseActions(run, { ...database, report: 'ฐาน 1.html' }), new RegExp(`href="/runs/${run}/${encodeURIComponent('ฐาน 1.html')}#select"`));
+});
